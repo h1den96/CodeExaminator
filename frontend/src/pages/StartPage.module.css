@@ -1,0 +1,41 @@
+/* centers the card in the viewport */
+.center {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #f8fafc;
+}
+
+/* the white card */
+.card {
+  width: min(92vw, 560px);
+  padding: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+/* title above button */
+.title {
+  margin: 0 0 16px 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+/* start button */
+.startBtn {
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid #111827;
+  background: #111827;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease-in-out;
+}
+
+.startBtn:hover {
+  background: #1f2937;
+}
