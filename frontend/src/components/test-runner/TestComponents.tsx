@@ -10,18 +10,21 @@ export const StatusIndicator = ({ status }: { status: SaveStatus }) => {
   return <span style={{ color, fontWeight: 'bold', fontSize: '0.85rem' }}>{text}</span>;
 };
 
-export const QuestionHeader = ({ question, idx }: { question: Question, idx: number }) => {
-  const { colors, theme } = useTheme();
+export const QuestionHeader = ({ question, idx }: { question: Question; idx: number }) => {
+  // Optional: Helper to ensure literal "\n" strings are treated as breaks
+  const processText = (txt: string) => txt?.replace(/\\n/g, '\n');
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>{question.title || `Question ${idx + 1}`}</h2>
-        <span style={{ background: theme === 'dark' ? '#333' : '#e5e7eb', padding: '4px 8px', borderRadius: 4, fontSize: '0.9rem' }}>
-          {question.points} pts
-        </span>
-      </div>
-      <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: colors.textSec }}>
-        {question.body || <i>No instructions provided.</i>}
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ marginBottom: 10, color: '#888' }}>Question {idx + 1}</h3>
+      <div style={{ 
+        fontSize: '1.1rem', 
+        lineHeight: '1.6', 
+        // THIS IS THE KEY FIX FOR FORMATTING:
+        whiteSpace: 'pre-wrap', 
+        fontFamily: 'inherit'
+      }}>
+        {processText(question.question_text)}
       </div>
     </div>
   );

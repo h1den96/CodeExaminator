@@ -1,186 +1,238 @@
-import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import axios from "axios";
-import { useAuth } from "../auth/AuthContext"; 
-import { startTest } from "../api/testClient"; 
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import api from "../api/axios";
 
-// --- Shared Types ---
-export type Question = {
+// ==========================================
+// 1. EXPORTED TYPES 
+// ==========================================
+
+export type SaveStatus = "saved" | "saving" | "error";
+
+export interface Question {
   question_id: number;
-  submission_question_id?: number; // <--- ADD THIS (It fixes the lookup logic)
+  question_text: string; // We will map 'body' to this
   question_type: string;
-  title?: string;
-  body?: string;
-  starter_code?: string;
-  options?: { option_id: number; option_text: string }[];
   points: number;
-};
-export type TestData = { test_id: number; title: string; description: string; questions: Question[] };
-export type StartResponse = { submission_id: number; test: TestData };
-export type SaveStatus = 'saved' | 'saving' | 'error';
+  starter_code?: string;
+  options?: { id: number; text: string }[];
+}
 
+export interface TestDetails {
+  id: number;
+  title: string;
+  description?: string;
+  questions: Question[];
+}
+
+export interface TestData {
+  test: TestDetails;
+  submissionId: number;
+}
+
+// ==========================================
+// 2. THE HOOK
+// ==========================================
 export function useTestSession() {
-  const { token, isAuthenticated } = useAuth();
-  const [searchParams] = useSearchParams();
-  const nav = useNavigate();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const testId = params.get("test_id");
+  const { token, logout } = useAuth();
 
-  // --- MOVED INSIDE (Where they belong) ---
-  const [runResult, setRunResult] = useState<{ status: string; grade: number } | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
-  // ----------------------------------------
-
-  const [data, setData] = useState<StartResponse | null>(null);
+  // State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
+  const [data, setData] = useState<TestData | null>(null);
+  const [submissionId, setSubmissionId] = useState<number | null>(null);
+  
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, any>>({});
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [submitting, setSubmitting] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
-  const [runError, setRunError] = useState<string | null>(null); // <--- NEW
-  
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. INITIAL LOAD
+  // Execution State
+  const [isRunning, setIsRunning] = useState(false);
+  const [runResult, setRunResult] = useState<{ grade: number; details?: string } | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // Load Exam Data
   useEffect(() => {
-    if (!isAuthenticated || !token) {
-      setError("Not logged in");
-      setLoading(false);
-      return;
-    }
-    const id = Number(searchParams.get("test_id"));
-    if (!id || id <= 0) {
-      setError("Invalid test ID");
-      setLoading(false);
-      return;
+    if (!testId) return;
+    if (!token) {
+        navigate("/login");
+        return;
     }
 
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await startTest(token, id);
-        setData(res);
+    setLoading(true);
+    
+    api.get(`/test/start?test_id=${testId}`, {
+      headers: { Authorization: `Bearer ${token}` } 
+    })
+      .then((res) => {
+        const root = res.data; // Based on your JSON, data is at the root
         
-        const initialAnswers: Record<number, any> = {};
-        res.test.questions.forEach((q: Question) => {
-          if ((q.question_type.includes("prog") || q.starter_code) && q.starter_code) {
-            initialAnswers[q.question_id] = q.starter_code;
-          }
-        });
-        setAnswers(prev => ({ ...initialAnswers, ...prev }));
-      } catch (e: any) {
-        setError(e.message || "Failed to start test");
-      } finally {
+        // Safety Check: specific to your JSON structure
+        if (!root.test || !Array.isArray(root.test.questions)) {
+             console.error("Invalid Structure:", root);
+             setError("Invalid test data structure received.");
+             setLoading(false);
+             return;
+        }
+
+        // --- DATA MAPPING (Backend JSON -> Frontend Interface) ---
+        const mappedQuestions: Question[] = root.test.questions.map((q: any) => ({
+            question_id: q.question_id,
+            // MAP 'body' (from JSON) to 'question_text' (for UI)
+            question_text: q.body, 
+            question_type: q.question_type,
+            // Parse "1.00" string to number
+            points: parseFloat(q.points) || 0,
+            starter_code: q.starter_code || "",
+            // Map options if they exist (for MCQs)
+            options: q.options ? q.options.map((o: any) => ({
+                id: o.option_id,
+                text: o.option_text
+            })) : []
+        }));
+
+        const mappedData: TestData = {
+            test: {
+                id: root.test.test_id,
+                title: root.test.title,
+                description: root.test.description,
+                questions: mappedQuestions
+            },
+            submissionId: root.submission_id
+        };
+
+        setSubmissionId(root.submission_id);
+        setData(mappedData);
         setLoading(false);
-      }
-    })();
-  }, [isAuthenticated, token, searchParams]);
-
-  // 4. RUN CODE (Fixed Logic)
-  const runCode = async (questionId: number, code: string) => {
-    const targetQuestion = data?.test.questions.find(q => q.question_id === questionId);
-    const realSubmissionId = targetQuestion?.submission_question_id || 134;
-
-    setIsRunning(true);
-    setRunResult(null);
-    setRunError(null);
-
-   try {
-        // FIX: Add the 3rd argument containing the Headers
-        const res = await axios.post(
-          "http://localhost:3000/api/submissions/submit-code", 
-          {
-            submissionQuestionId: realSubmissionId,
-            code: code
-          },
-          { 
-            headers: { Authorization: `Bearer ${token}` } // <--- THIS WAS MISSING
-          }
-        );
-
-        if (res.data.success) {
-          setRunResult({
-            status: "Completed",
-            grade: Number(res.data.grade)
-          });
+      })
+      .catch((err) => {
+        console.error("Load Test Error:", err);
+        // Handle Token Expiration
+        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+            alert("Session expired. Please log in again.");
+            if (logout) logout();
+            navigate("/login");
+            return;
         }
-    } catch (err: any) {
-        console.error(err);
-        if (err.response && err.response.status === 404) {
-             setRunError("Error: Server route not found. Check backend URL.");
-        } else if (err.response && err.response.status === 401) {
-             setRunError("Error: Unauthorized. Try logging in again.");
-        } else {
-             setRunError("Error: Failed to run code. " + (err.message || "Unknown error"));
-        }
-    } finally {
-        setIsRunning(false);
+        setError(err.response?.data?.error || "Failed to load test");
+        setLoading(false);
+      });
+  }, [testId, token, navigate, logout]);
+
+  // Autosave Logic
+  const timeoutRef = useRef<any>(null);
+
+  const handleAnswer = useCallback((questionId: number, value: any, type: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+    setSaveStatus("saving");
+
+    let payload: any = { question_id: questionId };
+    
+    // Format payload based on question type
+    if (type === "programming") {
+        payload.code_answer = value;
+    } else if (type === "mcq") {
+        // Ensure array format for MCQs
+        payload.mcq_option_ids = Array.isArray(value) ? value : [value]; 
+    } else if (type === "true_false") {
+        payload.tf_answer = value;
     }
-  };
-
-  // 2. AUTOSAVE LOGIC
-  const triggerAutosave = async (qId: number, val: any, qType: string) => {
-    if (!data || !token) return;
-    setSaveStatus('saving');
-
-    const payload: any = { question_id: qId };
-    if (qType.includes("prog") || typeof val === 'string') {
-       payload.code_answer = val;
-    } else if (qType === "true_false") {
-       payload.tf_answer = val;
-    } else if (qType === "mcq") {
-       payload.mcq_option_ids = [val]; 
-    }
-
-    try {
-      await axios.patch(
-        `http://localhost:3000/api/submissions/${data.submission_id}/answers`, 
-        payload, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setSaveStatus('saved');
-    } catch (err) {
-      console.error("Autosave failed", err);
-      setSaveStatus('error');
-    }
-  };
-
-  const handleAnswer = (qId: number, val: any) => {
-    setAnswers((prev) => ({ ...prev, [qId]: val }));
-
-    const question = data?.test.questions.find(q => q.question_id === qId);
-    const qType = question?.question_type || "unknown";
 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
     timeoutRef.current = setTimeout(() => {
-      triggerAutosave(qId, val, qType);
-    }, 1000);
+        if (!submissionId || !token) return;
+
+        api.patch(`/submissions/${submissionId}/answers`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        .then(() => setSaveStatus("saved"))
+        .catch((err) => {
+          console.error("Autosave failed", err);
+          if (err.response && err.response.status === 401) {
+             setSaveStatus("error"); 
+             alert("Session expired. Answer not saved.");
+          } else {
+             setSaveStatus("error");
+          }
+        });
+
+    }, 1000); // 1 second debounce
+  }, [submissionId, token]);
+
+  // In src/hooks/useTestSession.ts
+
+  const runCode = async (questionId: number, code: string) => {
+    // FIX 1: Check for submissionId. If missing, we can't run code.
+    if (!token || !submissionId) {
+        console.error("Missing token or submissionId", { token: !!token, submissionId });
+        return;
+    }
+
+    setIsRunning(true);
+    setRunError(null);
+    setRunResult(null);
+
+    try {
+      console.log("🚀 Sending Code:", { submission_id: submissionId, question_id: questionId });
+
+      const res = await api.post("/submissions/submit-code", {
+        // FIX 2: DO NOT send 'submissionQuestionId' here!
+        // Send these two instead so the backend calculates the correct ID.
+        submission_id: submissionId,
+        question_id: questionId,
+        code: code,
+        language_id: 54
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        setRunResult({
+          grade: res.data.grade,
+          details: res.data.details
+        });
+      } else {
+        setRunError("Execution failed without error details.");
+      }
+    } catch (err: any) {
+      console.error("Run Code Error:", err.response?.data);
+      setRunError(err.response?.data?.error || "Failed to run code");
+    } finally {
+      setIsRunning(false);
+    }
   };
 
-  // 3. NAVIGATION & SUBMIT
   const submitTest = async () => {
-    if (!data || !token) return;
-    if (!window.confirm("Are you sure you want to submit? This action cannot be undone.")) return;
-    
+    if (!confirm("Finish exam?")) return;
+    if (!token || !submissionId) return;
+
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      const res = await axios.post(
-        `http://localhost:3000/api/submissions/${data.submission_id}/submit`, 
-        {}, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      alert(`Test submitted successfully! Score: ${res.data.result.auto_grade}`);
-      nav("/tests");
-    } catch (e: any) {
-      alert("Failed to submit: " + (e.response?.data?.error || e.message));
+        await api.post(`/submissions/${submissionId}/submit`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        alert("Exam Submitted!");
+        navigate("/dashboard");
+    } catch(err: any) {
+        if (err.response && err.response.status === 401) {
+             alert("Session expired. Could not submit.");
+        } else {
+             alert("Error submitting exam");
+        }
     } finally {
-      setSubmitting(false);
+        setSubmitting(false);
     }
   };
 
   return {
     loading, error, data, currentIdx, answers, saveStatus, submitting,
     handleAnswer, submitTest, setCurrentIdx,
-    runCode, isRunning, runResult, runError 
+    runCode, isRunning, runResult, runError
   };
 }

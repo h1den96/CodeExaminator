@@ -1,17 +1,19 @@
+// src/components/test-runner/StandardLayout.tsx
 import React from "react";
 import { useTheme } from "../../context/ThemeContext";
-import type { Question, TestData, SaveStatus } from "../../hooks/useTestSession";
-import { StatusIndicator, NavigationButtons, QuestionHeader } from "./TestComponents";
+import type { Question, TestDetails, SaveStatus } from "../../hooks/useTestSession";
+// Import QuestionHeader so formatting is consistent!
+import { StatusIndicator, NavigationButtons, QuestionHeader } from "./TestComponents"; 
 
 interface Props {
-  testData: TestData;
+  testData: TestDetails;
   question: Question;
   currentIdx: number;
   totalQ: number;
   answer: any;
   saveStatus: SaveStatus;
   submitting: boolean;
-  onAnswer: (id: number, val: any) => void;
+  onAnswer: (id: number, val: any, type: string) => void;
   onNavigate: (idx: number) => void;
   onSubmit: () => void;
 }
@@ -20,67 +22,87 @@ export default function StandardLayout({
   testData, question, currentIdx, totalQ, answer, 
   saveStatus, submitting, onAnswer, onNavigate, onSubmit 
 }: Props) {
-  const { colors, theme } = useTheme();
+  const { colors } = useTheme();
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: colors.bg, padding: 20, color: colors.text }}>
-      <div style={{ width: '100%', maxWidth: '800px', backgroundColor: colors.card, borderRadius: 8, border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px', color: colors.text }}>
+      
+      {/* HEADER */}
+      <div style={{ marginBottom: 30, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+           <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{testData.title}</h1>
+           <span style={{ color: '#666' }}>Question {currentIdx + 1} of {totalQ}</span>
+        </div>
+        <StatusIndicator status={saveStatus} />
+      </div>
+
+      {/* QUESTION CARD */}
+      <div style={{ background: colors.card, padding: '30px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
         
-        {/* HEADER */}
-        <div style={{ padding: '20px', borderBottom: `1px solid ${colors.border}`, background: theme === 'dark' ? '#1f1f1f' : '#fafafa' }}>
-           <h1 style={{ margin: 0, fontSize: '1.2rem' }}>{testData.title}</h1>
-           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-             <span style={{ color: colors.textSec, fontSize: '0.9rem' }}>Question {currentIdx + 1} of {totalQ}</span>
-             <StatusIndicator status={saveStatus} />
-           </div>
-        </div>
+        {/* FIX: Use QuestionHeader here to get the 'pre-wrap' formatting */}
+        <QuestionHeader question={question} idx={currentIdx} />
 
-        {/* CONTENT */}
-        <div style={{ padding: '30px', flex: 1 }}>
-          <QuestionHeader question={question} idx={currentIdx} />
+        {/* OPTIONS RENDERER */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: 20 }}>
-            {/* True/False Logic */}
-            {question.question_type === "true_false" && ['true', 'false'].map((optStr) => {
-                const isTrue = optStr === 'true';
-                const isSelected = answer === isTrue;
-                return (
-                  <label key={optStr} style={optionStyle(isSelected, colors, theme)}>
-                    <input type="radio" name={`q-${question.question_id}`} checked={isSelected} 
-                      onChange={() => onAnswer(question.question_id, isTrue)} style={{ marginRight: '10px' }} />
-                    {optStr.charAt(0).toUpperCase() + optStr.slice(1)}
-                  </label>
-                );
-            })}
+          {/* MCQ */}
+          {question.question_type === "mcq" && question.options?.map((opt) => (
+            <label 
+              key={opt.id} 
+              style={{ 
+                display: 'flex', alignItems: 'center', gap: '12px', 
+                padding: '15px', border: `2px solid ${answer === opt.id ? '#3b82f6' : colors.border}`,
+                borderRadius: '8px', cursor: 'pointer',
+                background: answer === opt.id ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+              }}
+            >
+              <input 
+                type="radio" 
+                name={`q-${question.question_id}`} 
+                checked={answer === opt.id} 
+                onChange={() => onAnswer(question.question_id, opt.id, "mcq")}
+                style={{ width: '18px', height: '18px' }}
+              />
+              {/* FIX: Ensure this is opt.text (NOT opt.option_text) */}
+              <span style={{ fontSize: '1rem' }}>{opt.text}</span>
+            </label>
+          ))}
 
-            {/* MCQ Logic */}
-            {question.question_type === "mcq" && question.options?.map((opt) => {
-                const isSelected = answer === opt.option_id;
-                return (
-                  <label key={opt.option_id} style={optionStyle(isSelected, colors, theme)}>
-                    <input type="radio" name={`q-${question.question_id}`} checked={isSelected} 
-                      onChange={() => onAnswer(question.question_id, opt.option_id)} style={{ marginRight: '10px' }} />
-                    {opt.option_text}
-                  </label>
-                );
-            })}
-          </div>
-        </div>
+          {/* True/False */}
+          {question.question_type === "true_false" && (
+            <>
+              {[true, false].map((val) => (
+                <label 
+                  key={val.toString()} 
+                  style={{ 
+                    display: 'flex', alignItems: 'center', gap: '12px', 
+                    padding: '15px', border: `2px solid ${answer === val ? '#3b82f6' : colors.border}`,
+                    borderRadius: '8px', cursor: 'pointer',
+                    background: answer === val ? 'rgba(59, 130, 246, 0.05)' : 'transparent'
+                  }}
+                >
+                  <input 
+                    type="radio" 
+                    name={`q-${question.question_id}`} 
+                    checked={answer === val}
+                    onChange={() => onAnswer(question.question_id, val, "true_false")}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontSize: '1rem' }}>{val ? "True" : "False"}</span>
+                </label>
+              ))}
+            </>
+          )}
 
-        {/* FOOTER */}
-        <div style={{ padding: '20px', background: theme === 'dark' ? '#1f1f1f' : '#fafafa', borderTop: `1px solid ${colors.border}` }}>
-          <NavigationButtons currentIdx={currentIdx} totalQ={totalQ} submitting={submitting} onNavigate={onNavigate} onSubmit={onSubmit} />
         </div>
+      </div>
+
+      <div style={{ marginTop: 30 }}>
+        <NavigationButtons 
+            currentIdx={currentIdx} totalQ={totalQ} submitting={submitting}
+            onNavigate={onNavigate} onSubmit={onSubmit} 
+        />
       </div>
     </div>
   );
 }
-
-// Helper Style
-const optionStyle = (isSelected: boolean, colors: any, theme: string) => ({
-  display: 'flex', alignItems: 'center', padding: '15px', 
-  border: isSelected ? '1px solid #2563eb' : `1px solid ${colors.border}`, 
-  borderRadius: 6, 
-  background: isSelected ? (theme === 'dark' ? '#1e3a8a' : '#eff6ff') : colors.card, 
-  cursor: 'pointer'
-});

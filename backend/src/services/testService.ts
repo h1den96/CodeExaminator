@@ -23,6 +23,35 @@ export type AnswersPayload = {
   prog: Record<number, string>;
 };
 
+function calculateWeightedMCQScore(
+  questionPoints: number,
+  options: { id: number; weight: number }[],
+  selectedIds: number[],
+  enableNegativeGrading: boolean
+): number {
+  let totalWeight = 0.0;
+
+  selectedIds.forEach((sid) => {
+    const opt = options.find((o) => o.id === sid);
+    if (opt) {
+      let w = Number(opt.weight);
+      
+      // SAFE MODE LOGIC:
+      // If negative grading is OFF, treat penalties as 0.
+      if (!enableNegativeGrading && w < 0) {
+        w = 0;
+      }
+      totalWeight += w;
+    }
+  });
+
+  // Clamp factor between 0 (0%) and 1 (100%)
+  const factor = Math.min(1, Math.max(0, totalWeight));
+  
+  // Return points (rounded to 2 decimals)
+  return Number((factor * questionPoints).toFixed(2));
+}
+
 export async function getRandomTest(spec: Spec, db: Pool) {
   // 1. Fetch True/False (include title & body)
   const tfQ = await db.query(
@@ -384,3 +413,4 @@ export async function submitAndGrade(
     client.release();
   }
 }
+

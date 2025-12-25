@@ -1,31 +1,30 @@
 // src/pages/RunTestPage.tsx
 import React from "react";
-import { useTestSession } from "../hooks/useTestSession";
-import ProgrammingLayout from "../components/test-runner/ProgrammingLayout";
+// Ensure this path is 100% correct relative to this file
+import ProgrammingLayout from "../components/test-runner/ProgrammingLayout"; 
 import StandardLayout from "../components/test-runner/StandardLayout";
+import { useTestSession } from "../hooks/useTestSession";
 import { useTheme } from "../context/ThemeContext";
 
 export default function RunTestPage() {
   const { colors } = useTheme();
   
-  // 1. Get ALL functions from your hook, including the new 'runCode' logic
   const { 
     loading, error, data, currentIdx, answers, saveStatus, submitting,
     handleAnswer, submitTest, setCurrentIdx,
-    runCode, isRunning, runResult, runError // <--- IMPORTANT: Get these from the hook
+    runCode, isRunning, runResult, runError
   } = useTestSession();
 
-  if (loading) return <div style={{ height: "100vh", display: "grid", placeItems: "center", background: colors.bg, color: colors.text }}>Starting test...</div>;
-  if (error) return <div style={{ height: "100vh", display: "grid", placeItems: "center", background: colors.bg, color: "red" }}>{error}</div>;
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
   if (!data) return null;
 
   const question = data.test.questions[currentIdx];
   const totalQ = data.test.questions.length;
   
-  // Check if it's a programming question
-  const isProgramming = question.question_type.includes("prog") || typeof question.starter_code === "string";
+  // Robust check for programming type
+  const isProgramming = question.question_type === "programming" || question.question_type.includes("prog");
 
-  // 2. Define props shared by BOTH layouts (Navigation, Saving, etc.)
   const commonProps = {
     testData: data.test,
     question,
@@ -34,24 +33,29 @@ export default function RunTestPage() {
     answer: answers[question.question_id],
     saveStatus,
     submitting,
-    onAnswer: handleAnswer,
+    onAnswer: handleAnswer, // This function expects (id, val, type)
     onNavigate: setCurrentIdx,
     onSubmit: submitTest
   };
 
-  // 3. Render the correct layout
- if (isProgramming) {
+  if (isProgramming) {
     return (
       <ProgrammingLayout 
         {...commonProps} 
         onRunCode={runCode}
         isRunning={isRunning}
         runResult={runResult}
-        runError={runError} // <--- Pass it here
+        runError={runError}
       />
     );
   }
 
-  // Standard layout (MCQ/TrueFalse) doesn't need runCode
-  return <StandardLayout {...commonProps} />;
+  // Pass "mcq" or "true_false" manually for StandardLayout
+  return (
+    <StandardLayout 
+      {...commonProps} 
+      // Example wrapper to inject type if StandardLayout doesn't handle it
+      onAnswer={(id, val) => handleAnswer(id, val, question.question_type)} 
+    />
+  );
 }

@@ -1,12 +1,14 @@
 // src/controllers/submissionController.ts
 import { Request, Response } from "express";
-import { SubmitAnswerDto } from "../dto/SubmitAnswerDTO";
-import * as testService from "../services/testService";
+// CHECK: Ensure this filename matches what you created earlier (examDTO.ts or examTypes.ts)
+import { SubmitAnswerDto } from "../types/examTypes"; 
+import { SubmissionService } from "../services/submissionService";
+import { CodeExecutionService } from "../services/codeExecutionService";
 
-// Helper για να παίρνουμε τη βάση
+// Helper to get the DB pool from the request (injected via middleware)
 const getDb = (req: Request) => (req as any).db;
 
-// 1. SAVE ANSWERS (Autosave)
+// 1. SAVE ANSWERS (Autosave for MCQs/Text)
 export const saveAnswers = async (req: Request, res: Response) => {
   try {
     const submissionId = Number(req.params.id);
@@ -23,7 +25,8 @@ export const saveAnswers = async (req: Request, res: Response) => {
     }
 
     const db = getDb(req);
-    await testService.saveSingleAnswer(submissionId, studentId, dto, db);
+
+    await SubmissionService.saveSingleAnswer(submissionId, studentId, dto, db);
 
     return res.status(200).json({ message: "Answer saved successfully" });
 
@@ -39,7 +42,7 @@ export const saveAnswers = async (req: Request, res: Response) => {
   }
 };
 
-// 2. SUBMIT EXAM (Final Submit)
+// 2. SUBMIT EXAM (Final Submit / Finish Test)
 export const submitSubmission = async (req: Request, res: Response) => {
   try {
     const submissionId = Number(req.params.id);
@@ -52,8 +55,7 @@ export const submitSubmission = async (req: Request, res: Response) => {
 
     const db = getDb(req);
 
-    // Κλήση της συνάρτησης που προσθέσαμε στο Step 1
-    const result = await testService.submitAndGrade(submissionId, studentId, db);
+    const result = await SubmissionService.submitAndGrade(submissionId, studentId, db);
 
     return res.status(200).json({ 
       message: "Exam submitted successfully", 
@@ -72,7 +74,72 @@ export const submitSubmission = async (req: Request, res: Response) => {
   }
 };
 
-// 3. GET SUBMISSION (Optional placeholder)
+// 3. RUN CODE (Judge0 / Docker)
+// src/controllers/submissionController.ts
+
+// src/controllers/submissionController.ts
+
+export const submitCode = async (req: Request, res: Response) => {
+    try {
+        let { submissionQuestionId, submission_id, question_id, code } = req.body;
+
+        if (!code) return res.status(400).json({ error: "Missing code" });
+
+        const db = getDb(req);
+
+        console.log("📥 Controller Received:", { submissionQuestionId, submission_id, question_id });
+
+        // SAFEGUARD: If the frontend sends submissionQuestionId same as question_id, it's the bug.
+        // We force a lookup in that case.
+        if (String(submissionQuestionId) === String(question_id)) {
+            console.warn("⚠️ Detected ID mismatch bug. Ignoring submissionQuestionId and forcing lookup.");
+            submissionQuestionId = null;
+        }
+
+        // LOOKUP LOGIC
+        if (!submissionQuestionId && submission_id && question_id) {
+            const lookup = await db.query(
+                `SELECT submission_question_id 
+                 FROM exam.submission_questions 
+                 WHERE submission_id = $1 AND question_id = $2`,
+                [submission_id, question_id]
+            );
+
+            if (lookup.rows.length === 0) {
+                 return res.status(404).json({ error: "Question link not found for this submission" });
+            }
+
+            submissionQuestionId = lookup.rows[0].submission_question_id;
+            console.log("✅ Lookup Success! Real SQ_ID is:", submissionQuestionId);
+        }
+
+        if (!submissionQuestionId) {
+             return res.status(400).json({ error: "Missing submissionQuestionId or (submission_id + question_id)" });
+        }
+
+        // Execute
+        const result = await CodeExecutionService.executeAndGrade(
+            Number(submissionQuestionId), 
+            code, 
+            db
+        );
+        
+        res.json({
+            success: true,
+            grade: result.question_grade,
+            details: result.details
+        });
+
+    } catch (error: any) {
+        console.error("Code Execution Error:", error);
+        res.status(500).json({ 
+            error: error.message || "Internal Server Error",
+            details: error.response?.data || "No details available"
+        });
+    }
+};
+
+// 4. GET SUBMISSION (Optional placeholder)
 export const getSubmission = async (req: Request, res: Response) => {
    res.status(501).json({ error: "Not implemented yet" });
 };

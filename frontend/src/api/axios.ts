@@ -14,4 +14,31 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response Interceptor: The "Bouncer"
+api.interceptors.response.use(
+  (response) => {
+    // If the request was good, just pass it through
+    return response;
+  },
+  (error) => {
+    // If the error is 401 (Unauthorized)
+    if (error.response && error.response.status === 401) {
+      console.warn("Token expired or invalid. Logging out...");
+      
+      // 1. Clear the bad token from storage
+      localStorage.removeItem("token");
+      localStorage.removeItem("user"); // or whatever keys you use
+      
+      // 2. Force redirect to login page
+      // Note: We use window.location because hooks like useNavigate won't work inside this plain JS file
+      if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+      }
+    }
+    
+    // Pass the error down so your components still know it failed
+    return Promise.reject(error);
+  }
+);
+
 export default api;
