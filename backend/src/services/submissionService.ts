@@ -2,7 +2,7 @@
 import type { Pool } from "pg";
 import { ExamDiscoveryService } from "./ExamDiscoveryService";
 import { GradingService } from "./gradingService";
-import type { TestTemplateRow, Spec, TestDTO, SubmitAnswerDto, AnswersPayload } from "../types/examTypes";
+import type { TestTemplateRow, Spec, TestDTO, SubmitAnswerDto, AnswersPayload, AvailableTestDto } from "../types/examTypes";
 
 export class SubmissionService {
 
@@ -139,7 +139,7 @@ export class SubmissionService {
     try {
       await client.query("BEGIN");
 
-      // 1. Lock Submission & Fetch Test Settings (The Switch)
+      // 1. Lock Submission & Fetch Test Settings
       const subRes = await client.query(
         `SELECT s.status, t.enable_negative_grading
          FROM exam.submissions s
@@ -149,7 +149,11 @@ export class SubmissionService {
         [submissionId, studentId]
       );
 
-      if (subRes.rowCount === 0) throw new Error("submission_not_found");
+      // FIX: Check for existence FIRST, then destructure
+      if ((subRes.rowCount ?? 0) === 0) {
+        throw new Error("submission_not_found");
+      }
+      
       const { status, enable_negative_grading } = subRes.rows[0];
 
       if (status !== 'in_progress') throw new Error("already_submitted");
@@ -179,7 +183,7 @@ export class SubmissionService {
       const { rows: answers } = await client.query(dataQuery, [submissionId]);
       let totalScore = 0;
 
-      // 3. Calculate Grades (Delegating Math to GradingService)
+      // 3. Calculate Grades
       for (const ans of answers) {
         let earnedPoints = 0;
 
@@ -188,7 +192,7 @@ export class SubmissionService {
             Number(ans.question_points),
             ans.mcq_options_data || [],
             ans.mcq_option_ids || [],
-            enable_negative_grading // <--- Passing the Switch
+            enable_negative_grading // <--- Now correctly defined
           );
         } else if (ans.question_type === 'true_false') {
           earnedPoints = GradingService.calculateTrueFalse(
@@ -224,5 +228,31 @@ export class SubmissionService {
     } finally {
       client.release();
     }
+  }
+
+  static async getAvailableTestsForStudent(
+    studentId: number | string,
+    db: Pool
+  ): Promise<AvailableTestDto[]> {
+    const sql = `
+        SELECT
+        test_id,
+        title,
+        description,
+        available_from,
+        available_until,
+        (
+            tf_count * tf_points +
+            mcq_count * mcq_points +
+            prog_count * prog_points
+        )::double precision AS total_points
+        FROM exam.tests
+        WHERE
+        (available_from IS NULL OR available_from <= now())
+        AND (available_until IS NULL OR available_until >= now())
+        ORDER BY created_at DESC, test_id;
+    `;
+    const result = await db.query(sql);
+    return result.rows as AvailableTestDto[];
   }
 }

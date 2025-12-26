@@ -1,16 +1,15 @@
+
 // src/routes/testStart.ts
 import { Router } from "express";
 import { requireAuth } from "../middleware/requireAuth";
-import { 
-  startTest, 
-  getAvailableTests, 
-  submitTest 
-} from "../controllers/testController";
+import * as testController from "../controllers/testController";
 
 const router = Router();
 
-router.get("/available", requireAuth, getAvailableTests);
-router.get("/start", requireAuth, startTest);
-router.post("/submit", requireAuth, submitTest);
+// 1. Get available tests
+router.get("/available", requireAuth, testController.getAvailableTests);
+
+// 2. Start a test
+router.get("/start", requireAuth, testController.startTest); 
 
 export default router;

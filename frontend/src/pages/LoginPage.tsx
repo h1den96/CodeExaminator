@@ -49,6 +49,29 @@ export default function LoginPage() {
         <input style={{ padding: "10px", background: colors.inputBg, border: `1px solid ${colors.border}`, color: colors.text, borderRadius: 4 }} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
         <input style={{ padding: "10px", background: colors.inputBg, border: `1px solid ${colors.border}`, color: colors.text, borderRadius: 4 }} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
         <button type="submit" disabled={loading} style={{ padding: "10px", marginTop: "10px", background: "#2563eb", color: "white", border: "none", borderRadius: 4, cursor: "pointer", opacity: loading ? 0.7 : 1 }}>{loading ? "Logging in..." : "Log in"}</button>
+      
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+            <div style={{ flex: 1, height: '1px', background: colors.border }}></div>
+            <span style={{ fontSize: '0.8rem', color: '#888' }}>OR</span>
+            <div style={{ flex: 1, height: '1px', background: colors.border }}></div>
+        </div>
+
+        <button 
+            type="button" 
+            onClick={() => nav("/signup")}
+            style={{ 
+                padding: "10px", 
+                background: "#22c55e", // Green color for Sign Up
+                color: "white", 
+                border: "none", 
+                borderRadius: 4, 
+                cursor: "pointer",
+                fontWeight: "bold"
+            }}
+        >
+            Create an Account
+        </button>
+      
       </form>
     </div>
   );
