@@ -30,3 +30,22 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 }
+
+export function requireTeacher(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user;
+
+  // Safety check: if requireAuth wasn't called or failed silently
+  if (!user) {
+    console.error("[requireTeacher] No user found on request. Did you forget requireAuth?");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  console.log(`[requireTeacher] Checking role for user ${user.user_id}: ${user.role}`);
+
+  if (user.role !== 'teacher') {
+    console.warn(`[requireTeacher] Access denied. User ${user.user_id} is not a teacher.`);
+    return res.status(403).json({ error: "Access Denied: Teachers only" });
+  }
+
+  next();
+}

@@ -1,15 +1,15 @@
-
-// src/routes/testStart.ts
 import { Router } from "express";
-import { requireAuth } from "../middleware/requireAuth";
-import * as testController from "../controllers/testController";
+import { getAvailableTests, startTest, createTest } from "../controllers/testController";
+import { requireAuth, requireTeacher } from "../middleware/requireAuth";
 
 const router = Router();
 
-// 1. Get available tests
-router.get("/available", requireAuth, testController.getAvailableTests);
+// Student Routes
+router.get("/available", requireAuth, getAvailableTests);
+router.post("/start", requireAuth, startTest);
 
-// 2. Start a test
-router.get("/start", requireAuth, testController.startTest); 
+// Teacher Routes (NEW)
+// POST /api/test/create
+router.post("/create", requireAuth, requireTeacher, createTest);
 
 export default router;

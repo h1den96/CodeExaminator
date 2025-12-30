@@ -1,4 +1,4 @@
-// src/services/GradingService.ts
+// backend/src/services/GradingService.ts
 
 interface Option {
   id: number;
@@ -21,33 +21,45 @@ export class GradingService {
     selectedIds.forEach((sid) => {
       const opt = options.find((o) => o.id === sid);
       if (opt) {
-        // 1. Always sum the real weights first (e.g. +1.0 and -0.5)
+        // 1. Sum real weights (e.g. +1.0 and -0.5)
         totalWeight += Number(opt.weight);
       }
     });
 
     // 2. Handle Safe Mode (No Negative Grading)
-    // If disabled, we clamp the bottom at 0.
-    // If enabled, we allow the negative total to pass through.
     if (!enableNegativeGrading) {
         totalWeight = Math.max(0, totalWeight);
     }
 
-    // 3. Cap the top at 100% (1.0) 
-    // This prevents students from getting > 100% if weights are messy
+    // 3. Cap the top at 100% (1.0)
     totalWeight = Math.min(1, totalWeight);
 
-    // 4. Return Points (rounded to 2 decimals)
     return Number((totalWeight * questionPoints).toFixed(2));
   }
 
   static calculateTrueFalse(
     questionPoints: number,
-    studentAnswer: boolean | null,
+    studentAnswer: string | boolean | null, // Updated type to handle "true" string from DB
     correctAnswer: boolean
   ): number {
-    if (studentAnswer === correctAnswer) {
+    // Normalize string "true"/"false" to boolean if needed
+    const normalizedStudent = String(studentAnswer).toLowerCase() === 'true';
+    
+    if (normalizedStudent === correctAnswer) {
       return Number(questionPoints);
+    }
+    return 0;
+  }
+
+  // --- NEW: GRADING LOGIC FOR PROGRAMMING ---
+  static calculateProgramming(
+    questionPoints: number,
+    judgeResult: { success: boolean; } | null
+  ): number {
+    // If Judge0 said "Accepted" (success), give full points.
+    // Otherwise give 0.
+    if (judgeResult && judgeResult.success) {
+        return Number(questionPoints);
     }
     return 0;
   }

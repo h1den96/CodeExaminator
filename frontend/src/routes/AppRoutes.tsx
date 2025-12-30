@@ -1,23 +1,28 @@
-// src/routes/AppRoutes.tsx
 import { Routes, Route } from "react-router-dom";
 
 import Home from "../pages/Home";
-// import TestsPage from "../pages/TestsPage";
 import LoginPage from "../pages/LoginPage";
-//import ResultsPage from "../pages/ResultsPage";
 import AvailableTestsPage from "../pages/AvailableTestsPage";
 import RunTestPage from "../pages/RunTestPage";
+import CreateTestPage from "../pages/CreateTestPage"; // keeping the import for later
 
 import { RequireAuth } from "../auth/RequireAuth";
 
 export default function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      {/* --- DEBUG: PUT THIS FIRST --- */}
+      {/* If you see "IT WORKS", the router is fine. */}
+      <Route 
+        path="/teacher/create-test" 
+        element={<h1 style={{color: 'red', fontSize: '50px', textAlign: 'center', marginTop: '50px'}}>IT WORKS</h1>} 
+      />
 
+      {/* --- STANDARD ROUTES --- */}
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<LoginPage />} />
 
-      {/* ΛΙΣΤΑ διαθέσιμων tests */}
+      {/* STUDENT ROUTES */}
       <Route
         path="/tests"
         element={
@@ -26,8 +31,6 @@ export default function AppRoutes() {
           </RequireAuth>
         }
       />
-
-      {/* Τρέξιμο συγκεκριμένου test */}
       <Route
         path="/run-test"
         element={
@@ -36,8 +39,6 @@ export default function AppRoutes() {
           </RequireAuth>
         }
       />
-
-      {/* Αποτελέσματα, αν τα έχεις */}
     </Routes>
   );
 }

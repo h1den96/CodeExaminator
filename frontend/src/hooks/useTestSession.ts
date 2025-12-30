@@ -1,7 +1,9 @@
+// src/hooks/useTestSession.ts
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import api from "../api/axios";
+import api from "../api/axios"; 
+import { startTest } from "../api/testClient"; // <--- IMPORT THE CLIENT
 
 // ==========================================
 // 1. EXPORTED TYPES 
@@ -11,7 +13,7 @@ export type SaveStatus = "saved" | "saving" | "error";
 
 export interface Question {
   question_id: number;
-  question_text: string; // We will map 'body' to this
+  question_text: string; 
   question_type: string;
   points: number;
   starter_code?: string;
@@ -53,7 +55,7 @@ export function useTestSession() {
 
   // Execution State
   const [isRunning, setIsRunning] = useState(false);
-  const [runResult, setRunResult] = useState<{ grade: number; details?: string } | null>(null);
+  const [runResult, setRunResult] = useState<{ grade: number; details?: any } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
   // Load Exam Data
@@ -66,13 +68,12 @@ export function useTestSession() {
 
     setLoading(true);
     
-    api.get(`/test/start?test_id=${testId}`, {
-      headers: { Authorization: `Bearer ${token}` } 
-    })
-      .then((res) => {
-        const root = res.data; // Based on your JSON, data is at the root
+    // CHANGED: Use startTest (POST) instead of api.get (GET)
+    startTest(token, Number(testId))
+      .then((root) => {
+        // Note: 'root' is the JSON data directly, not an axios response object
         
-        // Safety Check: specific to your JSON structure
+        // Safety Check
         if (!root.test || !Array.isArray(root.test.questions)) {
              console.error("Invalid Structure:", root);
              setError("Invalid test data structure received.");
@@ -80,16 +81,13 @@ export function useTestSession() {
              return;
         }
 
-        // --- DATA MAPPING (Backend JSON -> Frontend Interface) ---
+        // --- DATA MAPPING ---
         const mappedQuestions: Question[] = root.test.questions.map((q: any) => ({
             question_id: q.question_id,
-            // MAP 'body' (from JSON) to 'question_text' (for UI)
             question_text: q.body, 
             question_type: q.question_type,
-            // Parse "1.00" string to number
-            points: parseFloat(q.points) || 0,
+            points: Number(q.points) || 0,
             starter_code: q.starter_code || "",
-            // Map options if they exist (for MCQs)
             options: q.options ? q.options.map((o: any) => ({
                 id: o.option_id,
                 text: o.option_text
@@ -100,7 +98,7 @@ export function useTestSession() {
             test: {
                 id: root.test.test_id,
                 title: root.test.title,
-                description: root.test.description,
+                description: root.test.description || "",
                 questions: mappedQuestions
             },
             submissionId: root.submission_id
@@ -112,14 +110,7 @@ export function useTestSession() {
       })
       .catch((err) => {
         console.error("Load Test Error:", err);
-        // Handle Token Expiration
-        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
-            alert("Session expired. Please log in again.");
-            if (logout) logout();
-            navigate("/login");
-            return;
-        }
-        setError(err.response?.data?.error || "Failed to load test");
+        setError(err.message || "Failed to load test");
         setLoading(false);
       });
   }, [testId, token, navigate, logout]);
@@ -133,11 +124,9 @@ export function useTestSession() {
 
     let payload: any = { question_id: questionId };
     
-    // Format payload based on question type
     if (type === "programming") {
         payload.code_answer = value;
     } else if (type === "mcq") {
-        // Ensure array format for MCQs
         payload.mcq_option_ids = Array.isArray(value) ? value : [value]; 
     } else if (type === "true_false") {
         payload.tf_answer = value;
@@ -156,21 +145,17 @@ export function useTestSession() {
           console.error("Autosave failed", err);
           if (err.response && err.response.status === 401) {
              setSaveStatus("error"); 
-             alert("Session expired. Answer not saved.");
           } else {
              setSaveStatus("error");
           }
         });
 
-    }, 1000); // 1 second debounce
+    }, 1000); 
   }, [submissionId, token]);
 
-  // In src/hooks/useTestSession.ts
-
   const runCode = async (questionId: number, code: string) => {
-    // FIX 1: Check for submissionId. If missing, we can't run code.
     if (!token || !submissionId) {
-        console.error("Missing token or submissionId", { token: !!token, submissionId });
+        console.error("Missing token or submissionId");
         return;
     }
 
@@ -179,15 +164,12 @@ export function useTestSession() {
     setRunResult(null);
 
     try {
-      console.log("🚀 Sending Code:", { submission_id: submissionId, question_id: questionId });
-
+      // Note: We use the existing 'api' axios instance for this call
       const res = await api.post("/submissions/submit-code", {
-        // FIX 2: DO NOT send 'submissionQuestionId' here!
-        // Send these two instead so the backend calculates the correct ID.
         submission_id: submissionId,
         question_id: questionId,
         code: code,
-        language_id: 54
+        language_id: 54 // C++ (GCC 9.2.0)
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -209,7 +191,7 @@ export function useTestSession() {
   };
 
   const submitTest = async () => {
-    if (!confirm("Finish exam?")) return;
+    if (!confirm("Are you sure you want to finish the exam?")) return;
     if (!token || !submissionId) return;
 
     setSubmitting(true);
@@ -217,14 +199,11 @@ export function useTestSession() {
         await api.post(`/submissions/${submissionId}/submit`, {}, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        alert("Exam Submitted!");
-        navigate("/dashboard");
+        alert("Exam Submitted Successfully!");
+        navigate("/tests"); // Go back to dashboard
     } catch(err: any) {
-        if (err.response && err.response.status === 401) {
-             alert("Session expired. Could not submit.");
-        } else {
-             alert("Error submitting exam");
-        }
+        console.error("Submit Error", err);
+        alert("Error submitting exam");
     } finally {
         setSubmitting(false);
     }

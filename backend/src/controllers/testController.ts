@@ -1,7 +1,8 @@
 // src/controllers/testController.ts
 import type { Request, Response } from "express";
 import { examDb } from "../db/db";
-import { SubmissionService } from "../services/submissionService"; // Point to the new home
+import { SubmissionService } from "../services/submissionService";
+import { AdminService } from "../services/adminService";
 
 type AuthUser = { user_id: number; role: string };
 
@@ -55,3 +56,35 @@ export async function startTest(req: Request, res: Response) {
 
 // DELETED: submitAnswer (Use submissionController.saveAnswers instead)
 // DELETED: submitTest   (Use submissionController.submitSubmission instead)
+
+export async function createTest(req: Request, res: Response) {
+  try {
+    const user = (req as any).user as AuthUser | undefined;
+    
+    // Safety check: Ensure only teachers can hit this
+    // (Middleware should catch this, but double-check is good practice)
+    if (!user || user.role !== 'teacher') {
+      return res.status(403).json({ error: "Only teachers can create tests" });
+    }
+
+    const dto = req.body;
+    
+    // Attach the creator ID from the token
+    dto.created_by = user.user_id;
+
+    // Call the AdminService to write to DB
+    const result = await AdminService.createTest(dto);
+    
+    return res.status(201).json({ message: "Test created successfully", test: result });
+
+  } catch (err: any) {
+    console.error("[createTest] error:", err);
+    
+    // Handle specific logic errors (like Math mismatch)
+    if (err.message?.includes("Math Error")) {
+      return res.status(400).json({ error: err.message });
+    }
+    
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}

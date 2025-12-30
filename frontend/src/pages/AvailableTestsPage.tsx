@@ -1,4 +1,3 @@
-// src/pages/AvailableTestsPage.tsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -6,31 +5,44 @@ import { useTheme } from "../context/ThemeContext";
 import { fetchAvailableTests, type AvailableTest } from "../api/testClient";
 
 export default function AvailableTestsPage() {
-  const { token, isAuthenticated, logout } = useAuth();
+  const { token, logout } = useAuth();
   const { colors, theme, toggleTheme } = useTheme();
   const [tests, setTests] = useState<AvailableTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const nav = useNavigate();
 
+  // FIXED: Helper to Logout AND Redirect
+  const handleLogout = () => {
+    logout();
+    nav("/login");
+  };
+
   useEffect(() => {
-    if (!isAuthenticated || !token) {
-      setLoading(false);
-      return;
-    }
-    (async () => {
+    const loadTests = async () => {
+      // 1. Try to get token from Context OR LocalStorage (Fixes refresh bug)
+      const effectiveToken = token || localStorage.getItem("accessToken");
+
+      if (!effectiveToken) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setErr(null);
-        const data = await fetchAvailableTests(token);
+        const data = await fetchAvailableTests(effectiveToken);
         setTests(data);
       } catch (e: any) {
+        console.error(e);
         setErr(e.message || "Failed to load tests");
       } finally {
         setLoading(false);
       }
-    })();
-  }, [isAuthenticated, token]);
+    };
+
+    loadTests();
+  }, [token]); 
 
   if (loading) return <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: colors.bg, color: colors.text }}>Loading...</div>;
   if (err) return <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: colors.bg, color: "red" }}>{err}</div>;
@@ -61,7 +73,7 @@ export default function AvailableTestsPage() {
               {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
             </button>
             <button 
-              onClick={logout} 
+              onClick={handleLogout} 
               style={{ padding: "8px 16px", background: "transparent", border: "1px solid #ef4444", color: "#ef4444", borderRadius: 6, cursor: "pointer" }}
             >
               Log out
@@ -69,7 +81,7 @@ export default function AvailableTestsPage() {
           </div>
         </div>
 
-        {/* Tests Grid - Uniform Containers */}
+        {/* Tests Grid */}
         {tests.length === 0 ? (
           <p style={{ textAlign: "center", color: colors.textSec }}>No tests available at the moment.</p>
         ) : (
@@ -90,7 +102,7 @@ export default function AvailableTestsPage() {
                 justifyContent: "space-between",
                 boxShadow: theme === 'light' ? "0 4px 6px -1px rgba(0, 0, 0, 0.05)" : "none",
                 transition: "transform 0.2s, box-shadow 0.2s",
-                height: "220px" // Fixed height for uniformity
+                height: "220px"
               }}>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>

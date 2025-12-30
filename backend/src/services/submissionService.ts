@@ -1,8 +1,8 @@
-// src/services/SubmissionService.ts
 import type { Pool } from "pg";
 import { ExamDiscoveryService } from "./ExamDiscoveryService";
-import { GradingService } from "./gradingService";
-import type { TestTemplateRow, Spec, TestDTO, SubmitAnswerDto, AnswersPayload, AvailableTestDto } from "../types/examTypes";
+import { GradingService } from "./gradingService"; 
+import { TestService } from "./testService"; // <--- IMPORT ADDED
+import type { TestTemplateRow, RandomizerSpec, TestDTO, SubmitAnswerDto } from "../types/examTypes";
 
 export class SubmissionService {
 
@@ -22,33 +22,46 @@ export class SubmissionService {
 
     // 2. Check for existing 'in_progress' submission
     const existingRes = await db.query(
-      `SELECT submission_id FROM exam.submissions
-       WHERE student_id = $1 AND test_id = $2 AND status = 'in_progress'
+      `SELECT submission_id, status FROM exam.submissions
+       WHERE student_id = $1 AND test_id = $2
        ORDER BY started_at DESC LIMIT 1`,
       [studentId, testId]
     );
 
-    if ((existingRes.rowCount ?? 0) > 0) {
-      // Resume existing test logic...
-      // (For brevity, I assume you copy the 'Resume' logic here from your original file.
-      //  It just fetches questions for that submission_id)
-      const submissionId = existingRes.rows[0].submission_id;
-      // ... fetch existing questions ...
-      // return { submissionId, dto: ... };
-       // NOTE: You can paste the "Resume" logic block from your old file here.
-       throw new Error("Resume Logic needed here (copy from old file)"); 
-    }
+    const existingSubmission = existingRes.rows[0];
 
-    // 3. Create NEW Submission
-    const spec: Spec = {
-      tf: t.tf_count,
-      mcq: t.mcq_count,
-      prog: t.prog_count,
+    // --- RESUME LOGIC START ---
+    if (existingSubmission) {
+       // A. If already finished, block restart
+       if (existingSubmission.status === 'completed' || existingSubmission.status === 'graded' || existingSubmission.status === 'submitted') {
+           throw new Error("You have already submitted this test.");
+       }
+
+       // B. Resume In-Progress Test
+       // We fetch the full test structure again so the frontend can render it
+       // (Re-using the helper from TestService that we imported)
+       const fullTest = await TestService.reconstructTestFromSubmission(existingSubmission.submission_id, db);
+       return { 
+           submissionId: existingSubmission.submission_id,
+           dto: fullTest // 'dto' expects TestDTO
+       };
+    }
+    // --- RESUME LOGIC END ---
+
+    // 3. Create NEW Submission (If no existing one found)
+    const spec: RandomizerSpec = {
+      counts: {
+        tf: t.tf_count,
+        mcq: t.mcq_count,
+        prog: t.prog_count,
+      },
+      config: t.generation_config || {} 
     };
 
     // Use Discovery Service to get questions
     const rows = await ExamDiscoveryService.generateRandomTest(spec, db);
 
+    // 4. Save Submission
     const sRes = await db.query(
       `INSERT INTO exam.submissions (student_id, test_id, status)
        VALUES ($1, $2, 'in_progress') RETURNING submission_id`,
@@ -56,7 +69,7 @@ export class SubmissionService {
     );
     const submissionId: number = sRes.rows[0].submission_id;
 
-    // 4. Save generated questions to submission_questions table
+    // 5. Save Questions to Submission Table
     let order = 1;
     for (const q of rows) {
       const qt: string = q.question_type;
@@ -76,7 +89,12 @@ export class SubmissionService {
 
     return { 
       submissionId, 
-      dto: { test_id: t.test_id, title: t.title, description: t.description, questions: rows } 
+      dto: { 
+        test_id: t.test_id, 
+        title: t.title, 
+        description: t.description, 
+        questions: rows 
+      } 
     };
   }
 
@@ -149,7 +167,6 @@ export class SubmissionService {
         [submissionId, studentId]
       );
 
-      // FIX: Check for existence FIRST, then destructure
       if ((subRes.rowCount ?? 0) === 0) {
         throw new Error("submission_not_found");
       }
@@ -192,7 +209,7 @@ export class SubmissionService {
             Number(ans.question_points),
             ans.mcq_options_data || [],
             ans.mcq_option_ids || [],
-            enable_negative_grading // <--- Now correctly defined
+            enable_negative_grading
           );
         } else if (ans.question_type === 'true_false') {
           earnedPoints = GradingService.calculateTrueFalse(
@@ -202,7 +219,6 @@ export class SubmissionService {
           );
         }
 
-        // Save individual question grade
         await client.query(
           `UPDATE exam.student_answers SET question_grade = $1 WHERE answer_id = $2`,
           [earnedPoints, ans.answer_id]
@@ -229,30 +245,8 @@ export class SubmissionService {
       client.release();
     }
   }
-
-  static async getAvailableTestsForStudent(
-    studentId: number | string,
-    db: Pool
-  ): Promise<AvailableTestDto[]> {
-    const sql = `
-        SELECT
-        test_id,
-        title,
-        description,
-        available_from,
-        available_until,
-        (
-            tf_count * tf_points +
-            mcq_count * mcq_points +
-            prog_count * prog_points
-        )::double precision AS total_points
-        FROM exam.tests
-        WHERE
-        (available_from IS NULL OR available_from <= now())
-        AND (available_until IS NULL OR available_until >= now())
-        ORDER BY created_at DESC, test_id;
-    `;
-    const result = await db.query(sql);
-    return result.rows as AvailableTestDto[];
+  
+  static async getAvailableTestsForStudent(studentId: number | string, db: Pool) {
+      return ExamDiscoveryService.getAvailableTestsForStudent(studentId, db);
   }
 }
