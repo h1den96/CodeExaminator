@@ -14,24 +14,35 @@ export class GradingService {
     questionPoints: number,
     options: Option[],
     selectedIds: number[],
-    enableNegativeGrading: boolean
+    enableNegativeGrading: boolean // <--- The Toggle from your Test Settings
   ): number {
     let totalWeight = 0.0;
 
     selectedIds.forEach((sid) => {
       const opt = options.find((o) => o.id === sid);
       if (opt) {
-        // 1. Sum real weights (e.g. +1.0 and -0.5)
-        totalWeight += Number(opt.weight);
+        const weight = Number(opt.weight);
+
+        // --- THE LOGIC CHANGE ---
+        if (enableNegativeGrading) {
+            // Mode 1: HARD (Apply everything, even negatives)
+            totalWeight += weight;
+        } else {
+            // Mode 2: EASY (Only count positive weights, ignore penalties)
+            if (weight > 0) {
+                totalWeight += weight;
+            }
+            // If weight is negative, we do nothing (effectively 0)
+        }
       }
     });
 
-    // 2. Handle Safe Mode (No Negative Grading)
-    if (!enableNegativeGrading) {
-        totalWeight = Math.max(0, totalWeight);
-    }
+    // Final safety clamp (Standard practice)
+    // Even in negative mode, you might not want a question to give -5 points total.
+    // Usually, the floor for a question score is 0.
+    totalWeight = Math.max(0, totalWeight);
 
-    // 3. Cap the top at 100% (1.0)
+    // Cap at 100% (1.0)
     totalWeight = Math.min(1, totalWeight);
 
     return Number((totalWeight * questionPoints).toFixed(2));

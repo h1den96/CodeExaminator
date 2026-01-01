@@ -38,7 +38,23 @@ export interface CreateTestPayload {
     };
   };
 }
+// Add these to existing imports/interfaces
+export interface TestSummary {
+  test_id: number;
+  title: string;
+  description: string;
+  created_at: string;
+  is_published: boolean;
+  total_points: number;
+  question_count: number;
+}
 
+// 4. Fetch All Tests (For Dashboard)
+export const fetchAllTests = async (): Promise<TestSummary[]> => {
+  // Adjust endpoint based on your backend route, e.g., '/tests' or '/teacher/tests'
+  const res = await api.get('/tests'); 
+  return res.data;
+};
 // 1. Fetch Topics for the Dropdown
 export const fetchTopics = async (): Promise<Topic[]> => {
   const res = await api.get('/topics');

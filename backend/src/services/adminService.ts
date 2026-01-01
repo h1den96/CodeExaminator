@@ -14,6 +14,7 @@ export type CreateQuestionDto = {
   starter_code?: string; // For Prog
   test_cases?: any[]; // For Prog
   teacher_id: number;
+  allow_multiple?: boolean;
 };
 
 // Helper type for Test Input
@@ -50,19 +51,25 @@ export class AdminService {
   /**
    * Creates a question + links topics + saves type-specific data
    */
-  static async createQuestion(dto: CreateQuestionDto) {
+  static async createQuestion(dto: CreateQuestionDto & { allow_multiple?: boolean }) {
     const client = await examDb.connect();
     try {
       await client.query("BEGIN");
 
-      // 1. Insert Base Question
-      // Note: We added 'difficulty' and 'created_by' columns in the SQL update
+      // 1. Insert Base Question (Updated to include allow_multiple)
       const qRes = await client.query(
         `INSERT INTO exam.questions 
-         (title, body, question_type, difficulty, created_by)
-         VALUES ($1, $2, $3, $4, $5)
+         (title, body, question_type, difficulty, created_by, allow_multiple)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING question_id`,
-        [dto.title, dto.body, dto.question_type, dto.difficulty, dto.teacher_id]
+        [
+            dto.title, 
+            dto.body, 
+            dto.question_type, 
+            dto.difficulty, 
+            dto.teacher_id, 
+            dto.allow_multiple || false // Default to false if missing
+        ]
       );
       const qId = qRes.rows[0].question_id;
 
@@ -82,7 +89,7 @@ export class AdminService {
           await client.query(
             `INSERT INTO exam.mcq_options (question_id, option_text, is_correct, score_weight)
              VALUES ($1, $2, $3, $4)`,
-            [qId, opt.text, opt.is_correct, opt.is_correct ? 1.0 : 0.0] // Default weight logic
+            [qId, opt.text, opt.is_correct, opt.weight || (opt.is_correct ? 1.0 : 0.0)]
           );
         }
       } else if (dto.question_type === 'true_false' && dto.correct_answer !== undefined) {
@@ -110,51 +117,47 @@ export class AdminService {
     }
   }
 
-  /**
-   * Creates a Test Blueprint
-   */
+  // ... (createTest and getAllTopics remain unchanged)
   static async createTest(dto: CreateTestDto) {
-    // 1. Validation: Ensure difficulty buckets sum up to the total counts
+      // ... same as your previous code
+       // 1. Validation: Ensure difficulty buckets sum up to the total counts
     // We only validate if specific distribution is provided
     if (dto.generation_config?.difficulty_distribution) {
-      const { easy, medium, hard } = dto.generation_config.difficulty_distribution;
-      const totalRequestedDiff = (easy || 0) + (medium || 0) + (hard || 0);
-      const totalQuestions = dto.tf_count + dto.mcq_count + dto.prog_count;
-      
-      // Note: If you want difficulty to only apply to MCQ, change logic here. 
-      // Current logic: Difficulty distribution covers the ENTIRE test size.
-      if (totalRequestedDiff !== totalQuestions) {
-        throw new Error(
-          `Math Error: Difficulty counts (${totalRequestedDiff}) do not match Total Questions (${totalQuestions})`
-        );
+        const { easy, medium, hard } = dto.generation_config.difficulty_distribution;
+        const totalRequestedDiff = (easy || 0) + (medium || 0) + (hard || 0);
+        const totalQuestions = dto.tf_count + dto.mcq_count + dto.prog_count;
+        
+        // Note: If you want difficulty to only apply to MCQ, change logic here. 
+        // Current logic: Difficulty distribution covers the ENTIRE test size.
+        if (totalRequestedDiff !== totalQuestions) {
+          throw new Error(
+            `Math Error: Difficulty counts (${totalRequestedDiff}) do not match Total Questions (${totalQuestions})`
+          );
+        }
       }
-    }
-
-    // 2. Insert
-    const sql = `
-      INSERT INTO exam.tests 
-      (title, description, created_by,
-       tf_count, mcq_count, prog_count,
-       tf_points, mcq_points, prog_points,
-       is_random, generation_config)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING test_id
-    `;
-
-    const values = [
-      dto.title, dto.description, dto.created_by,
-      dto.tf_count, dto.mcq_count, dto.prog_count,
-      dto.tf_points, dto.mcq_points, dto.prog_points,
-      dto.is_random, JSON.stringify(dto.generation_config)
-    ];
-
-    const res = await examDb.query(sql, values);
-    return res.rows[0];
+  
+      // 2. Insert
+      const sql = `
+        INSERT INTO exam.tests 
+        (title, description, created_by,
+         tf_count, mcq_count, prog_count,
+         tf_points, mcq_points, prog_points,
+         is_random, generation_config)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING test_id
+      `;
+  
+      const values = [
+        dto.title, dto.description, dto.created_by,
+        dto.tf_count, dto.mcq_count, dto.prog_count,
+        dto.tf_points, dto.mcq_points, dto.prog_points,
+        dto.is_random, JSON.stringify(dto.generation_config)
+      ];
+  
+      const res = await examDb.query(sql, values);
+      return res.rows[0];
   }
 
-  /**
-   * Fetch Topics for the Dropdown UI
-   */
   static async getAllTopics() {
     const res = await examDb.query("SELECT * FROM exam.topics ORDER BY name ASC");
     return res.rows;

@@ -17,6 +17,7 @@ export interface Question {
   question_type: string;
   points: number;
   starter_code?: string;
+  allowed_multiple?: boolean;
   options?: { id: number; text: string }[];
 }
 
@@ -88,6 +89,7 @@ export function useTestSession() {
             question_type: q.question_type,
             points: Number(q.points) || 0,
             starter_code: q.starter_code || "",
+            allow_multiple: q.allow_multiple || false,
             options: q.options ? q.options.map((o: any) => ({
                 id: o.option_id,
                 text: o.option_text

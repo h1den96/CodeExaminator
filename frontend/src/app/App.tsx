@@ -1,9 +1,9 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "../auth/AuthContext"; // Check path if needed (might be ../auth/AuthContext)
+import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
-import { RequireAuth } from "../auth/RequireAuth"; // Check path
-import TeacherDashboard from "../pages/TeacherDashboard";
+import { RequireAuth } from "../auth/RequireAuth";
+
 // Pages
 import Home from "../pages/Home";
 import LoginPage from "../pages/LoginPage";
@@ -11,9 +11,9 @@ import SignUpPage from "../pages/SignUpPage";
 import AvailableTestsPage from "../pages/AvailableTestsPage";
 import RunTestPage from "../pages/RunTestPage";
 import ExamRunner from "../pages/ExamRunner";
-
-// --- IMPORT THE NEW PAGE ---
-import CreateTestPage from "../pages/CreateTestPage"; 
+import TeacherDashboard from "../pages/TeacherDashboard";
+import CreateTestPage from "../pages/CreateTestPage";
+import TestDetailsPage from "../pages/TestDetailsPage"; // <--- 1. Don't forget this import
 
 export default function App() {
   return (
@@ -21,10 +21,12 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Public Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             
+            {/* Student Routes */}
             <Route
               path="/tests"
               element={
@@ -41,11 +43,18 @@ export default function App() {
                 </RequireAuth>
               }
             />
-
-            {/* Route for Exam */}
             <Route path="/exam" element={<ExamRunner />} /> 
 
-            {/* --- NEW TEACHER ROUTE --- */}
+            {/* Teacher Routes */}
+            <Route 
+              path="/teacher/dashboard" 
+              element={
+                <RequireAuth allowedRoles={['teacher']}>
+                  <TeacherDashboard />
+                </RequireAuth>
+              } 
+            />
+            
             <Route 
               path="/teacher/create-test" 
               element={
@@ -55,16 +64,17 @@ export default function App() {
               } 
             />
 
+            {/* 👇 ADDED SECURE ROUTE HERE 👇 */}
             <Route 
-              path="/teacher/dashboard" 
+              path="/teacher/test/:testId" 
               element={
                 <RequireAuth allowedRoles={['teacher']}>
-                <TeacherDashboard />
-        </RequireAuth>
-  } 
-/>
+                  <TestDetailsPage />
+                </RequireAuth>
+              } 
+            />
 
-            {/* Catch-all: If route not found, go Home */}
+            {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
