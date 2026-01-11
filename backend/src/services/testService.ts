@@ -1,3 +1,4 @@
+// src/services/testService.ts
 import { Pool } from "pg";
 
 export class TestService {
@@ -23,12 +24,16 @@ export class TestService {
 
     test.questions = qRes.rows;
 
-    // 3. Attach Options (FIXED TABLE NAME)
+    // 3. Attach Options (SAFE MODE: Returns both formats)
     for (const q of test.questions) {
       if (q.question_type === 'mcq') {
-        // CHANGED: exam.options -> exam.mcq_options
         const optRes = await db.query(
-          `SELECT option_id, option_text FROM exam.mcq_options WHERE question_id = $1 ORDER BY option_id`, 
+          `SELECT 
+              option_id, option_text,             -- Legacy keys (keeps old mappers working)
+              option_id as id, option_text as text -- New keys (for clean frontend)
+           FROM exam.mcq_options 
+           WHERE question_id = $1 
+           ORDER BY option_id`, 
           [q.question_id]
         );
         q.options = optRes.rows;
@@ -54,8 +59,9 @@ export class TestService {
     if (!test) throw new Error("Submission not found");
 
     // 2. Get Questions from SUBMISSION_QUESTIONS
+    // Added q.allow_multiple so checkboxes render correctly on resume
     const qRes = await db.query(`
-      SELECT q.*, sq.points, sq.q_order 
+      SELECT q.*, sq.points, sq.q_order, q.allow_multiple 
       FROM exam.questions q
       JOIN exam.submission_questions sq ON q.question_id = sq.question_id
       WHERE sq.submission_id = $1
@@ -64,12 +70,16 @@ export class TestService {
 
     test.questions = qRes.rows;
 
-    // 3. Attach Options (FIXED TABLE NAME)
+    // 3. Attach Options (SAFE MODE: Returns both formats)
     for (const q of test.questions) {
       if (q.question_type === 'mcq') {
-        // CHANGED: exam.options -> exam.mcq_options
         const optRes = await db.query(
-          `SELECT option_id, option_text FROM exam.mcq_options WHERE question_id = $1 ORDER BY option_id`, 
+          `SELECT 
+              option_id, option_text,             -- Legacy keys
+              option_id as id, option_text as text -- New keys
+           FROM exam.mcq_options 
+           WHERE question_id = $1 
+           ORDER BY option_id`, 
           [q.question_id]
         );
         q.options = optRes.rows;

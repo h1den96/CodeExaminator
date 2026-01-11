@@ -1,6 +1,6 @@
 // src/monacoSetup.ts
 // Manual Monaco worker setup for Vite using ESM workers (Vite's ?worker)
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import * as monaco from 'monaco-editor';
 
 // these imports use Vite's worker loader to create worker constructors
 // the ?worker suffix tells Vite to bundle them as separate worker files.

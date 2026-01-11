@@ -26,13 +26,13 @@ api.interceptors.response.use(
       console.warn("Token expired or invalid. Logging out...");
       
       // 1. Clear the bad token from storage
-      localStorage.removeItem("token");
-      localStorage.removeItem("user"); // or whatever keys you use
+      localStorage.removeItem("accessToken"); // use token if needed
+      localStorage.removeItem("user");
       
       // 2. Force redirect to login page
       // Note: We use window.location because hooks like useNavigate won't work inside this plain JS file
       if (window.location.pathname !== "/login") {
-          window.location.href = "/login";
+          window.location.href = "/login?expired=tue";
       }
     }
     

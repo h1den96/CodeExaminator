@@ -91,8 +91,8 @@ export function useTestSession() {
             starter_code: q.starter_code || "",
             allow_multiple: q.allow_multiple || false,
             options: q.options ? q.options.map((o: any) => ({
-                id: o.option_id,
-                text: o.option_text
+              id: o.id || o.option_id,    
+              text: o.text || o.option_text 
             })) : []
         }));
 
