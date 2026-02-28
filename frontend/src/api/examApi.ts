@@ -37,6 +37,11 @@ export interface CreateTestPayload {
       hard: number;
     };
   };
+
+    duration_minutes?: number;
+    available_from?: string | null;
+    available_until?: string | null;
+    strict_deadline?: boolean;
 }
 // Add these to existing imports/interfaces
 export interface TestSummary {

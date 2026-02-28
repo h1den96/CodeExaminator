@@ -1,77 +1,70 @@
-// backend/src/services/GradingService.ts
-
-interface Option {
-  id: number;
-  weight: number;
-}
+// src/services/gradingService.ts
 
 export class GradingService {
-  
+
   /**
-   * Calculates the weighted score for an MCQ question.
+   * 📊 CALCULATE MCQ SCORE
    */
   static calculateMCQ(
-    questionPoints: number,
-    options: Option[],
+    maxPoints: number,
+    options: { id: number; weight: number }[],
     selectedIds: number[],
-    enableNegativeGrading: boolean // <--- The Toggle from your Test Settings
+    enableNegative: boolean
   ): number {
-    let totalWeight = 0.0;
+    if (!selectedIds || selectedIds.length === 0) return 0;
 
-    selectedIds.forEach((sid) => {
-      const opt = options.find((o) => o.id === sid);
-      if (opt) {
-        const weight = Number(opt.weight);
-
-        // --- THE LOGIC CHANGE ---
-        if (enableNegativeGrading) {
-            // Mode 1: HARD (Apply everything, even negatives)
-            totalWeight += weight;
-        } else {
-            // Mode 2: EASY (Only count positive weights, ignore penalties)
-            if (weight > 0) {
-                totalWeight += weight;
-            }
-            // If weight is negative, we do nothing (effectively 0)
-        }
+    let totalWeight = 0;
+    for (const selectedId of selectedIds) {
+      const option = options.find((o) => o.id === selectedId);
+      if (option) {
+        totalWeight += Number(option.weight);
       }
-    });
+    }
 
-    // Final safety clamp (Standard practice)
-    // Even in negative mode, you might not want a question to give -5 points total.
-    // Usually, the floor for a question score is 0.
-    totalWeight = Math.max(0, totalWeight);
+    let finalScore = totalWeight * maxPoints;
+    if (finalScore > maxPoints) finalScore = maxPoints;
+    if (finalScore < 0) return enableNegative ? finalScore : 0;
 
-    // Cap at 100% (1.0)
-    totalWeight = Math.min(1, totalWeight);
-
-    return Number((totalWeight * questionPoints).toFixed(2));
+    return parseFloat(finalScore.toFixed(2));
   }
 
+  /**
+   * ✅ CALCULATE TRUE/FALSE SCORE
+   */
   static calculateTrueFalse(
-    questionPoints: number,
-    studentAnswer: string | boolean | null, // Updated type to handle "true" string from DB
+    maxPoints: number,
+    studentAnswer: boolean | null,
     correctAnswer: boolean
   ): number {
-    // Normalize string "true"/"false" to boolean if needed
-    const normalizedStudent = String(studentAnswer).toLowerCase() === 'true';
-    
-    if (normalizedStudent === correctAnswer) {
-      return Number(questionPoints);
-    }
-    return 0;
+    if (studentAnswer === null || studentAnswer === undefined) return 0;
+    return studentAnswer === correctAnswer ? maxPoints : 0;
   }
 
-  // --- NEW: GRADING LOGIC FOR PROGRAMMING ---
-  static calculateProgramming(
-    questionPoints: number,
-    judgeResult: { success: boolean; } | null
-  ): number {
-    // If Judge0 said "Accepted" (success), give full points.
-    // Otherwise give 0.
-    if (judgeResult && judgeResult.success) {
-        return Number(questionPoints);
+  /**
+   * 🧠 STATIC ANALYSIS (This was missing!)
+   * Scans code for banned or required keywords.
+   */
+  static performStaticAnalysis(code: string, forbidden: string[], required: string[]): { passed: boolean; error?: string } {
+    if (!code) return { passed: false, error: "No code submitted." };
+
+    // 1. Check Forbidden Keywords
+    if (forbidden && forbidden.length > 0) {
+      for (const word of forbidden) {
+        if (code.includes(word)) {
+           return { passed: false, error: `Static Analysis Failed: Forbidden keyword '${word}' detected.` };
+        }
+      }
     }
-    return 0;
+
+    // 2. Check Required Keywords
+    if (required && required.length > 0) {
+      for (const word of required) {
+        if (!code.includes(word)) {
+           return { passed: false, error: `Static Analysis Failed: Missing required keyword '${word}'.` };
+        }
+      }
+    }
+
+    return { passed: true };
   }
 }

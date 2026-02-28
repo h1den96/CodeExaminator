@@ -1,9 +1,8 @@
-// src/pages/TeacherDashboard.tsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
-import { fetchAllTests, type TestSummary } from "../api/examApi"; // Ensure this import exists
+import { fetchAllTests, type TestSummary } from "../api/examApi"; 
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
@@ -54,15 +53,21 @@ export default function TeacherDashboard() {
         </button>
       </div>
 
-      {/* 2. ACTION BAR (The "Create" Button) */}
-      <div style={{ marginBottom: "30px" }}>
+      {/* 2. ACTION BAR (Quick Actions) */}
+      <div style={{ 
+          marginBottom: "30px", 
+          display: "grid", 
+          gridTemplateColumns: "1fr 1fr", 
+          gap: "20px" 
+      }}>
+        
+        {/* Button A: Create Exam Blueprint */}
         <button 
             onClick={() => navigate("/teacher/create-test")}
             style={{
-                width: "100%",
                 padding: "25px",
-                backgroundColor: "#eff6ff", // Light blue bg
-                border: "2px dashed #3b82f6", // Blue dashed border
+                backgroundColor: "#eff6ff", 
+                border: "2px dashed #3b82f6", 
                 borderRadius: "12px",
                 cursor: "pointer",
                 display: "flex",
@@ -75,8 +80,31 @@ export default function TeacherDashboard() {
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#dbeafe"}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#eff6ff"}
         >
-            <span style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#1d4ed8" }}>➕ Create New Exam Blueprint</span>
-            <span style={{ color: "#1e40af" }}>Click here to define topics, difficulty, and generate a new test.</span>
+            <span style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#1d4ed8" }}>📝 Create Exam</span>
+            <span style={{ color: "#1e40af", fontSize: "0.9rem" }}>Define topics & generate a test</span>
+        </button>
+
+        {/* Button B: Add Question (Links to Hub) */}
+        <button 
+            onClick={() => navigate("/teacher/create-question-hub")}
+            style={{
+                padding: "25px",
+                backgroundColor: "#f0fdf4", // Light Green bg
+                border: "2px dashed #22c55e", // Green dashed border
+                borderRadius: "12px",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+                transition: "background-color 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#dcfce7"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#f0fdf4"}
+        >
+            <span style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#15803d" }}>➕ Add Question</span>
+            <span style={{ color: "#166534", fontSize: "0.9rem" }}>Choose: MCQ, True/False, or Code</span>
         </button>
       </div>
       
@@ -97,7 +125,7 @@ export default function TeacherDashboard() {
             {tests.map((test) => (
                 <div 
                     key={test.test_id}
-                    onClick={() => navigate(`/teacher/test/${test.test_id}`)} // Navigate to Details
+                    onClick={() => navigate(`/teacher/test/${test.test_id}`)} 
                     style={{
                         backgroundColor: colors.card,
                         border: `1px solid ${colors.border}`,

@@ -6,7 +6,7 @@ import { useTheme } from "../context/ThemeContext";
 
 export default function CreateTestPage() {
   const navigate = useNavigate();
-  const { colors, theme } = useTheme(); // Use global theme
+  const { colors } = useTheme(); 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,16 +15,28 @@ export default function CreateTestPage() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    
+    // Structure
     tf_count: 0,
     mcq_count: 0,
     prog_count: 0,
     tf_points: 1,
     mcq_points: 5,
     prog_points: 10,
+    
+    // Difficulty
     diff_easy: 0,
     diff_medium: 0,
     diff_hard: 0,
+    
+    // Selection
     selectedTopics: [] as number[],
+
+    // 🕒 NEW: Scheduling & Strict Mode
+    available_from: '',
+    available_until: '',
+    duration_minutes: 60,
+    strict_deadline: true // Default to Strict Mode
   });
 
   // Load topics
@@ -34,8 +46,30 @@ export default function CreateTestPage() {
       .catch((err) => console.error("Failed to load topics", err));
   }, []);
 
+  // 🧠 Auto-Calculate Duration when dates change
+  useEffect(() => {
+    if (formData.available_from && formData.available_until) {
+        const start = new Date(formData.available_from).getTime();
+        const end = new Date(formData.available_until).getTime();
+        const diffMins = Math.floor((end - start) / 1000 / 60);
+        
+        // Only update if positive and sensible
+        if (diffMins > 0) {
+            setFormData(prev => ({ ...prev, duration_minutes: diffMins }));
+        }
+    }
+  }, [formData.available_from, formData.available_until]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
+    
+    // Handle Checkbox specifically
+    if (type === 'checkbox') {
+        const checked = (e.target as HTMLInputElement).checked;
+        setFormData((prev) => ({ ...prev, [name]: checked }));
+        return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'number' ? (value === '' ? 0 : Number(value)) : value,
@@ -81,12 +115,21 @@ export default function CreateTestPage() {
       await createTest({
         title: formData.title,
         description: formData.description,
+        
+        // Counts & Points
         tf_count: formData.tf_count,
         mcq_count: formData.mcq_count,
         prog_count: formData.prog_count,
         tf_points: formData.tf_points,
         mcq_points: formData.mcq_points,
         prog_points: formData.prog_points,
+        
+        // Time & Schedule
+        duration_minutes: formData.duration_minutes,
+        available_from: formData.available_from ? new Date(formData.available_from).toISOString() : null,
+        available_until: formData.available_until ? new Date(formData.available_until).toISOString() : null,
+        strict_deadline: formData.strict_deadline, // 👈 Sending the flag
+
         is_random: true,
         generation_config: {
           topics: formData.selectedTopics,
@@ -113,15 +156,19 @@ export default function CreateTestPage() {
   const totalDiff = formData.diff_easy + formData.diff_medium + formData.diff_hard;
   const isMathCorrect = totalQ === totalDiff && totalQ > 0;
 
+  // Style helpers
+  const cardStyle = { backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" };
+  const cardHeader = { marginTop: 0, marginBottom: "20px", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px" };
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: colors.bg, color: colors.text, padding: "40px 20px" }}>
-      <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
             <div>
                 <h1 style={{ margin: 0, fontSize: "2rem" }}>Create Exam Blueprint</h1>
-                <p style={{ color: colors.textSec, marginTop: "5px" }}>Define the rules, and we'll generate the test.</p>
+                <p style={{ color: colors.textSec, marginTop: "5px" }}>Define the rules, scheduling, and structure.</p>
             </div>
             <button 
                 onClick={() => navigate('/teacher/dashboard')}
@@ -139,12 +186,12 @@ export default function CreateTestPage() {
 
         <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "30px" }}>
           
-          {/* LEFT COLUMN: Basics & Topics */}
+          {/* LEFT COLUMN: Basics & Scheduling */}
           <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
             
-            {/* Card 1: Basic Info */}
-            <div style={{ backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "20px", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px" }}>1. Exam Details</h3>
+            {/* 1. Exam Details */}
+            <div style={cardStyle}>
+              <h3 style={cardHeader}>1. Exam Details</h3>
               
               <div style={{ marginBottom: "15px" }}>
                 <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "0.9rem" }}>Title</label>
@@ -171,9 +218,69 @@ export default function CreateTestPage() {
               </div>
             </div>
 
-            {/* Card 2: Topics */}
-            <div style={{ backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "20px", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px" }}>2. Topics Covered</h3>
+            {/* 2. Schedule & Timing (NEW SECTION) */}
+            <div style={cardStyle}>
+              <h3 style={cardHeader}>2. Schedule & Timing</h3>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
+                <div>
+                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", fontWeight: "bold" }}>📅 Opens At</label>
+                    <input 
+                        type="datetime-local" 
+                        name="available_from"
+                        value={formData.available_from}
+                        onChange={handleChange}
+                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
+                    />
+                </div>
+                <div>
+                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", fontWeight: "bold" }}>📅 Closes At</label>
+                    <input 
+                        type="datetime-local" 
+                        name="available_until"
+                        value={formData.available_until}
+                        onChange={handleChange}
+                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
+                    />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold" }}>⏱ Duration (Minutes)</label>
+                  <input 
+                      type="number" 
+                      name="duration_minutes"
+                      value={formData.duration_minutes}
+                      onChange={handleChange}
+                      style={{ width: "120px", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
+                  />
+                  <span style={{ fontSize: "0.85rem", color: colors.textSec, marginLeft: "10px" }}>Student timer</span>
+              </div>
+
+              {/* 👇 THE STRICT MODE CHECKBOX */}
+              <div style={{ padding: "15px", backgroundColor: colors.bg, borderRadius: "8px", border: `1px solid ${colors.border}` }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "bold" }}>
+                      <input 
+                          type="checkbox" 
+                          name="strict_deadline"
+                          checked={formData.strict_deadline} 
+                          onChange={handleChange} 
+                          style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                      />
+                      Enforce Hard Deadline (Strict Mode)
+                  </label>
+                  <p style={{ margin: "5px 0 0 34px", fontSize: "0.85rem", color: colors.textSec, lineHeight: "1.4" }}>
+                      {formData.strict_deadline 
+                          ? <span style={{ color: "#b91c1c" }}>🔴 <strong>STRICT:</strong> Test auto-submits at the 'Closes At' time, even if the student started late.</span> 
+                          : <span style={{ color: "#15803d" }}>🟢 <strong>FLEXIBLE:</strong> Student gets full duration (e.g., 60 mins) regardless of start time.</span>}
+                  </p>
+              </div>
+
+            </div>
+
+            {/* 3. Topics */}
+            <div style={cardStyle}>
+              <h3 style={cardHeader}>3. Topics Covered</h3>
               
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {topics.map(t => {
@@ -208,10 +315,10 @@ export default function CreateTestPage() {
           {/* RIGHT COLUMN: Counts & Difficulty */}
           <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
             
-            {/* Card 3: Structure */}
-            <div style={{ backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
+            {/* 4. Structure */}
+            <div style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px", marginBottom: "20px" }}>
-                  <h3 style={{ margin: 0 }}>3. Structure</h3>
+                  <h3 style={{ margin: 0 }}>4. Structure</h3>
                   <span style={{ fontSize: "0.85rem", padding: "4px 8px", backgroundColor: "#f3f4f6", borderRadius: "4px", color: "#374151" }}>Total Qs: <strong>{totalQ}</strong></span>
               </div>
 
@@ -238,10 +345,10 @@ export default function CreateTestPage() {
               </div>
             </div>
 
-            {/* Card 4: Difficulty */}
-            <div style={{ backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
+            {/* 5. Difficulty */}
+            <div style={cardStyle}>
                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px", marginBottom: "20px" }}>
-                  <h3 style={{ margin: 0 }}>4. Difficulty Mix</h3>
+                  <h3 style={{ margin: 0 }}>5. Difficulty Mix</h3>
                   <span style={{ 
                       fontSize: "0.85rem", 
                       padding: "4px 8px", 

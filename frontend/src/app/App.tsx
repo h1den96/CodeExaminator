@@ -1,19 +1,26 @@
-// src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
 import { RequireAuth } from "../auth/RequireAuth";
 
-// Pages
+// Student / Public Pages
 import Home from "../pages/Home";
 import LoginPage from "../pages/LoginPage";
 import SignUpPage from "../pages/SignUpPage";
 import AvailableTestsPage from "../pages/AvailableTestsPage";
 import RunTestPage from "../pages/RunTestPage";
 import ExamRunner from "../pages/ExamRunner";
-import TeacherDashboard from "../pages/TeacherDashboard";
+
+// Teacher Pages (Ensure these are in src/pages/teacher/)
+import TeacherDashboard from "../pages/TeacherDashboard"; // Often keeps usually in root pages, but check your folder
 import CreateTestPage from "../pages/CreateTestPage";
-import TestDetailsPage from "../pages/TestDetailsPage"; // <--- 1. Don't forget this import
+import TestDetailsPage from "../pages/TestDetailsPage"; 
+
+// Question Creation Pages
+import QuestionTypeSelection from "../pages/QuestionTypeSelection";
+import CreateProgrammingQuestion from "../pages/CreateProgrammingQuestion";
+import CreateMCQ from "../pages/CreateMCQ";
+import CreateTF from "../pages/CreateTF";
 
 export default function App() {
   return (
@@ -22,7 +29,6 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             {/* Public Routes */}
-            {/*<Route path="/" element={<Home />} />*/}
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
@@ -46,7 +52,9 @@ export default function App() {
             />
             <Route path="/exam" element={<ExamRunner />} /> 
 
-            {/* Teacher Routes */}
+            {/* --- TEACHER ROUTES (Protected) --- */}
+            
+            {/* 1. Dashboard */}
             <Route 
               path="/teacher/dashboard" 
               element={
@@ -56,6 +64,7 @@ export default function App() {
               } 
             />
             
+            {/* 2. Create Exam Blueprint (The "Test") */}
             <Route 
               path="/teacher/create-test" 
               element={
@@ -65,12 +74,50 @@ export default function App() {
               } 
             />
 
-            {/* 👇 ADDED SECURE ROUTE HERE 👇 */}
+            {/* 3. Exam Details / Grading */}
             <Route 
               path="/teacher/test/:testId" 
               element={
                 <RequireAuth allowedRoles={['teacher']}>
                   <TestDetailsPage />
+                </RequireAuth>
+              } 
+            />
+
+            {/* 4. Question Type Hub (The Menu) */}
+            <Route 
+              path="/teacher/create-question-hub" 
+              element={
+                <RequireAuth allowedRoles={['teacher']}>
+                  <QuestionTypeSelection />
+                </RequireAuth>
+              } 
+            />
+
+            {/* 5. Create Specific Question Types */}
+            <Route 
+              path="/teacher/create-programming" 
+              element={
+                <RequireAuth allowedRoles={['teacher']}>
+                  <CreateProgrammingQuestion />
+                </RequireAuth>
+              } 
+            />
+            
+            <Route 
+              path="/teacher/create-mcq" 
+              element={
+                <RequireAuth allowedRoles={['teacher']}>
+                  <CreateMCQ />
+                </RequireAuth>
+              } 
+            />
+            
+            <Route 
+              path="/teacher/create-tf" 
+              element={
+                <RequireAuth allowedRoles={['teacher']}>
+                  <CreateTF />
                 </RequireAuth>
               } 
             />
