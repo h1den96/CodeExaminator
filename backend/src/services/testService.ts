@@ -1,19 +1,15 @@
-// src/services/testService.ts
 import { Pool } from "pg";
 
 export class TestService {
   
   /**
    * Fetches the Test Template and its Questions.
-   * Useful for previewing a static test.
    */
   static async getTestWithQuestions(testId: number, db: Pool) {
-    // 1. Get Test Details
     const tRes = await db.query(`SELECT * FROM exam.tests WHERE test_id = $1`, [testId]);
     const test = tRes.rows[0];
     if (!test) throw new Error("Test not found");
 
-    // 2. Get Questions
     const qRes = await db.query(`
       SELECT q.*, tq.points 
       FROM exam.questions q
@@ -24,13 +20,10 @@ export class TestService {
 
     test.questions = qRes.rows;
 
-    // 3. Attach Options (SAFE MODE: Returns both formats)
     for (const q of test.questions) {
       if (q.question_type === 'mcq') {
         const optRes = await db.query(
-          `SELECT 
-              option_id, option_text,             -- Legacy keys (keeps old mappers working)
-              option_id as id, option_text as text -- New keys (for clean frontend)
+          `SELECT option_id, option_text, option_id as id, option_text as text
            FROM exam.mcq_options 
            WHERE question_id = $1 
            ORDER BY option_id`, 
@@ -39,13 +32,11 @@ export class TestService {
         q.options = optRes.rows;
       }
     }
-
     return test;
   }
 
   /**
-   * Reconstructs a test exactly as it was generated for a specific student.
-   * CRITICAL for resuming "Random" tests.
+   * Reconstructs a test AND includes saved student answers for hydration.
    */
   static async reconstructTestFromSubmission(submissionId: number, db: Pool) {
     // 1. Get Submission & Test Details
@@ -58,26 +49,31 @@ export class TestService {
     const test = subRes.rows[0];
     if (!test) throw new Error("Submission not found");
 
-    // 2. Get Questions from SUBMISSION_QUESTIONS
-    // Added q.allow_multiple so checkboxes render correctly on resume
+    // 2. Updated Query to JOIN student_answers
     const qRes = await db.query(`
-      SELECT q.*, sq.points, sq.q_order, q.allow_multiple 
+      SELECT 
+        q.*, 
+        sq.points, 
+        sq.q_order, 
+        q.allow_multiple,
+        sa.mcq_option_ids as student_mcq, -- Saved MCQ selections
+        sa.tf_answer as student_tf,      -- Saved True/False choice
+        sa.code_answer as student_code   -- Saved Code
       FROM exam.questions q
       JOIN exam.submission_questions sq ON q.question_id = sq.question_id
+      LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
       WHERE sq.submission_id = $1
       ORDER BY sq.q_order ASC
     `, [submissionId]);
 
     test.questions = qRes.rows;
 
-    // 3. Attach Options (SAFE MODE: Returns both formats)
+    // 3. Attach Options
     for (const q of test.questions) {
       if (q.question_type === 'mcq') {
         const optRes = await db.query(
-          `SELECT 
-              option_id, option_text,             -- Legacy keys
-              option_id as id, option_text as text -- New keys
-           FROM exam.mcq_options 
+          `SELECT option_id, option_text, option_id as id, option_text as text
+           FROM exam.mcq_options
            WHERE question_id = $1 
            ORDER BY option_id`, 
           [q.question_id]

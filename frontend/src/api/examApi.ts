@@ -77,3 +77,11 @@ export const createTest = async (payload: CreateTestPayload) => {
   const res = await api.post('/test/create', payload);
   return res.data;
 };
+
+export const saveAnswerToDB = async (submissionId: number, qId: number, payload: any) => {
+    const response = await api.post(`/submissions/${submissionId}/save-answer`, {
+        question_id: qId,
+        ...payload
+    });
+    return response.data;
+};

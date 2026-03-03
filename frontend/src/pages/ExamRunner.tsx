@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
+import { saveAnswerToDB } from "../api/examApi";
 
 // 👇 Import your custom layout
 import ProgrammingLayout from "../components/test-runner/ProgrammingLayout";
@@ -132,46 +133,80 @@ export default function ExamRunner() {
 
   useEffect(() => {
     if (!state?.test_id) { alert("No test selected."); navigate("/tests"); return; }
+    
     const startExam = async () => {
-        try {
-            const res = await api.post("/tests/start", { test_id: state.test_id });
-            setTestData(res.data.test);
-            setSubmissionId(res.data.submission_id);
-            // Ideally: Load existing answers here if resuming
-        } catch (err: any) {
-            alert(err.response?.data?.message || "Failed to start exam.");
-            navigate("/tests");
-        } finally {
-            setLoading(false);
-        }
+      try {
+        const res = await api.post("/tests/start", { test_id: state.test_id });
+        
+        // 1. The backend returns 'test' (which contains the questions)
+        const fetchedTest = res.data.test; 
+        
+        setTestData(fetchedTest);
+        setSubmissionId(res.data.submission_id);
+
+        const initialAnswers: Record<number, any> = {};
+
+        // 2. HYDRATION LOGIC: Loop through questions and check for saved answers
+        fetchedTest.questions.forEach((q: any) => {
+            // Check for saved MCQ (backend sends student_mcq array)
+            if (q.student_mcq && q.student_mcq.length > 0) {
+                // If it's a single-choice MCQ, we take the first ID
+                initialAnswers[q.question_id] = q.student_mcq[0]; 
+            } 
+            // Check for saved True/False
+            else if (q.student_tf !== null && q.student_tf !== undefined) {
+                initialAnswers[q.question_id] = q.student_tf;
+            } 
+            // Check for saved Code
+            else if (q.student_code) {
+                initialAnswers[q.question_id] = q.student_code;
+            }
+        });
+
+        setAnswers(initialAnswers); // 🚀 This populates the UI on reload
+      } catch (err: any) {
+        alert(err.response?.data?.message || "Failed to start exam.");
+        navigate("/tests");
+      } finally {
+        setLoading(false);
+      }
     };
     startExam();
   }, [state, navigate]);
 
   // 2. Logic: Save Answer
-  const saveAnswer = async (qId: number, payload: any) => {
+ const saveAnswer = async (qId: number, payload: any) => {
     if (!submissionId) return;
-    setSaveStatus('saving');
+    
+    setSaveStatus('saving'); // Update UI to show saving
+    
     try {
-        // Replace with your real endpoint: await api.post(`/submissions/${submissionId}/save-answer`, { question_id: qId, ...payload });
-        await new Promise(r => setTimeout(r, 600)); // Simulate delay
-        setSaveStatus('saved');
+        // Call the external file! 🚀
+        await saveAnswerToDB(submissionId, qId, payload);
+        
+        setSaveStatus('saved'); // Update UI to show success
     } catch (err) {
-        setSaveStatus('error');
+        console.error("Failed to save answer:", err);
+        setSaveStatus('error'); // Update UI to show error
     }
   };
 
-  const handleAnswerChange = (qId: number, value: any, type: string) => {
-    setAnswers(prev => ({ ...prev, [qId]: value }));
-    let payload: any = {};
-    if (type === 'programming') payload.code_answer = value;
-    if (type === 'true_false') payload.tf_answer = value;
-    if (type === 'mcq') payload.mcq_option_ids = [value];
+const handleAnswerChange = (qId: number, value: any, type: string) => {
+  setAnswers(prev => ({ ...prev, [qId]: value }));
 
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setSaveStatus('saving');
-    timeoutRef.current = setTimeout(() => saveAnswer(qId, payload), 1500);
-  };
+  let payload: any = {};
+  if (type === 'programming') payload.code_answer = value;
+  if (type === 'true_false') payload.tf_answer = value;
+  if (type === 'mcq') payload.mcq_option_ids = [value];
+
+  if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  
+  setSaveStatus('saving');
+
+  timeoutRef.current = setTimeout(() => {
+    saveAnswer(qId, payload);
+  }, 500); 
+};
 
   // 3. Logic: Run Code (Compile)
   const handleRunCode = async (qId: number, code: string) => {

@@ -66,6 +66,16 @@ app.use(
   testRouter
 );
 
+// ---------- SUBMISSIONS (Moved ABOVE the generic /api routes!) ----------
+app.use(
+  "/api/submissions",
+  (req, _res, next) => {
+    (req as any).db = examDb;
+    next();
+  },
+  submissionRouter
+);
+
 // ---------- OTHER EXAM ROUTES ----------
 app.use(
   "/api",
@@ -74,16 +84,6 @@ app.use(
     next();
   },
   routes
-);
-
-// ---------- SUBMISSIONS ----------
-app.use(
-  "/api/submissions",
-  (req, _res, next) => {
-    (req as any).db = examDb;
-    next();
-  },
-  submissionRouter
 );
 
 const port = Number(process.env.PORT ?? 3000);
