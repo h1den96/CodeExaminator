@@ -4,7 +4,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { RequireAuth } from "../auth/RequireAuth";
 
 // Student / Public Pages
-import Home from "../pages/Home";
+//import Home from "../pages/Home";
 import LoginPage from "../pages/LoginPage";
 import SignUpPage from "../pages/SignUpPage";
 import AvailableTestsPage from "../pages/AvailableTestsPage";
@@ -21,6 +21,7 @@ import QuestionTypeSelection from "../pages/QuestionTypeSelection";
 import CreateProgrammingQuestion from "../pages/CreateProgrammingQuestion";
 import CreateMCQ from "../pages/CreateMCQ";
 import CreateTF from "../pages/CreateTF";
+import Results from "../pages/Results";
 
 export default function App() {
   return (
@@ -49,6 +50,13 @@ export default function App() {
                   <RunTestPage />
                 </RequireAuth>
               }
+            />
+
+            <Route 
+              path="/results/:submissionId"
+              element={
+                <Results />
+              } 
             />
             <Route path="/exam" element={<ExamRunner />} /> 
 

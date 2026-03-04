@@ -32,103 +32,73 @@ export class ExamDiscoveryService {
   // --- REWRITTEN RANDOMIZER ---
   static async generateRandomTest(spec: RandomizerSpec, db: Pool) {
     const { counts, config } = spec;
-    const { topics, difficulty_distribution } = config;
+    const { topics } = config;
 
-    const fetchBatch = async (
-      type: 'mcq' | 'true_false' | 'programming',
-      limit: number,
-      diff: Difficulty | null
-    ) => {
-      if (limit <= 0) return [];
+    const masterUniqueIds = new Set<number>();
 
-      const params: any[] = [limit];
-      let query = "";
-      
-      if (type === 'mcq') {
-        query = `
-          SELECT 
-            q.question_id, 
-            'mcq' AS question_type, 
-            q.title, 
-            q.body, 
-            q.difficulty,
-            q.allow_multiple,
-            (
-               SELECT json_agg(json_build_object('id', qo.option_id, 'text', qo.option_text))
-               FROM exam.mcq_options qo WHERE qo.question_id = q.question_id
-            ) AS options
-          FROM exam.questions q
-          WHERE q.question_type = 'mcq'
-        `;
-      } else if (type === 'true_false') {
-        query = `
-          SELECT q.question_id, 'true_false' AS question_type, q.title, q.body, q.difficulty
-          FROM exam.questions q
-          WHERE q.question_type = 'true_false'
-        `;
-      } else {
-        query = `
-          SELECT q.question_id, 'programming' AS question_type, q.title, q.body, q.difficulty, pq.starter_code
-          FROM exam.questions q
-          JOIN exam.programming_questions pq ON pq.question_id = q.question_id
-          WHERE q.question_type = 'programming'
-        `;
-      }
+    const getUniqueBatch = async (type: string, limit: number, diff: string | null) => {
+        if (limit <= 0) return;
+        
+        const excludeArray = Array.from(masterUniqueIds);
+        // 🛡️ FIX: Removed 'AND q.is_active = true' to stop the crash
+        let query = `SELECT q.question_id FROM exam.questions q WHERE q.question_type = $1`;
+        const params: any[] = [type];
+        let pIdx = 2;
 
-      let paramIdx = 2;
+        if (diff) { 
+            query += ` AND q.difficulty = $${pIdx}`; 
+            params.push(diff); 
+            pIdx++; 
+        }
+        
+        if (excludeArray.length > 0) {
+            query += ` AND q.question_id != ALL($${pIdx}::int[])`;
+            params.push(excludeArray);
+            pIdx++;
+        }
 
-      // 1. Topic Filter
-      if (topics && topics.length > 0) {
-        query += ` AND EXISTS (
-           SELECT 1 FROM exam.question_topics qt 
-           WHERE qt.question_id = q.question_id 
-           AND qt.topic_id = ANY($${paramIdx}::int[])
-        )`;
-        params.push(topics);
-        paramIdx++;
-      }
+        if (topics && topics.length > 0) {
+            query += ` AND EXISTS (SELECT 1 FROM exam.question_topics qt WHERE qt.question_id = q.question_id AND qt.topic_id = ANY($${pIdx}::int[]))`;
+            params.push(topics); 
+            pIdx++;
+        }
 
-      // 2. Difficulty Filter
-      if (diff) {
-        query += ` AND q.difficulty = $${paramIdx}`;
-        params.push(diff);
-        paramIdx++;
-      }
+        query += ` ORDER BY random() LIMIT $${pIdx}`;
+        params.push(limit);
 
-      query += ` ORDER BY random() LIMIT $1`;
-
-      const res = await db.query(query, params);
-      return res.rows;
+        const res = await db.query(query, params);
+        res.rows.forEach(r => masterUniqueIds.add(r.question_id));
     };
 
-    const results: any[] = [];
-
-    // --- 1. MCQ ---
+    const dist = config.difficulty_distribution;
     if (counts.mcq > 0) {
-      let remaining = counts.mcq;
-      if (difficulty_distribution) {
-        const easyLimit = Math.min(remaining, difficulty_distribution.easy || 0);
-        if (easyLimit > 0) { results.push(...await fetchBatch('mcq', easyLimit, 'easy')); remaining -= easyLimit; }
-
-        const medLimit = Math.min(remaining, difficulty_distribution.medium || 0);
-        if (medLimit > 0) { results.push(...await fetchBatch('mcq', medLimit, 'medium')); remaining -= medLimit; }
-
-        const hardLimit = Math.min(remaining, difficulty_distribution.hard || 0);
-        if (hardLimit > 0) { results.push(...await fetchBatch('mcq', hardLimit, 'hard')); remaining -= hardLimit; }
-      }
-      if (remaining > 0) { results.push(...await fetchBatch('mcq', remaining, null)); }
+        await getUniqueBatch('mcq', dist?.easy || 0, 'easy');
+        await getUniqueBatch('mcq', dist?.medium || 0, 'medium');
+        await getUniqueBatch('mcq', dist?.hard || 0, 'hard');
+        
+        const currentMcqCount = Array.from(masterUniqueIds).length;
+        if (currentMcqCount < counts.mcq) {
+            await getUniqueBatch('mcq', counts.mcq - currentMcqCount, null);
+        }
     }
 
-    // --- 2. True/False ---
-    if (counts.tf > 0) {
-      results.push(...await fetchBatch('true_false', counts.tf, null));
-    }
+    await getUniqueBatch('true_false', counts.tf, null);
+    await getUniqueBatch('programming', counts.prog, null);
 
-    // --- 3. Programming ---
-    if (counts.prog > 0) {
-      results.push(...await fetchBatch('programming', counts.prog, null));
-    }
+    const finalIds = Array.from(masterUniqueIds);
 
-    return results;
-  }
+    const finalRes = await db.query(`
+        SELECT q.question_id, q.question_type, q.title, q.body, q.difficulty, q.allow_multiple,
+               pq.starter_code,
+               (SELECT json_agg(json_build_object('id', mo.option_id, 'text', mo.option_text))
+                FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) AS options
+        FROM exam.questions q
+        LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+        WHERE q.question_id = ANY($1::int[])
+    `, [finalIds]);
+
+    return finalIds.map(id => finalRes.rows.find(r => r.question_id === id));
+}
+
+
 }

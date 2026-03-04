@@ -143,3 +143,31 @@ export const submitCode = async (req: Request, res: Response) => {
 export const getSubmission = async (req: Request, res: Response) => {
    res.status(501).json({ error: "Not implemented yet" });
 };
+
+export const getSubmissionResult = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+
+    // 🛡️ FIX: Use req.user.user_id (matches your JWT payload in logs)
+    // Avoid using req.session as it is undefined in your current setup.
+    const user = (req as any).user;
+    if (!user || !user.user_id) {
+      return res.status(401).json({ error: "Unauthorized: User ID not found in token" });
+    }
+    const studentId = String(user.user_id);
+
+    // Ensure we use the injected db from the request
+    const db = getDb(req); 
+
+    const result = await SubmissionService.getSubmissionResult(
+      Number(id),
+      studentId,
+      db
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error("Error fetching submission result:", error.message);
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+};

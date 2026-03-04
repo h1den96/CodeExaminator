@@ -36,7 +36,6 @@ export class SubmissionService {
            throw new Error("You have already submitted this test.");
        }
 
-       // ✅ This works perfectly for resume, so we will reuse it for new tests too!
        const fullTest = await TestService.reconstructTestFromSubmission(existingSubmission.submission_id, db);
        
        return { 
@@ -64,54 +63,67 @@ export class SubmissionService {
     // Use Discovery Service to get questions
     const rows = await ExamDiscoveryService.generateRandomTest(spec, db);
 
-    // 4. Save Submission Record
-    const sRes = await db.query(
-      `INSERT INTO exam.submissions (student_id, test_id, status, started_at)
-       VALUES ($1, $2, 'in_progress', NOW()) 
-       RETURNING submission_id, started_at`,
-      [studentId, t.test_id]
+    // 🛡️ DEDUPLICATION HARD-LOCK: Filter out any duplicates before DB insertion
+    const uniqueQuestions = rows.filter((q, index, self) =>
+      index === self.findIndex((t) => t.question_id === q.question_id)
     );
-    
-    const submissionId: number = sRes.rows[0].submission_id;
-    const startedAt: string = sRes.rows[0].started_at;
 
-    // 5. Save Questions to DB
-    let order = 1;
-    for (const q of rows) {
-      const qt: string = q.question_type;
-      
-      const points =
-        qt === "true_false" ? t.tf_points
-        : qt === "mcq" ? t.mcq_points
-        : t.prog_points;
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
 
-      await db.query(
-        `INSERT INTO exam.submission_questions
-           (submission_id, question_id, q_order, points)
-         VALUES ($1, $2, $3, $4)`,
-        [submissionId, q.question_id, order, points]
+      // 4. Save Submission Record
+      const sRes = await client.query(
+        `INSERT INTO exam.submissions (student_id, test_id, status, started_at)
+         VALUES ($1, $2, 'in_progress', NOW()) 
+         RETURNING submission_id, started_at`,
+        [studentId, t.test_id]
       );
       
-      order++;
+      const submissionId: number = sRes.rows[0].submission_id;
+      const startedAt: string = sRes.rows[0].started_at;
+
+      // 5. Save Questions to DB
+      for (let i = 0; i < uniqueQuestions.length; i++) {
+        const q = uniqueQuestions[i];
+        const qt: string = q.question_type;
+        
+        const points =
+          qt === "true_false" ? t.tf_points
+          : qt === "mcq" ? t.mcq_points
+          : t.prog_points;
+
+        await client.query(
+          `INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+           VALUES ($1, $2, $3, $4)`,
+          [submissionId, q.question_id, i + 1, points]
+        );
+      }
+
+      await client.query("COMMIT");
+
+      // Re-fetch structures with options joined
+      const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
+
+      return { 
+        submissionId, 
+        dto: { 
+          ...freshTest,
+          test_id: t.test_id, 
+          title: t.title, 
+          description: t.description, 
+          duration_minutes: t.duration_minutes,
+          available_until: t.available_until,
+          strict_deadline: t.strict_deadline,
+          started_at: startedAt
+        } 
+      };
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
     }
-
-    // 👇 FIX: Re-fetch the fully constructed test from the DB.
-    // This ensures we get the exact same structure (with options joined) as the resume logic.
-    const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
-
-    return { 
-      submissionId, 
-      dto: { 
-        ...freshTest, // This now includes 'questions' with all options attached
-        test_id: t.test_id, 
-        title: t.title, 
-        description: t.description, 
-        duration_minutes: t.duration_minutes,
-        available_until: t.available_until,
-        strict_deadline: t.strict_deadline,
-        started_at: startedAt
-      } 
-    };
   }
 
   static async saveSingleAnswer(
@@ -161,16 +173,11 @@ export class SubmissionService {
     }
   }
 
-  static async submitAndGrade(
-    submissionId: number,
-    studentId: string,
-    db: Pool
-  ) {
+  static async submitAndGrade(submissionId: number, studentId: string, db: Pool) {
     const client = await db.connect();
     try {
       await client.query("BEGIN");
 
-      // 1. Lock & Check Status
       const subRes = await client.query(
         `SELECT s.status, t.enable_negative_grading
          FROM exam.submissions s
@@ -185,87 +192,42 @@ export class SubmissionService {
 
       if (status !== 'in_progress') throw new Error("already_submitted");
 
-      // 2. Fetch Data for Grading
       const dataQuery = `
-        SELECT 
-          sa.answer_id,
-          sa.submission_question_id,
-          sa.mcq_option_ids,
-          sa.tf_answer,
-          sa.code_answer, 
-          sa.question_grade, 
-          q.question_type,
-          sq.points as question_points,
+        SELECT sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer,
+          sa.question_grade, q.question_id, q.question_type, sq.points as question_points,
           tf.correct_answer as tf_correct,
-          (
-            SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
-            FROM exam.mcq_options mo
-            WHERE mo.question_id = q.question_id
-          ) as mcq_options_data,
-          pq.forbidden_keywords, 
-          pq.required_keywords
-        FROM exam.student_answers sa
-        JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+          (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
+           FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
+        FROM exam.submission_questions sq
         JOIN exam.questions q ON sq.question_id = q.question_id
+        LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
         LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
-        LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
         WHERE sq.submission_id = $1
       `;
       
-      const { rows: answers } = await client.query(dataQuery, [submissionId]);
+      const { rows: questionsToGrade } = await client.query(dataQuery, [submissionId]);
       let totalScore = 0;
 
-      // 3. Calculate Grades
-      for (const ans of answers) {
+      for (const ans of questionsToGrade) {
         let earnedPoints = 0;
-
-        if (ans.question_type === 'mcq') {
-          earnedPoints = GradingService.calculateMCQ(
-            Number(ans.question_points),
-            ans.mcq_options_data || [],
-            ans.mcq_option_ids || [],
-            enable_negative_grading
-          );
-        } else if (ans.question_type === 'true_false') {
-          earnedPoints = GradingService.calculateTrueFalse(
-            Number(ans.question_points),
-            ans.tf_answer,
-            ans.tf_correct
-          );
-        } else if (ans.question_type === 'programming') {
-           earnedPoints = Number(ans.question_grade) || 0;
-
-           const staticCheck = GradingService.performStaticAnalysis(
-               ans.code_answer || "", 
-               ans.forbidden_keywords || [], 
-               ans.required_keywords || []
-           );
-
-           if (!staticCheck.passed) {
-               console.log(`Question ${ans.submission_question_id} failed static analysis: ${staticCheck.error}`);
-               earnedPoints = 0; 
-           }
+        if (ans.answer_id) {
+            if (ans.question_type === 'mcq') {
+              earnedPoints = GradingService.calculateMCQ(Number(ans.question_points), ans.mcq_options_data || [], ans.mcq_option_ids || [], enable_negative_grading);
+            } else if (ans.question_type === 'true_false') {
+              if (ans.tf_answer !== null) {
+                earnedPoints = GradingService.calculateTrueFalse(Number(ans.question_points), ans.tf_answer, ans.tf_correct);
+              }
+            } else if (ans.question_type === 'programming') {
+              earnedPoints = Number(ans.question_grade) || 0;
+            }
+            await client.query(`UPDATE exam.student_answers SET question_grade = $1 WHERE answer_id = $2`, [earnedPoints, ans.answer_id]);
         }
-
-        await client.query(
-          `UPDATE exam.student_answers SET question_grade = $1 WHERE answer_id = $2`,
-          [earnedPoints, ans.answer_id]
-        );
-
         totalScore += earnedPoints;
       }
 
-      // 4. Update Main Submission Record
-      await client.query(
-        `UPDATE exam.submissions
-         SET status = 'submitted', submitted_at = now(), total_grade = $2
-         WHERE submission_id = $1`,
-        [submissionId, totalScore]
-      );
-
+      await client.query(`UPDATE exam.submissions SET status = 'submitted', submitted_at = now(), total_grade = $2 WHERE submission_id = $1`, [submissionId, totalScore]);
       await client.query("COMMIT");
       return { submission_id: submissionId, status: 'submitted', final_score: totalScore };
-
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -273,7 +235,54 @@ export class SubmissionService {
       client.release();
     }
   }
-  
+
+  static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
+    const query = `
+      SELECT s.total_grade, t.title as test_title,
+        (SELECT COALESCE(SUM(points), 0) FROM exam.submission_questions WHERE submission_id = $1) as max_points,
+        q.question_id, q.title as q_title, q.question_type, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
+        sa.question_grade, sq.points as q_max,
+        COALESCE((SELECT json_agg(option_text) FROM exam.mcq_options WHERE question_id = q.question_id AND score_weight > 0), '[]'::json) as correct_mcq,
+        (SELECT correct_answer FROM exam.true_false_answers WHERE question_id = q.question_id) as correct_tf
+      FROM exam.submissions s
+      JOIN exam.tests t ON s.test_id = t.test_id
+      JOIN exam.submission_questions sq ON s.submission_id = sq.submission_id
+      JOIN exam.questions q ON sq.question_id = q.question_id
+      LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+      WHERE s.submission_id = $1 AND s.student_id = $2
+      ORDER BY sq.q_order ASC
+    `;
+    
+    const { rows } = await db.query(query, [submissionId, studentId]);
+    if (rows.length === 0) throw new Error("No results found");
+
+    const rawScore = Number(rows[0].total_grade || 0);
+    const maxPoints = Number(rows[0].max_points) || 1; 
+    const finalGrade = (rawScore / maxPoints) * 10;
+
+    // 🛡️ DEDUPLICATION: Map ensures unique question IDs in output
+    const uniqueQuestionsMap = new Map();
+    rows.forEach(r => {
+      if (!uniqueQuestionsMap.has(r.question_id)) {
+        uniqueQuestionsMap.set(r.question_id, {
+          title: r.q_title,
+          type: r.question_type,
+          earned: Number(r.question_grade || 0),
+          max: Number(r.q_max || 0),
+          isCorrect: Number(r.question_grade || 0) >= Number(r.q_max),
+          studentAnswer: r.question_type === 'mcq' ? r.mcq_option_ids : (r.question_type === 'programming' ? r.code_answer : r.tf_answer),
+          correctAnswer: r.question_type === 'mcq' ? r.correct_mcq : r.correct_tf
+        });
+      }
+    });
+
+    return {
+      testTitle: rows[0].test_title,
+      finalGrade: finalGrade.toFixed(2),
+      questions: Array.from(uniqueQuestionsMap.values())
+    };
+  }
+
   static async getAvailableTestsForStudent(studentId: number | string, db: Pool) {
       return ExamDiscoveryService.getAvailableTestsForStudent(studentId, db);
   }
