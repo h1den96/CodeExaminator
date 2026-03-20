@@ -11,6 +11,9 @@ export type CreateQuestionDto = {
   options?: { text: string; is_correct: boolean; weight?: number }[];
   correct_answer?: boolean;
   starter_code?: string;
+  boilerplate_code?: string;
+  cpu_time_limit?: number;
+  memory_limit?: number;
   test_cases?: any[];
   teacher_id: number;
 };
