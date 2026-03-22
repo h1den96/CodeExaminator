@@ -50,6 +50,7 @@ export type CreateTestDto = {
   };
   
   created_by: number;
+  is_published?: boolean;
 };
 
 export class AdminService {
@@ -154,18 +155,19 @@ export class AdminService {
         // 2. Insert Test Record
         // Merges Blueprint info (counts/points) with Scheduling info (dates/duration)
         const sql = `
-            INSERT INTO exam.tests 
-            (
-              title, description, created_by,
-              tf_count, mcq_count, prog_count,
-              tf_points, mcq_points, prog_points,
-              is_random, generation_config,
-              duration_minutes, available_from, available_until, strict_deadline, is_published
-            )
-            VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, false)
-            RETURNING test_id
-        `;
+          INSERT INTO exam.tests 
+          (
+            title, description, created_by,
+            tf_count, mcq_count, prog_count,
+            tf_points, mcq_points, prog_points,
+            is_random, generation_config,
+            duration_minutes, available_from, available_until, strict_deadline, 
+            is_published -- 👈 This column
+          )
+          VALUES 
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) -- 👈 Change 'false' to '$16'
+          RETURNING test_id
+      `;
     
         const values = [
             dto.title, 
@@ -183,7 +185,8 @@ export class AdminService {
             dto.duration_minutes || 60,
             dto.available_from || null,
             dto.available_until || null,
-            dto.strict_deadline !== undefined ? dto.strict_deadline : true // Default True
+            dto.strict_deadline !== undefined ? dto.strict_deadline : true, // Default True
+            dto.is_published ?? true // Default to false if not provided
         ];
     
         const res = await client.query(sql, values);

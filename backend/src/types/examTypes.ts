@@ -87,3 +87,14 @@ export interface TestDTO {
   strict_deadline?: boolean;
   started_at?: string; // Important for the timer!
 }
+
+export interface Judge0Result {
+  success: boolean;
+  status: string;
+  stdout: string | null;
+  stderr: string | null;
+  compile_output: string | null;
+  time: string;
+  memory: number;
+  message?: string;
+}

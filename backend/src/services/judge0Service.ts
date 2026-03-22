@@ -1,101 +1,121 @@
 // src/services/judge0Service.ts
 import axios from "axios";
+import { normalizeOutput } from "../utils/grader";
+import { Judge0Result} from "../types/examTypes"; // Import types if needed
 
-// This points to your Docker container
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
 export class Judge0Service {
   
-  // Helper to map string languages to Judge0 IDs
   private static getLanguageId(lang: string): number {
-    // 54 = C++ (GCC 9.2.0), 71 = Python (3.8.1)
+
     if (lang === "cpp" || lang === "c++") return 54;
     if (lang === "python") return 71;
     return 54; // Default to C++
   }
 
-  /**
-   * 🏃‍♂️ BATCH EXECUTION
-   * Runs the code against multiple test cases and calculates a grade.
-   */
-  static async runBatch(code: string, language: string, testCases: any[]) {
+
+  static async runBatch(code: string, language: string, testCases: any[], cpuLimit?: number, memLimit?: number) {
     const langId = this.getLanguageId(language);
     const results: any[] = [];
     let passedCount = 0;
 
-    // 1. Loop through all test cases
     for (const tc of testCases) {
-      // Run specific case
-      const output = await this.submitCode(langId, code, tc.input);
+      // 🚀 1. Execute the code
+      const output: Judge0Result = await this.submitCode(langId, code, tc.input, cpuLimit, memLimit);
       
-      // Compare Output (Trim whitespace to be safe)
-      const expected = (tc.output || "").trim();
-      const actual = (output.stdout || "").trim();
+      // 🚀 2. Normalize both outputs for a FAIR comparison
+      const actualNormalized = normalizeOutput(output.stdout);
+      const expectedNormalized = normalizeOutput(tc.output);
       
-      // Determine Pass/Fail
-      const passed = output.success && (actual === expected);
-      
-      if (passed) passedCount++;
+      // 🚀 3. Determine the specific status
+      let finalStatus = "";
+      const isAccepted = output.status === "Accepted"; // Judge0 finished within resources
+      const logicMatches = actualNormalized === expectedNormalized;
+
+      if (isAccepted && logicMatches) {
+        finalStatus = "Passed";
+        passedCount++;
+      } else if (isAccepted && !logicMatches) {
+        finalStatus = "Failed"; // Logic was wrong, but it ran safely
+      } else {
+        finalStatus = output.status || "Error"; // Pass through TLE, MLE, or Runtime Error
+      }
 
       results.push({
         input: tc.input,
-        expected_output: expected,
-        actual_output: actual,
-        status: passed ? "Passed" : "Failed",
+        expected: tc.output, // Keep original for UI display
+        actual: output.stdout, // Keep original for UI display
+        status: finalStatus,
         stderr: output.stderr,
-        compile_output: output.compile_output
+        compile_output: output.compile_output,
+        time: output.time,
+        memory: output.memory
       });
     }
 
-    // 2. Calculate Grade (0 to 10 scale)
+    // 🚀 4. Calculate Grade (Partial credit)
     const total = testCases.length;
-    const grade = total === 0 ? 0 : (passedCount / total) * 10;
+    const gradeValue = total === 0 ? 0 : (passedCount / total) * 10;
 
     return {
-      grade: Math.round(grade * 100) / 100, // Round to 2 decimals
+      grade: Math.round(gradeValue * 100) / 100, 
       details: results
     };
-  }
+}
 
   /**
    * Sends single code execution to Judge0
    */
-  static async submitCode(languageId: number, code: string, stdin: string = "") {
-    try {
-      const response = await axios.post(
-        `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, 
-        {
-          source_code: Buffer.from(code).toString('base64'),
-          language_id: languageId,
-          stdin: Buffer.from(stdin).toString('base64'),
-          base64_encoded: true
-        }
-      );
+  static async submitCode(
+  languageId: number,
+  code: string,
+  stdin: string = "",
+  cpuTimeLimit?: number,
+  memoryLimit?: number
+): Promise<Judge0Result> { // 👈 Explicit return type
+  try {
+    const response = await axios.post(
+      `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, 
+      {
+        source_code: Buffer.from(code).toString('base64'),
+        language_id: languageId,
+        stdin: Buffer.from(stdin).toString('base64'),
+        base64_encoded: true,
+        cpu_time_limit: cpuTimeLimit,
+        memory_limit: memoryLimit,
+      }
+    );
 
-      const result = response.data;
-      
-      // Status ID 3 means "Accepted"
-      const isSuccess = result.status.id === 3;
-      
-      const decode = (str: string | null) => str ? Buffer.from(str, 'base64').toString('utf-8') : "";
+    const result = response.data;
+    
+    // Status ID 3 means "Accepted"
+    const isSuccess = result.status.id === 3;
+    
+    const decode = (str: string | null) => str ? Buffer.from(str, 'base64').toString('utf-8') : "";
 
-      return {
-        success: isSuccess,
-        status: result.status.description,
-        stdout: decode(result.stdout),
-        stderr: decode(result.stderr),
-        compile_output: decode(result.compile_output),
-        message: result.message
-      };
+    return {
+      success: isSuccess,
+      status: result.status.description,
+      stdout: decode(result.stdout),
+      stderr: decode(result.stderr),
+      compile_output: decode(result.compile_output),
+      time: result.time || "0.000", // 🚀 Extract time (string like "0.05")
+      memory: result.memory || 0,   // 🚀 Extract memory (number in KB)
+      message: result.message
+    };
 
-    } catch (error: any) {
-      console.error("Judge0 Connection Error:", error.message);
-      return {
-        success: false,
-        status: "System Error",
-        stderr: "Could not connect to code execution engine. Is Docker running?",
-        stdout: ""
-      };
-    }
+  } catch (error: any) {
+    console.error("Judge0 Connection Error:", error.message);
+    return {
+      success: false,
+      status: "System Error",
+      stderr: "Could not connect to code execution engine.",
+      stdout: "",
+      compile_output: "",
+      time: "0.000",
+      memory: 0
+    };
   }
+}
 }

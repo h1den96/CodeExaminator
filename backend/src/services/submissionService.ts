@@ -148,8 +148,71 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
       await db.query(`INSERT INTO exam.student_answers (submission_question_id, mcq_option_ids, tf_answer, code_answer) VALUES ($1, $2, $3, $4)`, [sqId, dto.mcq_option_ids || null, dto.tf_answer ?? null, dto.code_answer || null]);
     }
   }
+  
+static async getSubmissionResult(submissionId: number, studentId: string, db: any) {
+  const query = `
+    SELECT 
+      s.submission_id,
+      s.total_grade,
+      s.status,
+      s.submitted_at,
+      t.title as test_title,
+      (
+        SELECT json_agg(json_build_object(
+          'question_id', q.question_id,
+          'type', q.question_type,
+          'title', q.title,
+          'body', q.body,
+          'points', sq.points_earned,
+          'max_points', sq.points,
+          'code_results', sq.code_execution_results,
+          -- 🚀 Handle MCQ Array: string_agg requires a join on the ANY operator
+          'student_answer', (
+             SELECT string_agg(o.option_text, ', ') 
+             FROM exam.mcq_options o 
+             WHERE o.option_id = ANY(sa.mcq_option_ids)
+          ),
+          'correct_answer', (
+             SELECT string_agg(o.option_text, ', ') 
+             FROM exam.mcq_options o 
+             WHERE o.question_id = q.question_id AND o.is_correct = true
+          ),
+          -- 🚀 T/F logic using sa (student_answers)
+          'tf_student_answer', sa.tf_answer,
+          'tf_correct_answer', (
+             SELECT tfa.correct_answer 
+             FROM exam.true_false_answers tfa 
+             WHERE tfa.question_id = q.question_id
+          )
+        ) ORDER BY sq.q_order)
+        FROM exam.submission_questions sq
+        JOIN exam.questions q ON sq.question_id = q.question_id
+        LEFT JOIN exam.student_answers sa ON sa.submission_question_id = sq.submission_question_id
+        WHERE sq.submission_id = s.submission_id
+      ) as questions
+    FROM exam.submissions s
+    JOIN exam.tests t ON s.test_id = t.test_id
+    WHERE s.submission_id = $1 AND s.student_id = $2
+  `;
 
-  // --- 🛡️ OPTIMIZED SUBMIT AND GRADE ---
+  try {
+    const result = await db.query(query, [submissionId, studentId]);
+    
+    if (result.rows.length === 0) {
+      console.error(`[Service] No result found for Sub ID: ${submissionId}, Student: ${studentId}`);
+      throw new Error("No submission found matching these credentials.");
+    }
+
+    return result.rows[0];
+  } catch (dbError: any) {
+    // 🚀 THIS LOG WILL TELL US EXACTLY WHAT IS WRONG
+    console.error("--- DATABASE QUERY CRASHED ---");
+    console.error("Error Message:", dbError.message);
+    console.error("SQL State:", dbError.code);
+    throw dbError; // Re-throw so the controller can send the 500
+  }
+}
+  // --- OPTIMIZED SUBMIT AND GRADE ---
   static async submitAndGrade(submissionId: number, studentId: string, db: Pool) {
     // 1. Fetch data outside the transaction
     const dataQuery = `

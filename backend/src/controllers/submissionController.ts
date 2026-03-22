@@ -144,30 +144,34 @@ export const getSubmission = async (req: Request, res: Response) => {
    res.status(501).json({ error: "Not implemented yet" });
 };
 
-export const getSubmissionResult = async (req: any, res: any) => {
+// src/controllers/submissionController.ts
+
+export const getSubmissionResult = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    // 🛡️ FIX: Use req.user.user_id (matches your JWT payload in logs)
-    // Avoid using req.session as it is undefined in your current setup.
     const user = (req as any).user;
-    if (!user || !user.user_id) {
-      return res.status(401).json({ error: "Unauthorized: User ID not found in token" });
-    }
-    const studentId = String(user.user_id);
 
-    // Ensure we use the injected db from the request
+    // 🚀 FIX: Use your helper function instead of the undefined 'examDb'
     const db = getDb(req); 
+
+    console.log(`[getSubmissionResult] Fetching result for sub: ${id}, user: ${user?.user_id}`);
+
+    if (!user || !user.user_id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
     const result = await SubmissionService.getSubmissionResult(
       Number(id),
-      studentId,
+      String(user.user_id),
       db
     );
 
     res.json(result);
   } catch (error: any) {
-    console.error("Error fetching submission result:", error.message);
-    res.status(500).json({ message: error.message || "Internal server error" });
+    console.error("DETAILED DATABASE ERROR:", error.message);
+    res.status(500).json({ 
+      error: "DATABASE_QUERY_FAILED", 
+      message: error.message 
+    });
   }
 };

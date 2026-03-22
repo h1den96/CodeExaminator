@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
@@ -15,6 +15,7 @@ interface Question {
   question_type: 'mcq' | 'true_false' | 'programming';
   options?: { option_id: number; option_text: string }[];
   starter_code?: string;
+  boiler_plate_code?: string; 
   points: number; 
   allow_multiple: boolean; 
 }
@@ -90,6 +91,7 @@ export default function ExamRunner() {
   const navigate = useNavigate();
   const { colors } = useTheme();
 
+  // --- 1. ALL HOOKS MUST GO HERE AT THE TOP ---
   const [testData, setTestData] = useState<TestData | null>(null);
   const [submissionId, setSubmissionId] = useState<number | null>(null);
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -103,21 +105,46 @@ export default function ExamRunner() {
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 🛡️ Safe check for the current question
+  const question = testData?.questions?.[currentQIndex];
+
+  // 🚀 MOVED: useMemo is now safely at the top
+  const { topPart, bottomPart } = useMemo(() => {
+    if (!question || question.question_type !== 'programming' || !question.boiler_plate_code) {
+      return { topPart: "", bottomPart: "" };
+    }
+    const parts = question.boiler_plate_code.split("// {{STUDENT_CODE}}");
+    return {
+      topPart: parts[0] || "",
+      bottomPart: parts[1] || ""
+    };
+  }, [question]); 
+
+ // --- 2. EFFECTS ---
+  
+  // Prevents accidental tab closing
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = "Exam in progress!"; };
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => { 
+        e.preventDefault(); 
+        e.returnValue = "Exam in progress!"; 
+    };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
+  // Main Test Initialization
   useEffect(() => {
-    if (!state?.test_id) { navigate("/tests"); return; }
+    if (!state?.test_id) { 
+        navigate("/tests"); 
+        return; 
+    }
     
     const startExam = async () => {
       try {
         const res = await api.post("/tests/start", { test_id: state.test_id });
         const fetchedTest = res.data.test; 
         
-        // 🛡️ Filter duplicates in frontend as a backup
+        // Ensure no duplicate questions
         const uniqueQuestions = fetchedTest.questions.filter((q: any, index: number, self: any[]) =>
           index === self.findIndex((t) => t.question_id === q.question_id)
         );
@@ -125,6 +152,7 @@ export default function ExamRunner() {
         setTestData({ ...fetchedTest, questions: uniqueQuestions });
         setSubmissionId(res.data.submission_id);
 
+        // Pre-load saved answers if resuming
         const initialAnswers: Record<number, any> = {};
         uniqueQuestions.forEach((q: any) => {
             if (q.student_mcq && q.student_mcq.length > 0) {
@@ -136,15 +164,37 @@ export default function ExamRunner() {
             }
         });
         setAnswers(initialAnswers);
+
       } catch (err: any) {
-        navigate("/tests");
-      } finally {
-        setLoading(false);
-      }
+  // 1. Check if the error is a 409 Conflict (Already Submitted)
+  if (err.response?.status === 409) {
+    
+    // 2. Grab the ID from the backend's error response
+    // Ensure this matches the key 'submission_id' we just added to the controller
+    const sid = err.response.data.submission_id;
+
+    if (sid) {
+      console.log("Redirecting to valid submission:", sid);
+      navigate(`/results/${sid}`);
+    } else {
+      // Fallback: If no ID was found, just go to the general tests list
+      console.warn("409 Conflict: No submission_id provided by backend.");
+      navigate("/tests");
+    }
+  } else {
+    // 3. For any other error (500, 404, etc.), go back to the list
+    console.error("Critical error during startExam:", err);
+    navigate("/tests");
+  }
+} finally {
+  setLoading(false);
+}
     };
+
     startExam();
   }, [state, navigate]);
 
+  // --- 3. FUNCTIONS ---
   const saveAnswer = async (qId: number, payload: any) => {
     if (!submissionId) return;
     setSaveStatus('saving');
@@ -195,11 +245,9 @@ export default function ExamRunner() {
     }
   };
 
+  // --- 4. EARLY RETURNS (SAFE TO DO NOW) ---
   if (loading) return <div style={{ padding: 40, color: colors.text }}>Loading Exam...</div>;
-  if (!testData || !testData.questions.length) return <div style={{ padding: 40 }}>Test data empty.</div>;
-
-  const question = testData.questions[currentQIndex];
-  if (!question) return null;
+  if (!testData || !testData.questions.length || !question) return <div style={{ padding: 40 }}>Test data empty.</div>;
 
   const progQuestion = {
     ...question,
@@ -233,6 +281,8 @@ export default function ExamRunner() {
            isRunning={isRunning}
            runResult={runResult}
            runError={runError}
+           topPart={topPart}
+           bottomPart={bottomPart}
         />
       ) : (
         <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, padding: "80px 20px 20px 20px" }}>
