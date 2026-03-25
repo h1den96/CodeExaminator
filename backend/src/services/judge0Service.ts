@@ -1,19 +1,16 @@
-// src/services/judge0Service.ts
 import axios from "axios";
 import { normalizeOutput } from "../utils/grader";
-import { Judge0Result} from "../types/examTypes"; // Import types if needed
+import { Judge0Result } from "../types/examTypes";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
 export class Judge0Service {
   
   private static getLanguageId(lang: string): number {
-
     if (lang === "cpp" || lang === "c++") return 54;
     if (lang === "python") return 71;
     return 54; // Default to C++
   }
-
 
   static async runBatch(code: string, language: string, testCases: any[], cpuLimit?: number, memLimit?: number) {
     const langId = this.getLanguageId(language);
@@ -21,32 +18,37 @@ export class Judge0Service {
     let passedCount = 0;
 
     for (const tc of testCases) {
-      // 🚀 1. Execute the code
-      const output: Judge0Result = await this.submitCode(langId, code, tc.input, cpuLimit, memLimit);
+      // 1. Execute the code
+      const output: Judge0Result = await this.submitCode(langId, code, tc.input || "", cpuLimit, memLimit);
       
-      // 🚀 2. Normalize both outputs for a FAIR comparison
+      // 🚀 FIX: Use 'expected_output' to match your DB column name
+      const expectedStr = tc.expected_output || tc.output || "";
+      
+      // 2. Normalize both outputs
       const actualNormalized = normalizeOutput(output.stdout);
-      const expectedNormalized = normalizeOutput(tc.output);
+      const expectedNormalized = normalizeOutput(expectedStr);
       
-      // 🚀 3. Determine the specific status
-      let finalStatus = "";
-      const isAccepted = output.status === "Accepted"; // Judge0 finished within resources
+      // 3. Logic Comparison
+      // Judge0 status is "Accepted" if it didn't crash/timeout
+      const isAccepted = output.status === "Accepted"; 
       const logicMatches = actualNormalized === expectedNormalized;
 
+      // 🚀 FIX: We keep the status as an OBJECT so the Controller can read .description
+      const finalStatusObj = {
+          id: isAccepted && logicMatches ? 3 : 4, // 3 = Accepted, 4 = Wrong Answer
+          description: isAccepted && logicMatches ? "Accepted" : (isAccepted ? "Wrong Answer" : output.status)
+      };
+
       if (isAccepted && logicMatches) {
-        finalStatus = "Passed";
         passedCount++;
-      } else if (isAccepted && !logicMatches) {
-        finalStatus = "Failed"; // Logic was wrong, but it ran safely
-      } else {
-        finalStatus = output.status || "Error"; // Pass through TLE, MLE, or Runtime Error
       }
 
+      // 🚀 CRITICAL FIX: Ensure property names match what testController expects
       results.push({
         input: tc.input,
-        expected: tc.output, // Keep original for UI display
-        actual: output.stdout, // Keep original for UI display
-        status: finalStatus,
+        expected_output: expectedStr, 
+        stdout: output.stdout, // Controller looks for this!
+        status: finalStatusObj, // Controller looks for .status.description
         stderr: output.stderr,
         compile_output: output.compile_output,
         time: output.time,
@@ -54,9 +56,8 @@ export class Judge0Service {
       });
     }
 
-    // 🚀 4. Calculate Grade (Partial credit)
-    const total = testCases.length;
-    const gradeValue = total === 0 ? 0 : (passedCount / total) * 10;
+    const total = testCases.length || 1;
+    const gradeValue = (passedCount / total) * 10;
 
     return {
       grade: Math.round(gradeValue * 100) / 100, 
@@ -64,58 +65,53 @@ export class Judge0Service {
     };
 }
 
-  /**
-   * Sends single code execution to Judge0
-   */
   static async submitCode(
-  languageId: number,
-  code: string,
-  stdin: string = "",
-  cpuTimeLimit?: number,
-  memoryLimit?: number
-): Promise<Judge0Result> { // 👈 Explicit return type
-  try {
-    const response = await axios.post(
-      `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, 
-      {
-        source_code: Buffer.from(code).toString('base64'),
-        language_id: languageId,
-        stdin: Buffer.from(stdin).toString('base64'),
-        base64_encoded: true,
-        cpu_time_limit: cpuTimeLimit,
-        memory_limit: memoryLimit,
-      }
-    );
+    languageId: number,
+    code: string,
+    stdin: string = "",
+    cpuTimeLimit?: number,
+    memoryLimit?: number
+  ): Promise<Judge0Result> {
+    try {
+      const response = await axios.post(
+        `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, 
+        {
+          source_code: Buffer.from(code).toString('base64'),
+          language_id: languageId,
+          stdin: Buffer.from(stdin).toString('base64'),
+          base64_encoded: true,
+          cpu_time_limit: cpuTimeLimit,
+          memory_limit: memoryLimit,
+        }
+      );
 
-    const result = response.data;
-    
-    // Status ID 3 means "Accepted"
-    const isSuccess = result.status.id === 3;
-    
-    const decode = (str: string | null) => str ? Buffer.from(str, 'base64').toString('utf-8') : "";
+      const result = response.data;
+      const isSuccess = result.status?.id === 3;
+      
+      const decode = (str: string | null) => str ? Buffer.from(str, 'base64').toString('utf-8').trim() : "";
 
-    return {
-      success: isSuccess,
-      status: result.status.description,
-      stdout: decode(result.stdout),
-      stderr: decode(result.stderr),
-      compile_output: decode(result.compile_output),
-      time: result.time || "0.000", // 🚀 Extract time (string like "0.05")
-      memory: result.memory || 0,   // 🚀 Extract memory (number in KB)
-      message: result.message
-    };
+      return {
+        success: isSuccess,
+        status: result.status?.description || "Error",
+        stdout: decode(result.stdout),
+        stderr: decode(result.stderr),
+        compile_output: decode(result.compile_output),
+        time: result.time || "0.000",
+        memory: result.memory || 0,
+        message: result.message
+      };
 
-  } catch (error: any) {
-    console.error("Judge0 Connection Error:", error.message);
-    return {
-      success: false,
-      status: "System Error",
-      stderr: "Could not connect to code execution engine.",
-      stdout: "",
-      compile_output: "",
-      time: "0.000",
-      memory: 0
-    };
+    } catch (error: any) {
+      console.error("Judge0 Connection Error:", error.message);
+      return {
+        success: false,
+        status: "System Error",
+        stderr: "Could not connect to code execution engine.",
+        stdout: "",
+        compile_output: "",
+        time: "0.000",
+        memory: 0
+      };
+    }
   }
-}
 }

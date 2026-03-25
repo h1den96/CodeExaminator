@@ -2,7 +2,9 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "react-resizable-panels": "^3.0.6",
-    "react-split-pane": "^0.1.92"
+    "react-split-pane": "^0.1.92",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-cpp": "^0.23.4"
   },
   "devDependencies": {
     "@types/react-split-pane": "^0.1.10",

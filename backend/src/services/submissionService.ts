@@ -9,7 +9,6 @@ const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
 export class SubmissionService {
 
-  // 🛡️ POINT 3: FUZZY MATCHING HELPER
   private static normalizeOutput(str: string): string {
     if (!str) return "";
     return str
@@ -19,7 +18,6 @@ export class SubmissionService {
       .replace(/\s+/g, " ");     // Collapse all whitespace into single spaces
   }
 
-  // 🛡️ POINT 2 & 4: THE EXAMINATOR (STITCHING + SANDBOXING)
   private static async runJudge0Assessment(
     questionId: number, 
     studentCode: string, 
@@ -79,7 +77,7 @@ export class SubmissionService {
 
   // --- START TEST & SAVE ANSWER (REMAIN UNCHANGED) ---
 
-  static async startTestForStudent(testId: number, studentId: string, db: Pool) {
+  /*static async startTestForStudent(testId: number, studentId: string, db: Pool) {
     // ... logic from your previous snippet ...
     const tRes = await db.query<TestTemplateRow>(`SELECT * FROM exam.tests WHERE test_id = $1`, [testId]);
     const t = tRes.rows[0];
@@ -114,7 +112,95 @@ export class SubmissionService {
       const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
       return { submissionId, dto: { ...freshTest, test_id: t.test_id, title: t.title, started_at: sRes.rows[0].started_at } };
     } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+  }*/
+
+    static async startTestForStudent(testId: number, studentId: string, db: Pool) {
+  // 1. Fetch the Test metadata (to get duration, etc.)
+  const tRes = await db.query(`SELECT * FROM exam.tests WHERE test_id = $1`, [testId]);
+  const t = tRes.rows[0];
+  if (!t) throw new Error(`Test template with id=${testId} not found`);
+
+  // 2. Prevent duplicate starts (Keep your existing logic here)
+  const existingRes = await db.query(
+    `SELECT submission_id, status, started_at FROM exam.submissions 
+     WHERE student_id = $1 AND test_id = $2 
+     ORDER BY started_at DESC LIMIT 1`,
+    [studentId, testId]
+  );
+
+  const existingSubmission = existingRes.rows[0];
+  if (existingSubmission) {
+     if (['completed', 'graded', 'submitted'].includes(existingSubmission.status)) {
+       throw new Error("Already submitted.");
+     }
+     const fullTest = await TestService.reconstructTestFromSubmission(existingSubmission.submission_id, db);
+     return { 
+       submissionId: existingSubmission.submission_id, 
+       dto: { ...fullTest, started_at: existingSubmission.started_at, duration_minutes: t.duration_minutes } 
+     };
   }
+
+  // 3. START TRANSACTION FOR ATOMIC DRAW
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    // A. Create the Submission
+    const sRes = await client.query(
+      `INSERT INTO exam.submissions (student_id, test_id, status, started_at) 
+       VALUES ($1, $2, 'in_progress', NOW()) 
+       RETURNING submission_id, started_at`, 
+      [studentId, t.test_id]
+    );
+    const submissionId = sRes.rows[0].submission_id;
+
+    // B. THE SLOT DRAW: Pick one random question per slot defined in test_slots
+    // This replaces your ExamDiscoveryService loop
+    const drawQuery = `
+      INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+      SELECT 
+        $1 as submission_id,
+        q_pool.question_id,
+        ts.slot_order,
+        ts.points
+      FROM exam.test_slots ts
+      CROSS JOIN LATERAL (
+        SELECT q.question_id
+        FROM exam.questions q
+        JOIN exam.question_topics qt ON q.question_id = qt.question_id
+        WHERE q.difficulty = ts.difficulty
+        AND qt.topic_id = ts.topic_id
+        ORDER BY RANDOM()
+        LIMIT 1
+      ) AS q_pool
+      WHERE ts.test_id = $2
+      ORDER BY ts.slot_order ASC;
+    `;
+
+    const drawResult = await client.query(drawQuery, [submissionId, t.test_id]);
+
+    // Safety check: Did we find questions for ALL slots?
+    if (drawResult.rowCount === 0) {
+      throw new Error("No slots defined for this test or no matching questions found.");
+    }
+
+    await client.query("COMMIT");
+
+    // 4. Reconstruct and return the fresh test
+    const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
+    return { 
+      submissionId, 
+      dto: { ...freshTest, test_id: t.test_id, title: t.title, started_at: sRes.rows[0].started_at } 
+    };
+
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("Failed to generate randomized exam:", e);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 
 static async getAvailableTestsForStudent(userId: number, db: Pool) {
   const query = `

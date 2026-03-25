@@ -5,6 +5,7 @@ import { AdminService } from "../services/adminService";
 import { GradingService } from "../services/gradingService";
 import { Judge0Service } from "../services/judge0Service";
 import { Judge0Result } from "../types/examTypes";
+import { StructuralAnalysisService } from "../services/structuralAnalysisService";
 
 type AuthUser = { user_id: number; role: string };
 
@@ -19,6 +20,21 @@ export async function getAvailableTests(req: Request, res: Response) {
     return res.status(200).json(tests);
   } catch (err: any) {
     console.error("[getAvailableTests] error:", err);
+    return res.status(500).json({ error: "Failed to load tests" });
+  }
+}
+
+export async function getAllTests(req: Request, res: Response) {
+  try {
+    const result = await examDb.query(`
+      SELECT t.*, 
+             (SELECT COUNT(*) FROM exam.test_slots ts WHERE ts.test_id = t.test_id) as slot_count
+      FROM exam.tests t 
+      ORDER BY created_at DESC
+    `);
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error("[getAllTests] Error:", err);
     return res.status(500).json({ error: "Failed to load tests" });
   }
 }
@@ -72,77 +88,67 @@ export async function startTest(req: Request, res: Response) {
   }
 }
 
-// 3. CREATE TEST (For Teachers)
+// 3. CREATE TEST (Updated for Slots)
 export async function createTest(req: Request, res: Response) {
   try {
     const user = (req as any).user as AuthUser | undefined;
     
-    // Safety check: Ensure only teachers can hit this
     if (!user || user.role !== 'teacher') {
       return res.status(403).json({ error: "Only teachers can create tests" });
     }
 
-    const dto = req.body;
+    const dto = req.body; // This now contains the 'slots' array from the frontend
     dto.created_by = user.user_id;
 
+    // The AdminService.createTest should now handle the transaction 
+    // for both the 'tests' table and the 'test_slots' table.
     const result = await AdminService.createTest(dto);
     
-    return res.status(201).json({ message: "Test created successfully", test: result });
+    return res.status(201).json({ 
+      message: "Test blueprint created successfully", 
+      test: result 
+    });
 
   } catch (err: any) {
     console.error("[createTest] error:", err);
-    
-    if (err.message?.includes("Math Error")) {
-      return res.status(400).json({ error: err.message });
-    }
-    
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error: " + err.message });
   }
 }
 
-// 4. GET ALL TESTS (For Teacher Dashboard)
-export async function getAllTests(req: Request, res: Response) {
-  try {
-    let query = `SELECT * FROM exam.tests ORDER BY created_at DESC`;
-    const result = await examDb.query(query);
-    return res.status(200).json(result.rows);
-
-  } catch (err: any) {
-    console.error("[getAllTests] error:", err);
-    return res.status(500).json({ error: "Failed to load tests" });
-  }
-}
-
-// 5. GET SINGLE TEST BY ID
+// 5. GET SINGLE TEST BY ID (Updated to return the Blueprint)
 export async function getTestById(req: Request, res: Response) {
   try {
     const testId = req.params.id;
     
-    // Fetch Test Metadata
-    const testRes = await examDb.query(`SELECT * FROM exam.tests WHERE test_id = $1`, [testId]);
+    // 1. Fetch Test Metadata
+    const testRes = await examDb.query(
+      `SELECT * FROM exam.tests WHERE test_id = $1`, 
+      [testId]
+    );
     
     if (testRes.rows.length === 0) {
       return res.status(404).json({ error: "Test not found" });
     }
 
-    // Fetch Questions
-    const qRes = await examDb.query(`
-      SELECT q.*, tq.points, tq.position
-      FROM exam.test_questions tq
-      JOIN exam.questions q ON tq.question_id = q.question_id
-      WHERE tq.test_id = $1
-      ORDER BY tq.position ASC
+    // 2. Fetch Slots (The Blueprint) instead of fixed Questions
+    // We join with topics to give the frontend the topic names
+    const slotRes = await examDb.query(`
+      SELECT ts.*, t.name as topic_name
+      FROM exam.test_slots ts
+      LEFT JOIN exam.topics t ON ts.topic_id = t.topic_id
+      WHERE ts.test_id = $1
+      ORDER BY ts.slot_order ASC
     `, [testId]);
 
     const testData = {
       ...testRes.rows[0],
-      questions: qRes.rows
+      slots: slotRes.rows // The frontend will use this to show the "recipe"
     };
 
     return res.json(testData);
   } catch (err) {
     console.error("[getTestById] Error:", err);
-    return res.status(500).json({ error: "Failed to load test details" });
+    return res.status(500).json({ error: "Failed to load test blueprint" });
   }
 }
 
@@ -164,9 +170,7 @@ export async function updateQuestionTestCases(req: Request, res: Response) {
   }
 }
 
-// 7. RUN CODE (Real Execution)
-// 7. RUN CODE (Real Execution)
-// 7. RUN CODE (Real Execution)
+// 7. RUN CODE (Hybrid Execution: AST + Judge0)
 export async function runSubmissionCode(req: Request, res: Response) {
   try {
     const submissionId = Number(req.params.id);
@@ -174,56 +178,90 @@ export async function runSubmissionCode(req: Request, res: Response) {
     const user = (req as any).user as AuthUser | undefined;
     const studentId = user ? String(user.user_id) : "0";
 
-    // 1. Save the student's progress
+    // 1. Save student progress
     await SubmissionService.saveSingleAnswer(submissionId, studentId, {
         question_id,
         code_answer: code
     }, examDb);
 
-    // 🚀 FIX 1: Add cpu_time_limit and memory_limit to the SELECT query
+    // 2. Fetch metadata with Weights and Points
     const qRes = await examDb.query(
-        `SELECT boilerplate_code, test_cases, cpu_time_limit, memory_limit 
-         FROM exam.programming_questions 
-         WHERE question_id = $1`,
-        [question_id]
+        `SELECT 
+            q.structural_rules, 
+            q.weight_wb, 
+            q.weight_bb,
+            pq.boilerplate_code, 
+            pq.test_cases, 
+            pq.cpu_time_limit, 
+            pq.memory_limit,
+            sq.points
+         FROM exam.questions q
+         JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+         JOIN exam.submission_questions sq ON q.question_id = sq.question_id
+         WHERE q.question_id = $1 AND sq.submission_id = $2`,
+        [question_id, submissionId]
     );
     
     const qData = qRes.rows[0];
     if (!qData) return res.status(404).json({ error: "Question metadata not found" });
 
-    const testCases = qData.test_cases || [];
-    const boilerplate = qData.boilerplate_code;
-
-    // 2. THE STITCHING LOGIC
-    const finalSource = boilerplate 
-      ? boilerplate.replace("// {{STUDENT_CODE}}", code)
+    // 3. Stitching & Security
+    const finalSource = qData.boilerplate_code 
+      ? qData.boilerplate_code.replace("// {{STUDENT_CODE}}", code)
       : code;
 
-    // 3. EXIT CHECK (Block the "Nuclear Option")
     if (code.includes("exit(") || code.includes("exit;")) {
-      return res.json({
-        grade: 0,
-        details: [{
-          status: "Forbidden Command",
-          stderr: "The 'exit()' function is disabled for this exam. Please use 'return' to provide your answer."
-        }]
-      });
+      return res.status(403).json({ error: "Forbidden: 'exit()' is not allowed." });
     }
 
-    // 🚀 FIX 2: Now qData actually contains these values!
-    const result = await Judge0Service.runBatch(
+    // 4. Run Analysis
+    const structuralResult = await StructuralAnalysisService.analyze(code, qData.structural_rules || []);
+    const judge0Result = await Judge0Service.runBatch(
         finalSource, 
         "cpp", 
-        testCases,
-        qData.cpu_time_limit, // Now defined!
-        qData.memory_limit    // Now defined!
+        qData.test_cases || [],
+        qData.cpu_time_limit,
+        qData.memory_limit
     );
 
-    return res.json(result);
+    // 5. HYBRID MATH FIX
+    const totalPoints = Number(qData.points) || 10;
+    const weightWB = Number(qData.weight_wb) || 0.20;
+    const weightBB = Number(qData.weight_bb) || 0.80;
+
+    // 🚀 CRITICAL FIX: Handle the status object or string
+    const passedTests = judge0Result.details.filter((t: any) => {
+        const statusDesc = t.status?.description || t.status;
+        return statusDesc === 'Accepted' || t.status_id === 3;
+    }).length;
+
+    const totalTests = judge0Result.details.length || 1;
+    const bbPassRate = passedTests / totalTests;
+
+    // Calculation: (10 * 0.2 * 1.0) + (10 * 0.8 * 1.0) = 10.0
+    const earnedPoints = (totalPoints * weightWB * (structuralResult.recursion_detected ? 1 : 0)) + 
+                         (totalPoints * weightBB * bbPassRate);
+
+    // 6. Debugging Log for Terminal
+    console.log(`\n--- Internal Grading Debug (Q${question_id}) ---`);
+    judge0Result.details.forEach((test: any, index: number) => {
+        console.log(`Test ${index}: Status: ${test.status?.description || test.status} | Output: [${test.stdout || "EMPTY"}]`);
+        if (test.compile_output) console.log(`Compile Error: ${test.compile_output}`);
+    });
+    console.log(`Final Grade: ${earnedPoints.toFixed(2)} / ${totalPoints}`);
+
+    // 7. Return Results
+    return res.json({
+        structural_analysis: structuralResult,
+        test_results: judge0Result.details,
+        question_grade: Number(earnedPoints.toFixed(2)),
+        max_points: totalPoints,
+        weights: { wb: weightWB, bb: weightBB }
+    });
 
   } catch (err: any) {
     console.error("[Run Code Error]", err);
-    return res.status(500).json({ error: "Failed to execute code: " + err.message });
+    return res.status(500).json({ error: "Failed to execute: " + err.message });
   }
 }
 

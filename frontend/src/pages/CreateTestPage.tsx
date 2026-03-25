@@ -1,8 +1,16 @@
-// src/pages/CreateTestPage.tsx
 import React, { useEffect, useState } from 'react';
 import { fetchTopics, createTest, type Topic } from '../api/examApi';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from "../context/ThemeContext";
+
+interface Slot {
+  topic_id: number;
+  question_type: 'true_false' | 'multiple_choice' | 'programming';
+  difficulty: 'easy' | 'medium' | 'hard';
+  points: number;
+  weight_bb: number; // Black-box (Results)
+  weight_wb: number; // White-box (Logic)
+}
 
 export default function CreateTestPage() {
   const navigate = useNavigate();
@@ -11,412 +19,207 @@ export default function CreateTestPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form State
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    
-    // Structure
-    tf_count: 0,
-    mcq_count: 0,
-    prog_count: 0,
-    tf_points: 1,
-    mcq_points: 5,
-    prog_points: 10,
-    
-    // Difficulty
-    diff_easy: 0,
-    diff_medium: 0,
-    diff_hard: 0,
-    
-    // Selection
-    selectedTopics: [] as number[],
-
-    // 🕒 NEW: Scheduling & Strict Mode
     available_from: '',
     available_until: '',
     duration_minutes: 60,
-    strict_deadline: true // Default to Strict Mode
+    strict_deadline: true,
+    slots: [] as Slot[] // 🚀 THE NEW CORE: Array of Slots
   });
 
-  // Load topics
   useEffect(() => {
-    fetchTopics()
-      .then((data) => setTopics(data))
-      .catch((err) => console.error("Failed to load topics", err));
+    fetchTopics().then(setTopics).catch(console.error);
   }, []);
 
-  // 🧠 Auto-Calculate Duration when dates change
-  useEffect(() => {
-    if (formData.available_from && formData.available_until) {
-        const start = new Date(formData.available_from).getTime();
-        const end = new Date(formData.available_until).getTime();
-        const diffMins = Math.floor((end - start) / 1000 / 60);
-        
-        // Only update if positive and sensible
-        if (diffMins > 0) {
-            setFormData(prev => ({ ...prev, duration_minutes: diffMins }));
-        }
-    }
-  }, [formData.available_from, formData.available_until]);
+  const addSlot = () => {
+    if (topics.length === 0) return;
+    const newSlot: Slot = {
+      topic_id: topics[0].topic_id,
+      question_type: 'multiple_choice',
+      difficulty: 'easy',
+      points: 10,
+      weight_bb: 0.8,
+      weight_wb: 0.2
+    };
+    setFormData(prev => ({ ...prev, slots: [...prev.slots, newSlot] }));
+  };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
+  const updateSlot = (index: number, updates: Partial<Slot>) => {
+    const newSlots = [...formData.slots];
+    newSlots[index] = { ...newSlots[index], ...updates };
     
-    // Handle Checkbox specifically
-    if (type === 'checkbox') {
-        const checked = (e.target as HTMLInputElement).checked;
-        setFormData((prev) => ({ ...prev, [name]: checked }));
-        return;
-    }
+    // Auto-balance weights if one changes
+    if (updates.weight_bb !== undefined) newSlots[index].weight_wb = 1 - updates.weight_bb;
+    if (updates.weight_wb !== undefined) newSlots[index].weight_bb = 1 - updates.weight_wb;
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'number' ? (value === '' ? 0 : Number(value)) : value,
-    }));
+    setFormData(prev => ({ ...prev, slots: newSlots }));
   };
 
-  const handleTopicToggle = (topicId: number) => {
-    setFormData((prev) => {
-      const current = prev.selectedTopics;
-      if (current.includes(topicId)) {
-        return { ...prev, selectedTopics: current.filter((id) => id !== topicId) };
-      } else {
-        return { ...prev, selectedTopics: [...current, topicId] };
-      }
+  const removeSlot = (index: number) => {
+    setFormData(prev => ({ ...prev, slots: prev.slots.filter((_, i) => i !== index) }));
+  };
+
+  // Inside CreateTestPage.tsx
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (formData.slots.length === 0) {
+    setError("Please add at least one question slot.");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    // TypeScript should be happy now!
+    await createTest({
+      title: formData.title,
+      description: formData.description,
+      available_from: formData.available_from || null,
+      available_until: formData.available_until || null,
+      duration_minutes: formData.duration_minutes,
+      strict_deadline: formData.strict_deadline,
+      is_random: true,
+      slots: formData.slots // Ensure this matches the Slot[] type
     });
-  };
+    
+    alert("Test Blueprint Created!");
+    navigate('/teacher/dashboard');
+  } catch (err: any) {
+    setError(err.response?.data?.error || "Failed to create test blueprint.");
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const totalQuestions = formData.tf_count + formData.mcq_count + formData.prog_count;
-    const totalDiff = formData.diff_easy + formData.diff_medium + formData.diff_hard;
-
-    if (totalQuestions === 0) {
-      setError("Error: You must request at least one question.");
-      setLoading(false);
-      return;
-    }
-    if (totalQuestions !== totalDiff) {
-      setError(`Math Error: Total questions (${totalQuestions}) does not match difficulty sum (${totalDiff}).`);
-      setLoading(false);
-      return;
-    }
-    if (formData.selectedTopics.length === 0) {
-      setError("Please select at least one topic.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      await createTest({
-        title: formData.title,
-        description: formData.description,
-        
-        // Counts & Points
-        tf_count: formData.tf_count,
-        mcq_count: formData.mcq_count,
-        prog_count: formData.prog_count,
-        tf_points: formData.tf_points,
-        mcq_points: formData.mcq_points,
-        prog_points: formData.prog_points,
-        
-        // Time & Schedule
-        duration_minutes: formData.duration_minutes,
-        available_from: formData.available_from ? new Date(formData.available_from).toISOString() : null,
-        available_until: formData.available_until ? new Date(formData.available_until).toISOString() : null,
-        strict_deadline: formData.strict_deadline, // 👈 Sending the flag
-
-        is_random: true,
-        generation_config: {
-          topics: formData.selectedTopics,
-          difficulty_distribution: {
-            easy: formData.diff_easy,
-            medium: formData.diff_medium,
-            hard: formData.diff_hard,
-          },
-        },
-      });
-
-      alert("Test Created Successfully!");
-      navigate('/teacher/dashboard');
-    } catch (err: any) {
-      console.error(err);
-      setError(err.response?.data?.error || "Failed to create test.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Helper for total count
-  const totalQ = formData.tf_count + formData.mcq_count + formData.prog_count;
-  const totalDiff = formData.diff_easy + formData.diff_medium + formData.diff_hard;
-  const isMathCorrect = totalQ === totalDiff && totalQ > 0;
-
-  // Style helpers
-  const cardStyle = { backgroundColor: colors.card, padding: "25px", borderRadius: "12px", border: `1px solid ${colors.border}`, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" };
-  const cardHeader = { marginTop: 0, marginBottom: "20px", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px" };
+  // Styles
+  const cardStyle = { backgroundColor: colors.card, padding: "20px", borderRadius: "12px", border: `1px solid ${colors.border}`, marginBottom: "20px" };
+  const inputBase = { padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text };
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: colors.bg, color: colors.text, padding: "40px 20px" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
-            <div>
-                <h1 style={{ margin: 0, fontSize: "2rem" }}>Create Exam Blueprint</h1>
-                <p style={{ color: colors.textSec, marginTop: "5px" }}>Define the rules, scheduling, and structure.</p>
-            </div>
-            <button 
-                onClick={() => navigate('/teacher/dashboard')}
-                style={{ padding: "10px 20px", background: "transparent", border: `1px solid ${colors.border}`, color: colors.text, borderRadius: "6px", cursor: "pointer" }}
-            >
-                Cancel
-            </button>
-        </div>
+        <header style={{ marginBottom: "30px" }}>
+          <h1 style={{ margin: 0 }}>Create Exam Blueprint</h1>
+          <p style={{ color: colors.textSec }}>Design the "Slots" that define the student experience.</p>
+        </header>
 
-        {error && (
-          <div style={{ backgroundColor: "#fee2e2", color: "#b91c1c", padding: "15px", borderRadius: "8px", marginBottom: "30px", border: "1px solid #fecaca" }}>
-            <strong>Error:</strong> {error}
-          </div>
-        )}
+        {error && <div style={{ color: 'red', marginBottom: '20px' }}>{error}</div>}
 
-        <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "30px" }}>
+        <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "350px 1fr", gap: "30px" }}>
           
-          {/* LEFT COLUMN: Basics & Scheduling */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
-            
-            {/* 1. Exam Details */}
+          {/* LEFT: Meta & Scheduling */}
+          <section>
             <div style={cardStyle}>
-              <h3 style={cardHeader}>1. Exam Details</h3>
-              
-              <div style={{ marginBottom: "15px" }}>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "0.9rem" }}>Title</label>
-                <input
-                  style={{ width: "100%", padding: "10px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
-                  type="text"
-                  name="title"
-                  placeholder="e.g. Midterm Exam 2024"
-                  value={formData.title}
-                  onChange={handleChange}
-                  required
-                />
+              <h3 style={{ marginTop: 0 }}>General Settings</h3>
+              <input 
+                placeholder="Exam Title" 
+                style={{ ...inputBase, width: "100%", marginBottom: "15px" }} 
+                value={formData.title} 
+                onChange={e => setFormData({...formData, title: e.target.value})}
+                required
+              />
+              <textarea 
+                placeholder="Instructions..." 
+                style={{ ...inputBase, width: "100%", minHeight: "100px" }}
+                value={formData.description}
+                onChange={e => setFormData({...formData, description: e.target.value})}
+              />
+            </div>
+
+            <div style={cardStyle}>
+              <h3>Timing</h3>
+              <div style={{ marginBottom: "10px" }}>
+                <label>Opens:</label>
+                <input type="datetime-local" style={{ ...inputBase, width: "100%" }} onChange={e => setFormData({...formData, available_from: e.target.value})}/>
               </div>
-              
+              <div style={{ marginBottom: "10px" }}>
+                <label>Closes:</label>
+                <input type="datetime-local" style={{ ...inputBase, width: "100%" }} onChange={e => setFormData({...formData, available_until: e.target.value})}/>
+              </div>
               <div>
-                <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "0.9rem" }}>Description</label>
-                <textarea
-                  style={{ width: "100%", padding: "10px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text, minHeight: "80px" }}
-                  name="description"
-                  placeholder="Instructions for students..."
-                  value={formData.description}
-                  onChange={handleChange}
-                />
+                <label>Duration (Mins):</label>
+                <input type="number" value={formData.duration_minutes} style={{ ...inputBase, width: "100%" }} onChange={e => setFormData({...formData, duration_minutes: Number(e.target.value)})}/>
               </div>
             </div>
+          </section>
 
-            {/* 2. Schedule & Timing (NEW SECTION) */}
+          {/* RIGHT: THE SLOT MANAGER */}
+          <section>
             <div style={cardStyle}>
-              <h3 style={cardHeader}>2. Schedule & Timing</h3>
-              
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
-                <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", fontWeight: "bold" }}>📅 Opens At</label>
-                    <input 
-                        type="datetime-local" 
-                        name="available_from"
-                        value={formData.available_from}
-                        onChange={handleChange}
-                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
-                    />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <h3 style={{ margin: 0 }}>Question Slots</h3>
+                <span style={{ fontWeight: "bold", color: colors.textSec }}>{formData.slots.length} Questions Total</span>
+              </div>
+
+              {formData.slots.map((slot, index) => (
+                <div key={index} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 100px 2fr auto", gap: "10px", alignItems: "center", padding: "15px", border: `1px solid ${colors.border}`, borderRadius: "8px", marginBottom: "10px", backgroundColor: colors.bg }}>
+                  
+                  {/* Topic */}
+                  <select style={inputBase} value={slot.topic_id} onChange={e => updateSlot(index, { topic_id: Number(e.target.value) })}>
+                    {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
+                  </select>
+
+                  {/* Type */}
+                  <select style={inputBase} value={slot.question_type} onChange={e => updateSlot(index, { question_type: e.target.value as any })}>
+                    <option value="multiple_choice">MCQ</option>
+                    <option value="true_false">T/F</option>
+                    <option value="programming">Code</option>
+                  </select>
+
+                  {/* Difficulty */}
+                  <select style={inputBase} value={slot.difficulty} onChange={e => updateSlot(index, { difficulty: e.target.value as any })}>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+
+                  {/* Points */}
+                  <input type="number" style={inputBase} value={slot.points} onChange={e => updateSlot(index, { points: Number(e.target.value) })} />
+
+                  {/* Hybrid Weights (Only show for Programming) */}
+                  <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    {slot.question_type === 'programming' ? (
+                      <>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Result: {Math.round(slot.weight_bb * 100)}%</span>
+                          <span>Logic: {Math.round(slot.weight_wb * 100)}%</span>
+                        </div>
+                        <input 
+                           type="range" min="0" max="1" step="0.1" 
+                           value={slot.weight_bb} 
+                           onChange={e => updateSlot(index, { weight_bb: parseFloat(e.target.value) })}
+                        />
+                      </>
+                    ) : <span style={{ color: colors.textSec, fontStyle: "italic" }}>Auto-graded (100% Result)</span>}
+                  </div>
+
+                  <button type="button" onClick={() => removeSlot(index)} style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: "1.2rem" }}>×</button>
                 </div>
-                <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", fontWeight: "bold" }}>📅 Closes At</label>
-                    <input 
-                        type="datetime-local" 
-                        name="available_until"
-                        value={formData.available_until}
-                        onChange={handleChange}
-                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
-                    />
-                </div>
-              </div>
+              ))}
 
-              <div style={{ marginBottom: "20px" }}>
-                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold" }}>⏱ Duration (Minutes)</label>
-                  <input 
-                      type="number" 
-                      name="duration_minutes"
-                      value={formData.duration_minutes}
-                      onChange={handleChange}
-                      style={{ width: "120px", padding: "8px", borderRadius: "6px", border: `1px solid ${colors.border}`, backgroundColor: colors.inputBg, color: colors.text }}
-                  />
-                  <span style={{ fontSize: "0.85rem", color: colors.textSec, marginLeft: "10px" }}>Student timer</span>
-              </div>
-
-              {/* 👇 THE STRICT MODE CHECKBOX */}
-              <div style={{ padding: "15px", backgroundColor: colors.bg, borderRadius: "8px", border: `1px solid ${colors.border}` }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: "bold" }}>
-                      <input 
-                          type="checkbox" 
-                          name="strict_deadline"
-                          checked={formData.strict_deadline} 
-                          onChange={handleChange} 
-                          style={{ width: "20px", height: "20px", cursor: "pointer" }}
-                      />
-                      Enforce Hard Deadline (Strict Mode)
-                  </label>
-                  <p style={{ margin: "5px 0 0 34px", fontSize: "0.85rem", color: colors.textSec, lineHeight: "1.4" }}>
-                      {formData.strict_deadline 
-                          ? <span style={{ color: "#b91c1c" }}>🔴 <strong>STRICT:</strong> Test auto-submits at the 'Closes At' time, even if the student started late.</span> 
-                          : <span style={{ color: "#15803d" }}>🟢 <strong>FLEXIBLE:</strong> Student gets full duration (e.g., 60 mins) regardless of start time.</span>}
-                  </p>
-              </div>
-
+              <button 
+                type="button" 
+                onClick={addSlot}
+                style={{ width: "100%", padding: "12px", border: `2px dashed ${colors.border}`, borderRadius: "8px", cursor: "pointer", background: "transparent", color: colors.text, fontWeight: "bold" }}
+              >
+                + Add New Random Slot
+              </button>
             </div>
 
-            {/* 3. Topics */}
-            <div style={cardStyle}>
-              <h3 style={cardHeader}>3. Topics Covered</h3>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {topics.map(t => {
-                  const isSelected = formData.selectedTopics.includes(t.topic_id);
-                  return (
-                    <div 
-                        key={t.topic_id}
-                        onClick={() => handleTopicToggle(t.topic_id)}
-                        style={{ 
-                            padding: '8px 16px', 
-                            borderRadius: '20px', 
-                            cursor: 'pointer', 
-                            border: isSelected ? '1px solid #2563eb' : `1px solid ${colors.border}`, 
-                            backgroundColor: isSelected ? '#eff6ff' : colors.bg,
-                            color: isSelected ? '#1d4ed8' : colors.text,
-                            fontWeight: isSelected ? 'bold' : 'normal',
-                            transition: 'all 0.2s',
-                            userSelect: 'none'
-                        }}
-                    >
-                        {isSelected && <span>✓ </span>}
-                        {t.name}
-                    </div>
-                  );
-                })}
-                {topics.length === 0 && <p style={{ color: colors.textSec }}>No topics found.</p>}
-              </div>
-            </div>
-
-          </div>
-
-          {/* RIGHT COLUMN: Counts & Difficulty */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
-            
-            {/* 4. Structure */}
-            <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px", marginBottom: "20px" }}>
-                  <h3 style={{ margin: 0 }}>4. Structure</h3>
-                  <span style={{ fontSize: "0.85rem", padding: "4px 8px", backgroundColor: "#f3f4f6", borderRadius: "4px", color: "#374151" }}>Total Qs: <strong>{totalQ}</strong></span>
-              </div>
-
-              {/* Grid for Inputs */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "15px", alignItems: "end" }}>
-                 <label style={{ fontSize: "0.8rem", color: colors.textSec, marginBottom: "-10px" }}>Type</label>
-                 <label style={{ fontSize: "0.8rem", color: colors.textSec, marginBottom: "-10px" }}>Count</label>
-                 <label style={{ fontSize: "0.8rem", color: colors.textSec, marginBottom: "-10px" }}>Points Each</label>
-
-                 {/* Row 1: T/F */}
-                 <div style={{ fontWeight: "bold" }}>True/False</div>
-                 <input type="number" name="tf_count" value={formData.tf_count} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                 <input type="number" name="tf_points" value={formData.tf_points} onChange={handleChange} min="0" style={inputStyle(colors)} />
-
-                 {/* Row 2: MCQ */}
-                 <div style={{ fontWeight: "bold" }}>Multiple Choice</div>
-                 <input type="number" name="mcq_count" value={formData.mcq_count} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                 <input type="number" name="mcq_points" value={formData.mcq_points} onChange={handleChange} min="0" style={inputStyle(colors)} />
-
-                 {/* Row 3: Code */}
-                 <div style={{ fontWeight: "bold" }}>Programming</div>
-                 <input type="number" name="prog_count" value={formData.prog_count} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                 <input type="number" name="prog_points" value={formData.prog_points} onChange={handleChange} min="0" style={inputStyle(colors)} />
-              </div>
-            </div>
-
-            {/* 5. Difficulty */}
-            <div style={cardStyle}>
-               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${colors.border}`, paddingBottom: "10px", marginBottom: "20px" }}>
-                  <h3 style={{ margin: 0 }}>5. Difficulty Mix</h3>
-                  <span style={{ 
-                      fontSize: "0.85rem", 
-                      padding: "4px 8px", 
-                      backgroundColor: isMathCorrect ? "#d1fae5" : "#fee2e2", 
-                      borderRadius: "4px", 
-                      color: isMathCorrect ? "#065f46" : "#b91c1c",
-                      transition: "background-color 0.3s"
-                  }}>
-                      Sum: <strong>{totalDiff}</strong> / {totalQ}
-                  </span>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "15px" }}>
-                <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", color: "#16a34a", fontWeight: "bold" }}>Easy</label>
-                    <input type="number" name="diff_easy" value={formData.diff_easy} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                </div>
-                <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", color: "#ea580c", fontWeight: "bold" }}>Medium</label>
-                    <input type="number" name="diff_medium" value={formData.diff_medium} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                </div>
-                <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "0.9rem", color: "#dc2626", fontWeight: "bold" }}>Hard</label>
-                    <input type="number" name="diff_hard" value={formData.diff_hard} onChange={handleChange} min="0" style={inputStyle(colors)} />
-                </div>
-              </div>
-              
-              {!isMathCorrect && totalQ > 0 && (
-                  <p style={{ color: "#ef4444", fontSize: "0.85rem", marginTop: "15px" }}>
-                    ⚠️ The difficulty counts must sum up to exactly {totalQ}.
-                  </p>
-              )}
-            </div>
-
-            {/* Submit Button */}
             <button 
-                type="submit" 
-                disabled={loading || !isMathCorrect} 
-                style={{ 
-                    padding: "18px", 
-                    fontSize: "1.1rem", 
-                    backgroundColor: isMathCorrect ? "#2563eb" : "#94a3b8", 
-                    color: "#fff", 
-                    border: "none", 
-                    borderRadius: "8px", 
-                    cursor: isMathCorrect ? "pointer" : "not-allowed", 
-                    fontWeight: "bold",
-                    transition: "background-color 0.2s",
-                    boxShadow: "0 4px 6px rgba(37, 99, 235, 0.2)"
-                }}
+              type="submit" 
+              disabled={loading || formData.slots.length === 0}
+              style={{ width: "100%", padding: "20px", background: "#2563eb", color: "#fff", border: "none", borderRadius: "12px", fontSize: "1.2rem", fontWeight: "bold", cursor: "pointer" }}
             >
-                {loading ? 'Creating Blueprint...' : '🚀 Create Exam'}
+              {loading ? "Saving Blueprint..." : "🚀 Create Randomized Exam"}
             </button>
+          </section>
 
-          </div>
         </form>
       </div>
     </div>
   );
 }
-
-// Helper Style for Inputs
-const inputStyle = (colors: any) => ({
-    width: "100%", 
-    padding: "10px", 
-    borderRadius: "6px", 
-    border: `1px solid ${colors.border}`, 
-    backgroundColor: colors.inputBg, 
-    color: colors.text,
-    textAlign: "center" as const
-});

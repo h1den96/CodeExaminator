@@ -17,39 +17,30 @@ export type CreateQuestionDto = {
   test_cases?: any[]; // For Prog
 };
 
-// Helper type for Test Input
+export type SlotDto = {
+  topic_id: number;
+  question_type: 'mcq' | 'true_false' | 'programming';
+  difficulty: 'easy' | 'medium' | 'hard';
+  points: number;
+  weight_bb: number; // Black-box (Results)
+  weight_wb: number; // White-box (Logic/AST)
+};
+
 export type CreateTestDto = {
   title: string;
   description?: string;
+  created_by: number;
   
-  // Counts (The "Law")
-  tf_count: number;
-  mcq_count: number;
-  prog_count: number;
-
-  // Scoring
-  tf_points: number;
-  mcq_points: number;
-  prog_points: number;
-  
-  // Scheduling & Time (NEW)
-  duration_minutes?: number;
+  // Time & Scheduling
+  duration_minutes: number;
   available_from?: string | null;
   available_until?: string | null;
-  strict_deadline?: boolean;
+  strict_deadline: boolean;
 
-  // Config (The "Filter")
+  // The NEW Core
   is_random: boolean;
-  generation_config: {
-    topic_ids: number[];
-    difficulty_distribution?: {
-      easy: number;
-      medium: number;
-      hard: number;
-    };
-  };
+  slots: SlotDto[]; // 🚀 The Array of requirements
   
-  created_by: number;
   is_published?: boolean;
 };
 
@@ -135,71 +126,81 @@ export class AdminService {
    * Saves metadata, scheduling info, and generation config.
    */
   static async createTest(dto: CreateTestDto) {
-      const client = await examDb.connect();
-      try {
-        await client.query("BEGIN");
+    const client = await examDb.connect();
+    try {
+      await client.query("BEGIN"); // 🛡️ Start Transaction
 
-        // 1. Validation: Ensure difficulty buckets sum up to the total counts
-        if (dto.generation_config?.difficulty_distribution) {
-            const { easy, medium, hard } = dto.generation_config.difficulty_distribution;
-            const totalRequestedDiff = (easy || 0) + (medium || 0) + (hard || 0);
-            const totalQuestions = dto.tf_count + dto.mcq_count + dto.prog_count;
-            
-            if (totalRequestedDiff !== totalQuestions) {
-              throw new Error(
-                `Math Error: Difficulty counts (${totalRequestedDiff}) do not match Total Questions (${totalQuestions})`
-              );
-            }
-        }
-    
-        // 2. Insert Test Record
-        // Merges Blueprint info (counts/points) with Scheduling info (dates/duration)
-        const sql = `
-          INSERT INTO exam.tests 
-          (
-            title, description, created_by,
-            tf_count, mcq_count, prog_count,
-            tf_points, mcq_points, prog_points,
-            is_random, generation_config,
-            duration_minutes, available_from, available_until, strict_deadline, 
-            is_published -- 👈 This column
-          )
-          VALUES 
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) -- 👈 Change 'false' to '$16'
-          RETURNING test_id
+      // 1. Insert Test Record
+      // Note: We removed the tf_count, mcq_count, etc. columns 
+      // as they are now derived from the slots.
+      const testSql = `
+        INSERT INTO exam.tests 
+        (
+          title, description, created_by,
+          is_random, duration_minutes, 
+          available_from, available_until, strict_deadline, 
+          is_published
+        )
+        VALUES 
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING test_id
       `;
-    
-        const values = [
-            dto.title, 
-            dto.description, 
-            dto.created_by,
-            dto.tf_count, 
-            dto.mcq_count, 
-            dto.prog_count,
-            dto.tf_points, 
-            dto.mcq_points, 
-            dto.prog_points,
-            dto.is_random, 
-            JSON.stringify(dto.generation_config),
-            // Time & Schedule Fields
-            dto.duration_minutes || 60,
-            dto.available_from || null,
-            dto.available_until || null,
-            dto.strict_deadline !== undefined ? dto.strict_deadline : true, // Default True
-            dto.is_published ?? true // Default to false if not provided
-        ];
-    
-        const res = await client.query(sql, values);
-        
-        await client.query("COMMIT");
-        return res.rows[0];
 
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
+      const testValues = [
+        dto.title, 
+        dto.description, 
+        dto.created_by,
+        dto.is_random, 
+        dto.duration_minutes || 60,
+        dto.available_from || null,
+        dto.available_until || null,
+        dto.strict_deadline,
+        dto.is_published ?? true
+      ];
+
+      const testRes = await client.query(testSql, testValues);
+      const testId = testRes.rows[0].test_id;
+
+      // 2. Insert Slots
+      // We iterate through the slots array and link them to the testId
+      if (dto.slots && dto.slots.length > 0) {
+        const slotSql = `
+          INSERT INTO exam.test_slots 
+          (test_id, slot_order, topic_id, question_type, difficulty, points, weight_bb, weight_wb)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `;
+
+        for (let i = 0; i < dto.slots.length; i++) {
+          const s = dto.slots[i];
+          
+          // Map 'mcq' from frontend to 'multiple_choice' if your DB constraint requires it
+          const dbType = s.question_type === 'mcq' ? 'multiple_choice' : s.question_type;
+
+          await client.query(slotSql, [
+            testId,
+            i + 1, // slot_order
+            s.topic_id,
+            dbType,
+            s.difficulty,
+            s.points,
+            s.weight_bb,
+            s.weight_wb
+          ]);
+        }
+      } else {
+        throw new Error("Cannot create a test with zero slots.");
       }
+
+      await client.query("COMMIT"); // ✅ Success!
+      return { test_id: testId, message: "Exam blueprint and slots created." };
+
+    } catch (err) {
+      await client.query("ROLLBACK"); // ❌ Failure: Undo everything
+      console.error("AdminService.createTest Error:", err);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async getAllTopics() {
