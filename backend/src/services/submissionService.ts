@@ -5,28 +5,27 @@ import { GradingService } from "./gradingService";
 import { TestService } from "./testService";
 import type { TestTemplateRow, SubmitAnswerDto } from "../types/examTypes";
 import { StructuralAnalysisService } from "./structuralAnalysisService";
+import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
 export class SubmissionService {
 
-    private static normalizeOutput(str: string): string {
+    private static normalizeOutput(str: string | null | undefined): string {
         if (!str) return "";
         return str
-            .trim()
             .toLowerCase()
             .replace(/\r\n/g, "\n")
-            .replace(/\s+/g, " ");
+            .replace(/[ \t]+/g, " ")
+            .split("\n")
+            .map(line => line.trim())
+            .filter(line => line !== "")
+            .join("\n")
+            .trim();
     }
 
-
-    // Inside your SubmissionService class in SubmissionService.ts
-
-/**
- * Fetches all published tests that have not expired yet.
- */
-static async getAvailableTestsForStudent(userId: number, db: Pool) {
-    const query = `
+    static async getAvailableTestsForStudent(userId: number, db: Pool) {
+        const query = `
       SELECT 
         test_id, 
         title, 
@@ -39,12 +38,12 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
         AND (available_until IS NULL OR available_until > NOW())
       ORDER BY created_at DESC
     `;
-    const res = await db.query(query);
-    return res.rows;
-  }
+        const res = await db.query(query);
+        return res.rows;
+    }
 
-  static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
-    const query = `
+    static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
+        const query = `
       SELECT 
         s.submission_id,
         s.test_id,
@@ -72,9 +71,9 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
       WHERE s.submission_id = $1 AND s.student_id = $2
     `;
 
-    const res = await db.query(query, [submissionId, studentId]);
-    return res.rows[0];
-}
+        const res = await db.query(query, [submissionId, studentId]);
+        return res.rows[0];
+    }
 
     private static async runJudge0Assessment(
         studentCode: string,
@@ -83,8 +82,7 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
         limits: { cpu?: number; memory?: number } = {}
     ): Promise<{ scoreWeight: number; feedback: string; details: any[] }> {
 
-        console.log(`Running Black-Box assessment on ${testCases.length} test cases...`);
-
+        // The "Code Sandwich": Injecting student logic into the generated harness
         const finalSource = boilerplate
             ? boilerplate.replace("// {{STUDENT_CODE}}", studentCode)
             : studentCode;
@@ -92,52 +90,46 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
         const results: any[] = [];
         let passedCount = 0;
 
-        try {
-            for (const tCase of testCases) {
-                const payload = {
-                    source_code: Buffer.from(finalSource).toString("base64"),
-                    language_id: 54, 
-                    stdin: Buffer.from(tCase.input || "").toString("base64"),
-                    // 🚀 FIX 1: Change tCase.output to tCase.expected_output
-                    expected_output: Buffer.from((tCase.expected_output || "").trim()).toString("base64"),
-                    cpu_time_limit: limits.cpu || 2.0,
-                    memory_limit: limits.memory || 128000,
-};
-
-                const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
-                const { status, stdout, stderr, compile_output, time, memory } = res.data;
-
-                const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
-                
-                // Using Judge0 status 3 (Accepted) for correctness
-                const isCorrect = status.id === 3; 
-
-                if (isCorrect) passedCount++;
-
-                results.push({
-                    input: tCase.input,
-                    // 🚀 FIX 2: Change tCase.output to tCase.expected_output
-                    expected: tCase.expected_output, 
-                    actual: actualOutput,
-                    status: status.description,
-                    status_id: status.id,
-                    time,
-                    memory,
-                    error: stderr ? Buffer.from(stderr, "base64").toString() : (compile_output ? Buffer.from(compile_output, "base64").toString() : null)
-                });
-            }
-
-            const total = testCases.length || 1;
-            return {
-                scoreWeight: passedCount / total,
-                feedback: `Passed ${passedCount}/${total} test cases.`,
-                details: results
+        for (const tCase of testCases) {
+            const payload = {
+                source_code: Buffer.from(finalSource).toString("base64"),
+                language_id: 54, // C++
+                stdin: Buffer.from(tCase.input || "").toString("base64"),
+                expected_output: Buffer.from(tCase.expected_output || "").toString("base64"),
+                cpu_time_limit: limits.cpu || 2.0,
+                memory_limit: limits.memory || 128000,
             };
 
-        } catch (error: any) {
-            console.error("Judge0 Error:", error.message);
-            return { scoreWeight: 0, feedback: "Judge0 Service Unavailable", details: [] };
+            const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
+            const { status, stdout, stderr, compile_output } = res.data;
+
+            const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
+
+            // THESIS UPGRADE: Using the Robust Normalizer
+            const isCorrect = status.id === 3 &&
+                this.normalizeOutput(actualOutput) === this.normalizeOutput(tCase.expected_output);
+
+            if (isCorrect) passedCount++;
+
+            results.push({
+                status: status.description,
+                is_public: !!tCase.is_public,
+                input: tCase.is_public ? tCase.input : "Hidden Case",
+                expected: tCase.is_public ? tCase.expected_output : "REDACTED",
+                actual: tCase.is_public ? actualOutput : "REDACTED",
+                passed: isCorrect,
+                error: (stderr || compile_output) ? Buffer.from(stderr || compile_output, "base64").toString() : null
+            });
         }
+
+        const total = testCases.length || 1;
+        const scoreWeight = passedCount / total;
+
+        return {
+            scoreWeight,
+            feedback: `Passed ${passedCount}/${total} functional tests (${(scoreWeight * 100).toFixed(0)}%).`,
+            details: results
+        };
     }
 
     static async startTestForStudent(testId: number, studentId: string, db: Pool) {
@@ -177,26 +169,30 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
             const submissionId = sRes.rows[0].submission_id;
 
             const drawQuery = `
-              INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
-              SELECT 
-                $1 as submission_id,
-                q_pool.question_id,
-                ts.slot_order,
-                ts.points
-              FROM exam.test_slots ts
-              CROSS JOIN LATERAL (
-                SELECT q.question_id
-                FROM exam.questions q
-                JOIN exam.question_topics qt ON q.question_id = qt.question_id
-                WHERE q.difficulty = ts.difficulty
-                AND qt.topic_id = ts.topic_id
-                AND q.question_type = ts.question_type
-                ORDER BY RANDOM()
-                LIMIT 1
-              ) AS q_pool
-              WHERE ts.test_id = $2
-              ORDER BY ts.slot_order ASC;
-            `;
+  INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+  SELECT 
+    $1 as submission_id,
+    q_pool.question_id,
+    ts.slot_order,
+    ts.points
+  FROM exam.test_slots ts
+  CROSS JOIN LATERAL (
+    SELECT q.question_id
+    FROM exam.questions q
+    -- 🏗️ JOIN to programming_questions to check the category/shape
+    LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+    JOIN exam.question_topics qt ON q.question_id = qt.question_id
+    WHERE q.difficulty = ts.difficulty
+    AND qt.topic_id = ts.topic_id
+    AND q.question_type = ts.question_type
+    -- 🏗️ Ensure the question matches the category defined for the slot
+    AND (q.question_type != 'programming' OR pq.category = ts.category)
+    ORDER BY RANDOM()
+    LIMIT 1
+  ) AS q_pool
+  WHERE ts.test_id = $2
+  ORDER BY ts.slot_order ASC;
+`;
 
             const drawResult = await client.query(drawQuery, [submissionId, t.test_id]);
             if (drawResult.rowCount === 0) throw new Error("No slots defined or no matching questions found.");
@@ -220,12 +216,12 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
     static async saveSingleAnswer(submissionId: number, studentId: string, dto: SubmitAnswerDto, db: Pool) {
         const subCheck = await db.query(`SELECT submission_id FROM exam.submissions WHERE submission_id = $1 AND student_id = $2 AND status = 'in_progress'`, [submissionId, studentId]);
         if (subCheck.rowCount === 0) throw new Error("Submission not found or closed");
-        
+
         const sqRes = await db.query(`SELECT submission_question_id FROM exam.submission_questions WHERE submission_id = $1 AND question_id = $2`, [submissionId, dto.question_id]);
         if (sqRes.rowCount === 0) throw new Error("Question not found in this test");
-        
+
         const sqId = sqRes.rows[0].submission_question_id;
-        
+
         await db.query(`
             INSERT INTO exam.student_answers (submission_question_id, mcq_option_ids, tf_answer, code_answer, answered_at)
             VALUES ($1, $2, $3, $4, NOW())
@@ -240,12 +236,18 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
     }
 
     static async submitAndGrade(submissionId: number, studentId: string, db: Pool) {
+        // 1. Fetch all necessary data including the new Category and Signature metadata
         const dataQuery = `
           SELECT 
             sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
             q.question_id, q.question_type, sq.points as question_points,
             q.structural_rules, q.weight_wb, q.weight_bb,
-            pq.test_cases, pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
+            pq.test_cases, 
+            pq.category,            -- New Column
+            pq.function_signature,   -- New Column
+            pq.boilerplate_code, 
+            pq.cpu_time_limit, 
+            pq.memory_limit,
             tf.correct_answer as tf_correct,
             t.enable_negative_grading,
             (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
@@ -261,7 +263,10 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
         `;
 
         const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId, studentId]);
-        if (questionsToGrade.length === 0) throw new Error("Already submitted or not found.");
+
+        if (questionsToGrade.length === 0) {
+            throw new Error("Submission not found, already submitted, or no questions to grade.");
+        }
 
         const enable_negative_grading = questionsToGrade[0].enable_negative_grading;
         const gradingResults: { answerId: number | null; score: number; evalResult?: any }[] = [];
@@ -271,36 +276,62 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
             let earnedPoints = 0;
             let evalResult: any = null;
 
+            // Only grade if the student actually provided an answer
             if (ans.answer_id) {
                 if (ans.question_type === 'mcq') {
-                    earnedPoints = GradingService.calculateMCQ(Number(ans.question_points), ans.mcq_options_data || [], ans.mcq_option_ids || [], enable_negative_grading);
-                } 
+                    earnedPoints = GradingService.calculateMCQ(
+                        Number(ans.question_points),
+                        ans.mcq_options_data || [],
+                        ans.mcq_option_ids || [],
+                        enable_negative_grading
+                    );
+                }
                 else if (ans.question_type === 'true_false') {
-                    earnedPoints = GradingService.calculateTrueFalse(Number(ans.question_points), ans.tf_answer, ans.tf_correct);
-                } 
+                    earnedPoints = GradingService.calculateTrueFalse(
+                        Number(ans.question_points),
+                        ans.tf_answer,
+                        ans.tf_correct
+                    );
+                }
                 else if (ans.question_type === 'programming' && ans.code_answer) {
-                    // 🏗️ 1. White-Box Analysis
-                    const wbResult = await StructuralAnalysisService.analyze(ans.code_answer, ans.structural_rules || []);
-                    
-                    // 🏗️ 2. Black-Box Analysis
+                    // --- HYBRID GRADING FLOW ---
+
+                    // A. Determine the Test Harness (Boilerplate)
+                    // If the category is CUSTOM, we use the teacher's manual boilerplate.
+                    // Otherwise, the Factory generates it dynamically based on the signature.
+                    const finalHarness = (ans.category === 'CUSTOM' && ans.boilerplate_code)
+                        ? ans.boilerplate_code
+                        : BoilerplateFactory.createFullHarness(ans.category, ans.function_signature);
+
+                    // B. White-Box: Structural Analysis (Checks "How" it was solved)
+                    // We only analyze the raw code the student wrote.
+                    const wbResult = await StructuralAnalysisService.analyze(
+                        ans.code_answer,
+                        ans.structural_rules || []
+                    );
+
+                    // C. Black-Box: Functional Analysis (Checks "If" it works)
+                    // We run the "Sandwich" (Harness + Student Code) in Judge0.
                     const bbResult = await this.runJudge0Assessment(
                         ans.code_answer,
                         ans.test_cases || [],
-                        ans.boilerplate_code,
+                        finalHarness,
                         { cpu: Number(ans.cpu_time_limit), memory: Number(ans.memory_limit) }
                     );
 
-                    // 🏗️ 3. Weighted Calculation
+                    // D. Weighted Scoring Calculation
                     const points = Number(ans.question_points);
-                    const wWB = Number(ans.weight_wb) || 0.2;
-                    const wBB = Number(ans.weight_bb) || 0.8;
+                    const wWB = Number(ans.weight_wb) || 0.2; // Default 20%
+                    const wBB = Number(ans.weight_bb) || 0.8; // Default 80%
 
-                    earnedPoints = (points * wWB * wbResult.score) + (points * wBB * bbResult.scoreWeight);
+                    // Calculation: (Possible Points * WB Weight * WB Score %) + (Possible Points * BB Weight * BB Score %)
+                    earnedPoints = (points * wWB * (wbResult.score / 100)) + (points * wBB * bbResult.scoreWeight);
 
                     evalResult = {
                         wb: wbResult.details,
                         bb: bbResult.details,
-                        weights: { wb: wWB, bb: wBB }
+                        weights: { wb: wWB, bb: wBB },
+                        feedback: bbResult.feedback
                     };
                 }
             }
@@ -309,23 +340,33 @@ static async getAvailableTestsForStudent(userId: number, db: Pool) {
             totalScore += earnedPoints;
         }
 
+        // 2. Persist the results to the database in a single transaction
         const client = await db.connect();
         try {
             await client.query("BEGIN");
+
             for (const res of gradingResults) {
                 if (res.answerId) {
                     await client.query(
-                        `UPDATE exam.student_answers SET question_grade = $1, eval_result = $2, is_submitted = true WHERE answer_id = $3`,
+                        `UPDATE exam.student_answers 
+                         SET question_grade = $1, eval_result = $2, is_submitted = true 
+                         WHERE answer_id = $3`,
                         [res.score, JSON.stringify(res.evalResult), res.answerId]
                     );
                 }
             }
+
+            // Finalize the submission status
             await client.query(
-                `UPDATE exam.submissions SET status = 'submitted', submitted_at = now(), total_grade = $2 WHERE submission_id = $1`,
+                `UPDATE exam.submissions 
+                 SET status = 'submitted', submitted_at = NOW(), total_grade = $2 
+                 WHERE submission_id = $1`,
                 [submissionId, totalScore]
             );
+
             await client.query("COMMIT");
             return { submission_id: submissionId, status: 'submitted', final_score: totalScore };
+
         } catch (e) {
             await client.query("ROLLBACK");
             throw e;
