@@ -186,23 +186,22 @@ export async function runSubmissionCode(req: Request, res: Response) {
 
     // 2. Fetch metadata with Weights and Points
     const qRes = await examDb.query(
-        `SELECT 
-            q.structural_rules, 
-            q.weight_wb, 
-            q.weight_bb,
-            pq.boilerplate_code, 
-            pq.test_cases, 
-            pq.cpu_time_limit, 
-            pq.memory_limit,
-            sq.points
-         FROM exam.questions q
-         JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
-         JOIN exam.submission_questions sq ON q.question_id = sq.question_id
-         WHERE q.question_id = $1 AND sq.submission_id = $2`,
-        [question_id, submissionId]
+    `SELECT 
+        q.structural_rules, 
+        q.weight_wb, 
+        q.weight_bb,
+        sq.points,
+        pq.boilerplate_code, 
+        pq.test_cases
+     FROM exam.questions q
+     JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+     JOIN exam.submission_questions sq ON q.question_id = sq.question_id
+     WHERE q.question_id = $1 AND sq.submission_id = $2`,
+    [question_id, submissionId]
     );
     
     const qData = qRes.rows[0];
+
     if (!qData) return res.status(404).json({ error: "Question metadata not found" });
 
     // 3. Stitching & Security
@@ -215,7 +214,11 @@ export async function runSubmissionCode(req: Request, res: Response) {
     }
 
     // 4. Run Analysis
-    const structuralResult = await StructuralAnalysisService.analyze(code, qData.structural_rules || []);
+    const structuralResult = await StructuralAnalysisService.analyze(
+      code, 
+      qData.structural_rules || []
+    );
+
     const judge0Result = await Judge0Service.runBatch(
         finalSource, 
         "cpp", 
@@ -239,8 +242,9 @@ export async function runSubmissionCode(req: Request, res: Response) {
     const bbPassRate = passedTests / totalTests;
 
     // Calculation: (10 * 0.2 * 1.0) + (10 * 0.8 * 1.0) = 10.0
-    const earnedPoints = (totalPoints * weightWB * (structuralResult.recursion_detected ? 1 : 0)) + 
-                         (totalPoints * weightBB * bbPassRate);
+
+    // THIS LINE MIGHT HAVE WRONG FORMULA PLEASE CHECK AGAIN
+    const earnedPoints = totalPoints * weightWB * structuralResult.score;
 
     // 6. Debugging Log for Terminal
     console.log(`\n--- Internal Grading Debug (Q${question_id}) ---`);

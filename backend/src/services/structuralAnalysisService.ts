@@ -1,80 +1,87 @@
+// 1. Fixed Import: tree-sitter often requires this specific import style in TS
 import Parser from 'tree-sitter';
-import CPP from 'tree-sitter-cpp';
+// @ts-ignore - tree-sitter-cpp often lacks types, this is fine
+import Cpp from 'tree-sitter-cpp';
+
+export interface AnalysisRule {
+    type: 'REQUIRE' | 'FORBID';
+    target: string;
+    description: string;
+    weight: number;
+    name?: string; // Added to handle forbidden function names like 'pow'
+}
 
 export class StructuralAnalysisService {
-  /**
-   * Main entry point called by the controller.
-   */
-  static async analyze(code: string, rules: any[]) {
-    const results = {
-      score: 0,
-      recursion_detected: false,
-      details: [] as string[]
-    };
+    private static parser: Parser;
 
-    if (!rules || !Array.isArray(rules) || rules.length === 0) {
-      return results;
-    }
-
-    const parser = new Parser();
-    parser.setLanguage(CPP);
-    const tree = parser.parse(code);
-
-    for (const ruleObj of rules) {
-      if (ruleObj.rule === 'has_recursion') {
-        const isRecursive = this.detectRecursion(tree);
-        if (isRecursive) {
-          results.recursion_detected = true;
-          results.score = 1.0; 
-          results.details.push("Verified: Function calls itself recursively.");
-        } else {
-          results.details.push("Logic Error: No recursive call found in function body.");
+    private static initParser() {
+        if (!this.parser) {
+            this.parser = new Parser();
+            this.parser.setLanguage(Cpp);
         }
-      }
     }
 
-    return results;
-  }
+    static async analyze(code: string, rules: AnalysisRule[]): Promise<{ score: number, details: any[] }> {
+        this.initParser();
+        const tree = this.parser.parse(code);
+        const root = tree.rootNode;
 
-  /**
-   * Robust recursion detection using AST queries
-   */
-  private static detectRecursion(tree: Parser.Tree): boolean {
-    // 1. Query to find function definitions and capture the identifier of the name
-    // This handles: int func(), int* func(), void func(int x), etc.
-    const funcQueryStr = `
-      (function_definition
-        declarator: (_ 
-          declarator: (identifier) @func_name
-        )
-      ) @func_def
-    `;
+        // 2. Fixed 'never[]' error: Explicitly typing the array
+        const details: any[] = [];
+        let totalScore = 0;
 
-    const funcQuery = new Parser.Query(CPP, funcQueryStr);
-    const funcMatches = funcQuery.matches(tree.rootNode);
+        for (const rule of rules) {
+            let passed = false;
 
-    for (const match of funcMatches) {
-      const funcDefNode = match.captures.find(c => c.name === 'func_def')?.node;
-      const funcNameNode = match.captures.find(c => c.name === 'func_name')?.node;
+            if (rule.target === 'recursion') {
+                passed = this.detectRecursion(root);
+            } else if (rule.type === 'FORBID' && rule.target === 'function_call') {
+                const forbiddenName = rule.name || 'pow';
+                passed = !this.findFunctionCall(root, forbiddenName);
+            }
 
-      if (!funcDefNode || !funcNameNode) continue;
+            const impact = rule.weight || 0.5;
+            // Only add to score if the rule passed
+            if (passed) totalScore += impact;
 
-      const funcName = funcNameNode.text;
+            details.push({
+                description: rule.description,
+                passed: passed,
+                impact: impact
+            });
+        }
 
-      // 2. Search for call_expressions inside this specific function's body
-      const callQueryStr = `
-        (call_expression
-          function: (identifier) @call_name
-          (#eq? @call_name "${funcName}")
-        )
-      `;
-
-      const callQuery = new Parser.Query(CPP, callQueryStr);
-      const callMatches = callQuery.matches(funcDefNode);
-
-      if (callMatches.length > 0) return true;
+        return { score: totalScore, details };
     }
 
-    return false;
-  }
+    private static detectRecursion(node: Parser.SyntaxNode): boolean {
+        // Find all function definitions
+        const functions = node.descendantsOfType('function_definition');
+
+        for (const fn of functions) {
+            // Find the identifier (name) of the function
+            const nameNode = fn.descendantsOfType('identifier').find(n => 
+                n.parent?.type === 'function_declarator'
+            );
+
+            if (!nameNode) continue;
+            const fnName = nameNode.text;
+
+            // 3. Fixed 'childBlocks' error: Using .children and checking type
+            const body = fn.children.find(c => c.type === 'compound_statement');
+            
+            if (body && this.findFunctionCall(body, fnName)) {
+                return true; 
+            }
+        }
+        return false;
+    }
+
+    private static findFunctionCall(node: Parser.SyntaxNode, name: string): boolean {
+        return node.descendantsOfType('call_expression').some(call => {
+            // Check if any identifier inside the call matches our target name
+            const identifier = call.descendantsOfType('identifier')[0];
+            return identifier && identifier.text === name;
+        });
+    }
 }
