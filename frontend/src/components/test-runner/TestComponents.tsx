@@ -1,53 +1,109 @@
-import React from 'react';
+import React from "react";
 import { useTheme } from "../../context/ThemeContext";
 import type { Question, SaveStatus } from "../../hooks/useTestSession";
 
 export const StatusIndicator = ({ status }: { status: SaveStatus }) => {
-  let color = 'gray', text = 'Saved';
-  if (status === 'saving') { color = 'orange'; text = '⏳ Saving...'; }
-  if (status === 'error') { color = 'red'; text = '❌ Not Saved'; }
-  if (status === 'saved') { color = 'green'; text = '✅ Saved'; }
-  return <span style={{ color, fontWeight: 'bold', fontSize: '0.85rem' }}>{text}</span>;
+  let color = "gray",
+    text = "Saved";
+  if (status === "saving") {
+    color = "orange";
+    text = "⏳ Saving...";
+  }
+  if (status === "error") {
+    color = "red";
+    text = "❌ Not Saved";
+  }
+  if (status === "saved") {
+    color = "green";
+    text = "✅ Saved";
+  }
+  return (
+    <span style={{ color, fontWeight: "bold", fontSize: "0.85rem" }}>
+      {text}
+    </span>
+  );
 };
 
-export const QuestionHeader = ({ question, idx }: { question: Question; idx: number }) => {
+export const QuestionHeader = ({
+  question,
+  idx,
+}: {
+  question: Question;
+  idx: number;
+}) => {
   // Optional: Helper to ensure literal "\n" strings are treated as breaks
-  const processText = (txt: string) => txt?.replace(/\\n/g, '\n');
+  const processText = (txt: string) => txt?.replace(/\\n/g, "\n");
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <h3 style={{ marginBottom: 10, color: '#888' }}>Question {idx + 1}</h3>
-      <div style={{ 
-        fontSize: '1.1rem', 
-        lineHeight: '1.6', 
-        // THIS IS THE KEY FIX FOR FORMATTING:
-        whiteSpace: 'pre-wrap', 
-        fontFamily: 'inherit'
-      }}>
+      <h3 style={{ marginBottom: 10, color: "#888" }}>Question {idx + 1}</h3>
+      <div
+        style={{
+          fontSize: "1.1rem",
+          lineHeight: "1.6",
+          // THIS IS THE KEY FIX FOR FORMATTING:
+          whiteSpace: "pre-wrap",
+          fontFamily: "inherit",
+        }}
+      >
         {processText(question.question_text)}
       </div>
     </div>
   );
 };
 
-export const NavigationButtons = ({ currentIdx, totalQ, submitting, onNavigate, onSubmit }: any) => {
+export const NavigationButtons = ({
+  currentIdx,
+  totalQ,
+  submitting,
+  onNavigate,
+  onSubmit,
+}: any) => {
   const { colors } = useTheme();
   const isLast = currentIdx === totalQ - 1;
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <button onClick={() => onNavigate(currentIdx - 1)} disabled={currentIdx === 0} 
-        style={{ padding: '8px 16px', borderRadius: 4, border: `1px solid ${colors.border}`, background: colors.card, color: colors.text, opacity: currentIdx === 0 ? 0.5 : 1 }}>
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <button
+        onClick={() => onNavigate(currentIdx - 1)}
+        disabled={currentIdx === 0}
+        style={{
+          padding: "8px 16px",
+          borderRadius: 4,
+          border: `1px solid ${colors.border}`,
+          background: colors.card,
+          color: colors.text,
+          opacity: currentIdx === 0 ? 0.5 : 1,
+        }}
+      >
         Previous
       </button>
-      
+
       {isLast ? (
-        <button onClick={onSubmit} disabled={submitting} 
-          style={{ padding: '8px 16px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 4, fontWeight: 'bold' }}>
+        <button
+          onClick={onSubmit}
+          disabled={submitting}
+          style={{
+            padding: "8px 16px",
+            background: "#16a34a",
+            color: "white",
+            border: "none",
+            borderRadius: 4,
+            fontWeight: "bold",
+          }}
+        >
           {submitting ? "Submitting..." : "Submit Test"}
         </button>
       ) : (
-        <button onClick={() => onNavigate(currentIdx + 1)} 
-          style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 4 }}>
+        <button
+          onClick={() => onNavigate(currentIdx + 1)}
+          style={{
+            padding: "8px 16px",
+            background: "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: 4,
+          }}
+        >
           Next Question
         </button>
       )}

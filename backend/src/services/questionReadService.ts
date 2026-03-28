@@ -102,7 +102,10 @@ export class QuestionReadService {
     };
   }
 
-  async getRandomTrueFalsePublic(): Promise<Omit<TrueFalseDTO, "correct_answer"> | null> {
+  async getRandomTrueFalsePublic(): Promise<Omit<
+    TrueFalseDTO,
+    "correct_answer"
+  > | null> {
     const sql = `
       SELECT
         q.question_id,
@@ -127,7 +130,7 @@ export class QuestionReadService {
       created_at: r.created_at,
     };
   }
-  
+
   async getRandomTrueFalseAdmin(): Promise<TrueFalseDTO | null> {
     const sql = `
       SELECT

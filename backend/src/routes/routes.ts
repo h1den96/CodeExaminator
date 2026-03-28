@@ -2,14 +2,26 @@
 import { Router } from "express";
 
 // Controllers
-import { getQuestion, getRandomProgramming, getRandomMultipleChoice, getRandomTrueFalse } from "../controllers/questionsReadController";
+import {
+  getQuestion,
+  getRandomProgramming,
+  getRandomMultipleChoice,
+  getRandomTrueFalse,
+} from "../controllers/questionsReadController";
 import { createQuestion, getTopics } from "../controllers/questionController";
-import { createProgrammingQuestion, createMCQ, createTF } from "../controllers/questionController";
+import {
+  createProgrammingQuestion,
+  createMCQ,
+  createTF,
+} from "../controllers/questionController";
 // 👇 IMPORT testController functions here
-import { getAllTests, createTest, startTest, getAvailableTests } from "../controllers/testController";
-import { 
-  runSubmissionCode
+import {
+  getAllTests,
+  createTest,
+  startTest,
+  getAvailableTests,
 } from "../controllers/testController";
+import { runSubmissionCode } from "../controllers/testController";
 
 // Middleware
 import { requireAuth, requireTeacher } from "../middleware/requireAuth";
@@ -29,13 +41,17 @@ router.get("/tests/available", requireAuth, getAvailableTests);
 // Start a test
 router.post("/tests/start", requireAuth, startTest);
 
-
 // --- TEACHER ROUTES ---
-router.get("/topics", requireAuth, requireTeacher, getTopics); 
-router.post("/questions", requireAuth, requireTeacher, createQuestion); 
+router.get("/topics", requireAuth, requireTeacher, getTopics);
+router.post("/questions", requireAuth, requireTeacher, createQuestion);
 
 // Create Specific Questions
-router.post("/questions/programming", requireAuth, requireTeacher, createProgrammingQuestion);
+router.post(
+  "/questions/programming",
+  requireAuth,
+  requireTeacher,
+  createProgrammingQuestion,
+);
 router.post("/questions/mcq", requireAuth, requireTeacher, createMCQ);
 router.post("/questions/tf", requireAuth, requireTeacher, createTF);
 router.post("/submissions/:id/run", requireAuth, runSubmissionCode);

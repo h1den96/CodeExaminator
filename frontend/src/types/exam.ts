@@ -1,6 +1,6 @@
 export interface Question {
   question_id: number;
-  question_type: 'mcq' | 'true_false' | 'programming';
+  question_type: "mcq" | "true_false" | "programming";
   title: string;
   body: string;
   starter_code?: string; // Μόνο για programming
@@ -11,7 +11,7 @@ export interface ExamState {
   submission_id: number;
   test_id: number;
   questions: Question[];
-  status: 'in_progress' | 'submitted';
+  status: "in_progress" | "submitted";
 }
 
 export interface AnswerPayload {

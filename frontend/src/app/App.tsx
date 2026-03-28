@@ -14,7 +14,7 @@ import ExamRunner from "../pages/ExamRunner";
 // Teacher Pages (Ensure these are in src/pages/teacher/)
 import TeacherDashboard from "../pages/TeacherDashboard"; // Often keeps usually in root pages, but check your folder
 import CreateTestPage from "../pages/CreateTestPage";
-import TestDetailsPage from "../pages/TestDetailsPage"; 
+import TestDetailsPage from "../pages/TestDetailsPage";
 
 // Question Creation Pages
 import QuestionTypeSelection from "../pages/QuestionTypeSelection";
@@ -33,7 +33,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
-            
+
             {/* Student Routes */}
             <Route
               path="/tests"
@@ -52,82 +52,77 @@ export default function App() {
               }
             />
 
-            <Route 
-              path="/results/:submissionId"
-              element={
-                <Results />
-              } 
-            />
-            <Route path="/exam" element={<ExamRunner />} /> 
+            <Route path="/results/:submissionId" element={<Results />} />
+            <Route path="/exam" element={<ExamRunner />} />
 
             {/* --- TEACHER ROUTES (Protected) --- */}
-            
+
             {/* 1. Dashboard */}
-            <Route 
-              path="/teacher/dashboard" 
+            <Route
+              path="/teacher/dashboard"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <TeacherDashboard />
                 </RequireAuth>
-              } 
+              }
             />
-            
+
             {/* 2. Create Exam Blueprint (The "Test") */}
-            <Route 
-              path="/teacher/create-test" 
+            <Route
+              path="/teacher/create-test"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <CreateTestPage />
                 </RequireAuth>
-              } 
+              }
             />
 
             {/* 3. Exam Details / Grading */}
-            <Route 
-              path="/teacher/test/:testId" 
+            <Route
+              path="/teacher/test/:testId"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <TestDetailsPage />
                 </RequireAuth>
-              } 
+              }
             />
 
             {/* 4. Question Type Hub (The Menu) */}
-            <Route 
-              path="/teacher/create-question-hub" 
+            <Route
+              path="/teacher/create-question-hub"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <QuestionTypeSelection />
                 </RequireAuth>
-              } 
+              }
             />
 
             {/* 5. Create Specific Question Types */}
-            <Route 
-              path="/teacher/create-programming" 
+            <Route
+              path="/teacher/create-programming"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <CreateProgrammingQuestion />
                 </RequireAuth>
-              } 
+              }
             />
-            
-            <Route 
-              path="/teacher/create-mcq" 
+
+            <Route
+              path="/teacher/create-mcq"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <CreateMCQ />
                 </RequireAuth>
-              } 
+              }
             />
-            
-            <Route 
-              path="/teacher/create-tf" 
+
+            <Route
+              path="/teacher/create-tf"
               element={
-                <RequireAuth allowedRoles={['teacher']}>
+                <RequireAuth allowedRoles={["teacher"]}>
                   <CreateTF />
                 </RequireAuth>
-              } 
+              }
             />
 
             {/* Catch-all */}

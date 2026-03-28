@@ -17,7 +17,8 @@ export const getQuestion = async (req: Request, res: Response) => {
 export const getRandomProgramming = async (_req: Request, res: Response) => {
   try {
     const data = await service.getRandomProgramming();
-    if (!data) return res.status(404).json({ error: "No programming questions found" });
+    if (!data)
+      return res.status(404).json({ error: "No programming questions found" });
     return res.json(data);
   } catch (err) {
     return res.status(500).json({ error: "Internal server error" });
@@ -42,7 +43,9 @@ export const getRandomTrueFalse = async (req: Request, res: Response) => {
   try {
     const question = await service.getRandomTrueFalsePublic();
     if (!question) {
-      return res.status(404).json({ message: "No True/False questions found." });
+      return res
+        .status(404)
+        .json({ message: "No True/False questions found." });
     }
     return res.status(200).json(question);
   } catch (err: any) {

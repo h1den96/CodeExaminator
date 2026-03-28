@@ -19,13 +19,13 @@ if (!BASE_URL) {
 const AUTH_URL = makeUrlForUser(
   BASE_URL,
   process.env.APP_AUTH_DB_USER || "app_auth",
-  process.env.APP_AUTH_DB_PASSWORD || ""
+  process.env.APP_AUTH_DB_PASSWORD || "",
 );
 
 const EXAM_URL = makeUrlForUser(
   BASE_URL,
   process.env.APP_EXAM_DB_USER || "app_exam",
-  process.env.APP_EXAM_DB_PASSWORD || ""
+  process.env.APP_EXAM_DB_PASSWORD || "",
 );
 
 export const authDb = new Pool({ connectionString: AUTH_URL });

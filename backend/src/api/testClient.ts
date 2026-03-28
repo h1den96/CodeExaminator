@@ -5,7 +5,11 @@ export async function listTests() {
   return data;
 }
 
-export async function startTest(params?: { tf?: number; mcq?: number; prog?: number }) {
+export async function startTest(params?: {
+  tf?: number;
+  mcq?: number;
+  prog?: number;
+}) {
   const q = new URLSearchParams();
   if (params?.tf) q.set("tf", String(params.tf));
   if (params?.mcq) q.set("mcq", String(params.mcq));

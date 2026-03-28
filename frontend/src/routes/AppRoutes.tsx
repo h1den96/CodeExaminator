@@ -13,9 +13,20 @@ export default function AppRoutes() {
     <Routes>
       {/* --- DEBUG: PUT THIS FIRST --- */}
       {/* If you see "IT WORKS", the router is fine. */}
-      <Route 
-        path="/teacher/create-test" 
-        element={<h1 style={{color: 'red', fontSize: '50px', textAlign: 'center', marginTop: '50px'}}>IT WORKS</h1>} 
+      <Route
+        path="/teacher/create-test"
+        element={
+          <h1
+            style={{
+              color: "red",
+              fontSize: "50px",
+              textAlign: "center",
+              marginTop: "50px",
+            }}
+          >
+            IT WORKS
+          </h1>
+        }
       />
 
       {/* --- STANDARD ROUTES --- */}

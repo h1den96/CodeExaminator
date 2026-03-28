@@ -1,5 +1,5 @@
 // src/api/testClient.ts
-const API_BASE = "http://localhost:3000"; 
+const API_BASE = "http://localhost:3000";
 
 export interface AvailableTest {
   test_id: number;
@@ -14,18 +14,20 @@ export interface StartTestResponse {
     test_id: number;
     title: string;
     description?: string; // <--- ADDED THIS TO FIX THE ERROR
-    questions: any[]; 
+    questions: any[];
   };
 }
 
 export interface AnswersPayload {
   tf: Record<number, "true" | "false" | null>;
-  mcq: Record<number, number | null>;      
-  prog: Record<number, string>;            
+  mcq: Record<number, number | null>;
+  prog: Record<number, string>;
 }
 
 // 1. Fetch Available Tests (GET)
-export async function fetchAvailableTests(token: string): Promise<AvailableTest[]> {
+export async function fetchAvailableTests(
+  token: string,
+): Promise<AvailableTest[]> {
   const res = await fetch(`${API_BASE}/api/test/available`, {
     method: "GET",
     headers: {
@@ -43,10 +45,13 @@ export async function fetchAvailableTests(token: string): Promise<AvailableTest[
 }
 
 // 2. Start Test (POST)
-export async function startTest(token: string, testId: number): Promise<StartTestResponse> {
+export async function startTest(
+  token: string,
+  testId: number,
+): Promise<StartTestResponse> {
   const params = new URLSearchParams({ test_id: String(testId) });
 
-  console.log("🚀 STARTING TEST VIA POST:", testId); 
+  console.log("🚀 STARTING TEST VIA POST:", testId);
 
   const res = await fetch(`${API_BASE}/api/test/start?` + params.toString(), {
     method: "POST",
@@ -54,7 +59,7 @@ export async function startTest(token: string, testId: number): Promise<StartTes
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({}) 
+    body: JSON.stringify({}),
   });
 
   if (!res.ok) {
@@ -69,7 +74,7 @@ export async function startTest(token: string, testId: number): Promise<StartTes
 export async function submitTest(
   token: string,
   submissionId: number,
-  answers: AnswersPayload
+  answers: AnswersPayload,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/test/submit`, {
     method: "POST",

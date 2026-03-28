@@ -1,14 +1,14 @@
 // src/types/test.ts
 export type TFQ = {
   id: number;
-  type: 'true_false';
+  type: "true_false";
   title: string;
   body: string | null;
 };
 
 export type MCQ = {
   id: number;
-  type: 'mcq';
+  type: "mcq";
   title: string;
   body: string | null;
   options: { option_id: number; option_text: string }[];
@@ -16,7 +16,7 @@ export type MCQ = {
 
 export type PROG = {
   id: number;
-  type: 'programming';
+  type: "programming";
   title: string;
   body: string | null;
   starter_code: string | null;

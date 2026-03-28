@@ -19,7 +19,7 @@ app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "http://localhost:5173",
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
@@ -42,7 +42,7 @@ app.use(
       sameSite: "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
-  })
+  }),
 );
 
 // ---------- AUTH ----------
@@ -52,7 +52,7 @@ app.use(
     (req as any).db = authDb;
     next();
   },
-  authRouter
+  authRouter,
 );
 
 // ---------- TESTS (start / submit / available) ----------
@@ -63,7 +63,7 @@ app.use(
     (req as any).db = examDb;
     next();
   },
-  testRouter
+  testRouter,
 );
 
 // ---------- SUBMISSIONS (Moved ABOVE the generic /api routes!) ----------
@@ -73,7 +73,7 @@ app.use(
     (req as any).db = examDb;
     next();
   },
-  submissionRouter
+  submissionRouter,
 );
 
 // ---------- OTHER EXAM ROUTES ----------
@@ -83,7 +83,7 @@ app.use(
     (req as any).db = examDb;
     next();
   },
-  routes
+  routes,
 );
 
 const port = Number(process.env.PORT ?? 3000);

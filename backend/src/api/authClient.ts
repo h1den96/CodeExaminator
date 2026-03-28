@@ -1,6 +1,10 @@
 import { http, setAccessToken } from "./http";
 
-export const signup = async (body: { email: string; password: string; full_name?: string|null }) => {
+export const signup = async (body: {
+  email: string;
+  password: string;
+  full_name?: string | null;
+}) => {
   const { data } = await http.post("/api/auth/signup", body);
   return data;
 };

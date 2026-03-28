@@ -1,6 +1,6 @@
 // src/types/exam.types.ts
 
-export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Difficulty = "easy" | "medium" | "hard";
 
 export type Spec = {
   tf: number;
@@ -9,7 +9,7 @@ export type Spec = {
 };
 
 export type GenerationConfig = {
-  topics?: number[]; 
+  topics?: number[];
   difficulty_distribution?: {
     easy?: number;
     medium?: number;
@@ -18,7 +18,7 @@ export type GenerationConfig = {
 };
 
 export type RandomizerSpec = {
-  counts: Spec; 
+  counts: Spec;
   config: GenerationConfig;
 };
 
@@ -29,7 +29,7 @@ export type TestTemplateRow = {
   tf_count: number;
   mcq_count: number;
   prog_count: number;
-  tf_points: string; 
+  tf_points: string;
   mcq_points: string;
   prog_points: string;
   enable_negative_grading: boolean;
@@ -43,13 +43,13 @@ export type TestTemplateRow = {
 // --- 👇 NEW: Define the Question Shape Here 👇 ---
 export interface Question {
   question_id: number;
-  question_type: 'mcq' | 'true_false' | 'programming' | 'tf' | 'prog'; // Handle all variations
+  question_type: "mcq" | "true_false" | "programming" | "tf" | "prog"; // Handle all variations
   body: string;
   points: number;
-  
+
   // ✅ THE CRITICAL FIELD
-  allow_multiple?: boolean; 
-  
+  allow_multiple?: boolean;
+
   // Specific fields
   options?: { id: number; text: string }[]; // For MCQ
   test_cases?: any[]; // For Programming
@@ -57,7 +57,7 @@ export interface Question {
 
 export type AnswersPayload = {
   tf: Record<number, boolean | "true" | "false" | null>;
-  mcq: Record<number, number | number[] | null>; 
+  mcq: Record<number, number | number[] | null>;
   prog: Record<number, string>;
 };
 

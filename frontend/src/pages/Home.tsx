@@ -7,19 +7,23 @@ export default function Home() {
   const { isAuthenticated, logout } = useAuth();
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      width: "100vw",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "1.5rem",
-      backgroundColor: "#1a1a1a",
-      color: "white",
-      textAlign: "center"
-    }}>
-      <h1 style={{ fontSize: "3rem", fontWeight: "bold", margin: 0 }}>CodeExaminator</h1>
+    <div
+      style={{
+        minHeight: "100vh",
+        width: "100vw",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "1.5rem",
+        backgroundColor: "#1a1a1a",
+        color: "white",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ fontSize: "3rem", fontWeight: "bold", margin: 0 }}>
+        CodeExaminator
+      </h1>
       <p style={{ fontSize: "1.2rem", color: "#aaa", maxWidth: "500px" }}>
         Test your programming skills with our interactive exam platform.
       </p>
@@ -35,7 +39,7 @@ export default function Home() {
               backgroundColor: "transparent",
               color: "#3b82f6",
               cursor: "pointer",
-              fontSize: "1rem"
+              fontSize: "1rem",
             }}
           >
             Log in
@@ -53,7 +57,7 @@ export default function Home() {
               color: "white",
               cursor: "pointer",
               fontSize: "1rem",
-              fontWeight: "bold"
+              fontWeight: "bold",
             }}
           >
             View Available Tests
@@ -67,7 +71,7 @@ export default function Home() {
               backgroundColor: "transparent",
               color: "#ef4444",
               cursor: "pointer",
-              fontSize: "1rem"
+              fontSize: "1rem",
             }}
           >
             Log out

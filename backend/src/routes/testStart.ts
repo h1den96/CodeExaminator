@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { getAvailableTests, startTest, createTest } from "../controllers/testController";
+import {
+  getAvailableTests,
+  startTest,
+  createTest,
+} from "../controllers/testController";
 import { requireAuth, requireTeacher } from "../middleware/requireAuth";
 
 const router = Router();
