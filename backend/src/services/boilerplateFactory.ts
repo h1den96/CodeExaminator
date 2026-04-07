@@ -46,7 +46,7 @@ export class BoilerplateFactory {
       case "LINEAR":
         return this.getLinearTemplate(functionName, returnType);
       case "CUSTOM":
-        return `// CUSTOM BOILERPLATE\n#include <iostream>\nusing namespace std;\n\n// {{STUDENT_CODE}}\n`;
+        return `// CUSTOM BOILERPLATE\n#include <iostream>\n#include <vector>\n#include <string>\n#include <algorithm>\nusing namespace std;\n\n// {{STUDENT_CODE}}\n`;
       default:
         return `// {{STUDENT_CODE}}`;
     }
@@ -59,18 +59,21 @@ export class BoilerplateFactory {
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 
 using namespace std;
 
 // {{STUDENT_CODE}}
 
 int main() {
-    // Standard Scalar Wrapper
-    // Reads from stdin, calls the student function, prints to stdout
+    cout << "NODE_STARTED" << endl; // Debug flag 1
     int val;
-    while (cin >> val) {
-        auto result = ${name}(val);
-        cout << result << " ";
+    if (cin >> val) {
+        cout << "INPUT_RECEIVED:" << val << endl; // Debug flag 2
+        auto result = fib(val);
+        cout << result << endl; 
+    } else {
+        cout << "NO_INPUT_FOUND" << endl; // Debug flag 3
     }
     return 0;
 }
@@ -92,18 +95,24 @@ int main() {
     // Standard Linear Wrapper
     // Reads size then N elements
     int size;
-    while (cin >> size) {
+    if (cin >> size) {
         vector<int> v(size);
-        for(int i = 0; i < size; i++) cin >> v[i];
-        
-        ${ret === "void" ? `${name}(v);` : `auto result = ${name}(v);`}
-        
-        ${
-          ret === "void"
-            ? `for(int x : v) cout << x << " ";`
-            : `cout << result;`
+        for(int i = 0; i < size; i++) {
+            cin >> v[i];
         }
-        cout << endl;
+        
+        ${ret === "void" 
+            ? `${name}(v);` 
+            : `auto result = ${name}(v);`
+        }
+        
+        ${ret === "void"
+            ? `for(int i = 0; i < v.size(); i++) {
+                 cout << v[i] << (i == v.size() - 1 ? "" : " ");
+               }
+               cout << endl;`
+            : `cout << result << endl;`
+        }
     }
     return 0;
 }

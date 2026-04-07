@@ -17,7 +17,7 @@ export class StructuralAnalysisService {
   private static initParser() {
     if (!this.parser) {
       this.parser = new Parser();
-      this.parser.setLanguage(Cpp);
+      this.parser.setLanguage(Cpp as any); // SUS af
     }
   }
 
