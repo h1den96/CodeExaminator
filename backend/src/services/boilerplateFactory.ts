@@ -54,30 +54,28 @@ export class BoilerplateFactory {
 
   private static getScalarTemplate(name: string, ret: string): string {
     return `
-#include <iostream>
-#include <string>
-#include <vector>
-#include <algorithm>
-#include <cmath>
-#include <iomanip>
+      #include <iostream>
+      #include <string>
+      #include <vector>
+      #include <algorithm>
+      #include <cmath>
+      #include <iomanip>
 
-using namespace std;
+      using namespace std;
 
-// {{STUDENT_CODE}}
+      // {{STUDENT_CODE}}
 
-int main() {
-    cout << "NODE_STARTED" << endl; // Debug flag 1
-    int val;
-    if (cin >> val) {
-        cout << "INPUT_RECEIVED:" << val << endl; // Debug flag 2
-        auto result = fib(val);
-        cout << result << endl; 
-    } else {
-        cout << "NO_INPUT_FOUND" << endl; // Debug flag 3
-    }
-    return 0;
-}
-`;
+      int main() {
+          // Καθαρό template χωρίς debug flags για το WSL2
+          int val;
+          if (cin >> val) {
+              // Χρησιμοποιούμε το δυναμικό όνομα ${name} αντί για το καρφωτό fib
+              auto result = ${name}(val); 
+              cout << result << endl; 
+          }
+          return 0;
+      }
+      `;
   }
 
   private static getLinearTemplate(name: string, ret: string): string {

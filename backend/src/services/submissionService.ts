@@ -90,12 +90,18 @@ export class SubmissionService {
         const finalSource = boilerplate
             ? boilerplate.replace("// {{STUDENT_CODE}}", studentCode)
             : studentCode;
+        
+
+        console.log("--- [DEBUG] FINAL CODE SENT TO JUDGE0 ---");
+        console.log(finalSource);
+        console.log("-----------------------------------------");
 
         const results: any[] = [];
         let passedCount = 0;
 
         // FIX 2: Loop πάνω στο actualTestCases (όχι στο testCases)
         for (const tCase of actualTestCases) {
+
             const inputStr = (tCase.input !== undefined && tCase.input !== null) 
                 ? String(tCase.input) 
                 : "";
@@ -105,17 +111,26 @@ export class SubmissionService {
 
             const payload = {
                 source_code: Buffer.from(finalSource).toString("base64"),
-                language_id: languageId || 54, 
+                language_id: languageId || 54,
                 stdin: Buffer.from(inputStr).toString("base64"),
-                cpu_time_limit: limits.cpu || 2.0,
-                memory_limit: limits.memory || 128000,
+                cpu_time_limit: null,    // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
+                memory_limit: null,      // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
+                base64_encoded: true,
+                wait: true
             };
 
             const res = await axios.post(
                 `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`,
                 payload,
             );
-            
+
+            // --- ΠΡΟΣΘΕΣΕ ΑΥΤΟ ΤΟ LOG ---
+            console.log(`[DEBUG] Judge0 Response (Status ID: ${res.data.status?.id}):`, {
+                stdout: res.data.stdout,
+                stderr: res.data.stderr,
+                compile_output: res.data.compile_output
+            });
+
             const { status, stdout, stderr, compile_output } = res.data;
             const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
 
@@ -143,6 +158,7 @@ export class SubmissionService {
         const total = actualTestCases.length || 1;
         const scoreWeight = passedCount / total;
 
+        
         return {
             scoreWeight,
             feedback: `Passed ${passedCount}/${total} functional tests (${(scoreWeight * 100).toFixed(0)}%).`,
@@ -365,7 +381,12 @@ export class SubmissionService {
                 [submissionId, totalScore]
             );
             await client.query("COMMIT");
-            return { submission_id: submissionId, status: 'submitted', final_score: totalScore };
+            return { 
+                submission_id: submissionId, 
+                status: 'submitted', 
+                final_score: totalScore,
+                questions: gradingResults // <--- ΠΡΟΣΘΕΣΕ ΑΥΤΟ
+            };
         } catch (e) {
             await client.query("ROLLBACK");
             throw e;

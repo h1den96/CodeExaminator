@@ -24,14 +24,41 @@ async function runSuperDebug() {
         console.log("Resetting Submission 77...");
         await db.query("UPDATE exam.submissions SET status='in_progress', started_at=NOW() WHERE submission_id=77");
 
-        const code = `int fib(int n) { return (n <= 1) ? n : fib(n-1) + fib(n-2); }`;
+        const code = `
+        int fib(int n) { 
+            if (n <= 1) return n;
+                return fib(n-1) + fib(n-2); 
+        }
+        `;
 
         // 3. Εκτέλεση και εμφάνιση του σφάλματος
         console.log("Calling SubmissionService...");
         const result = await SubmissionService.submitAndGrade(77, "6", db, code);
-        
-        console.log("✅ SUCCESS! Final Score:", result.final_score);
+        const detailed = result as any;
 
+        console.log("✅ SUCCESS! Final Score:", detailed.final_score);
+
+        // 1. Πηγαίνουμε στην πρώτη (και μοναδική στο τεστ) ερώτηση
+        const firstQuestion = detailed.questions[0];
+
+        // 2. Παίρνουμε τα Black Box (Judge0) αποτελέσματα
+        const blackBox = firstQuestion.evalResult.black_box;
+
+        console.log("\n--- 📊 BLACK BOX RESULTS ---");
+        console.log("Feedback:", blackBox.feedback);
+
+        // 3. Loop μόνο εδώ - αυτό αρκεί!
+        blackBox.test_results.forEach((r: any, index: number) => {
+            console.log(`Test Case ${index + 1}: ${r.passed ? '✅ PASSED' : '❌ FAILED'}`);
+            if (!r.passed) {
+                console.log(`   Input:    [${r.input}]`);
+                console.log(`   Expected: [${r.expected}]`);
+                console.log(`   Actual:   [${r.actual}]`);
+                console.log(`   Error:    [${r.error}]`);
+                if (r.error) console.log(`   Error:    ${r.error}`);
+            }
+        });
+       
     } catch (error: any) {
         console.log("\n--- 🛑 ERROR DETECTED ---");
         if (error.response) {
