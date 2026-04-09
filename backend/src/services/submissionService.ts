@@ -138,22 +138,23 @@ export class SubmissionService {
             const normalizedActual = this.normalizeOutput(actualOutput);
             const normalizedExpected = this.normalizeOutput(expectedStr);
 
-            const isCorrect = (status.id === 3) && (normalizedActual === normalizedExpected);
-
+            const logicMatches = GradingService.smartCompare(normalizedActual, normalizedExpected);
+            const isCorrect = (status.id === 3) && logicMatches;
+            
             if (isCorrect) passedCount++;
 
-            results.push({
-                status: status.description,
-                is_public: !!tCase.is_public,
-                input: tCase.is_public ? inputStr : "Hidden",
-                expected: tCase.is_public ? expectedStr : "REDACTED",
-                actual: tCase.is_public ? actualOutput : "REDACTED",
-                passed: isCorrect,
-                error: stderr || compile_output
-                    ? Buffer.from(stderr || compile_output, "base64").toString()
-                    : null,
-            });
-        }
+                results.push({
+                    status: status.description,
+                    is_public: !!tCase.is_public,
+                    input: tCase.is_public ? inputStr : "Hidden",
+                    expected: tCase.is_public ? expectedStr : "REDACTED",
+                    actual: tCase.is_public ? actualOutput : "REDACTED",
+                    passed: isCorrect,
+                    error: stderr || compile_output
+                        ? Buffer.from(stderr || compile_output, "base64").toString()
+                        : null,
+                });
+            }
 
         // FIX 3: Υπολογισμός με βάση το πραγματικό μήκος του Array
         const total = actualTestCases.length || 1;
@@ -344,6 +345,31 @@ export class SubmissionService {
                 } else if (ans.question_type === 'programming') {
                     const codeToGrade = codeOverride || ans.code_answer;
                     if (codeToGrade) {
+
+                        const forbiddenKeywords = [
+                            "system(", 
+                            "fork(", 
+                            "fstream", 
+                            "ifstream", 
+                            "ofstream", 
+                            "<filesystem>", 
+                            "bits/stdc++.h"
+                        ];
+
+                        const securityCheck = GradingService.performStaticAnalysis(codeToGrade, forbiddenKeywords, []);
+                        
+                        if (!securityCheck.passed) {
+                            earnedPoints = 0;
+                            evalResult = {
+                                type: 'programming',
+                                status: 'SECURITY_ERROR',
+                                feedback: securityCheck.error,
+                                details: []
+                            };
+                            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
+                            continue;
+                        }
+
                         const finalHarness = (ans.category === 'CUSTOM' && ans.boilerplate_code)
                             ? ans.boilerplate_code
                             : BoilerplateFactory.createFullHarness(ans.category, ans.function_signature);

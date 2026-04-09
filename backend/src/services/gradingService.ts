@@ -76,4 +76,24 @@ export class GradingService {
 
     return { passed: true };
   }
+
+  static smartCompare(actual: string, expected: string): boolean {
+    const a = actual.trim();
+    const e = expected.trim();
+
+    // 1. Strict match
+    if (a === e) return true;
+
+    // 2. Numeric Epsilon Check
+    // We attempt to convert both to numbers to handle rounding differences
+    const numA = parseFloat(a);
+    const numE = parseFloat(e);
+
+    if (!isNaN(numA) && !isNaN(numE)) {
+      // Use a standard epsilon of 0.0001
+      return Math.abs(numA - numE) < 0.0001;
+    }
+
+    return false;
+  }
 }
