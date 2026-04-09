@@ -1,6 +1,5 @@
-// 1. Fixed Import: tree-sitter often requires this specific import style in TS
 import Parser from "tree-sitter";
-// @ts-ignore - tree-sitter-cpp often lacks types, this is fine
+// @ts-ignore
 import Cpp from "tree-sitter-cpp";
 
 export interface AnalysisRule {
@@ -8,7 +7,7 @@ export interface AnalysisRule {
   target: string;
   description: string;
   weight: number;
-  name?: string; // Added to handle forbidden function names like 'pow'
+  name?: string; 
 }
 
 export class StructuralAnalysisService {
@@ -17,7 +16,7 @@ export class StructuralAnalysisService {
   private static initParser() {
     if (!this.parser) {
       this.parser = new Parser();
-      this.parser.setLanguage(Cpp as any); // SUS af
+      this.parser.setLanguage(Cpp as any);
     }
   }
 
@@ -29,25 +28,71 @@ export class StructuralAnalysisService {
     const tree = this.parser.parse(code);
     const root = tree.rootNode;
 
+    // 1. Ορισμός μόνιμων κανόνων ασφαλείας (Global Security Rules)
+    const securityRules: AnalysisRule[] = [
+      { 
+        type: "FORBID", 
+        target: "function_call", 
+        name: "system", 
+        description: "Security: Use of system() is strictly forbidden", 
+        weight: 0 
+      },
+      { 
+        type: "FORBID", 
+        target: "function_call", 
+        name: "exec", 
+        description: "Security: Use of exec() functions is forbidden", 
+        weight: 0 
+      },
+      { 
+        type: "FORBID", 
+        target: "function_call", 
+        name: "fork", 
+        description: "Security: Use of fork() is forbidden", 
+        weight: 0 
+      }
+    ];
+
+    // Συνδυασμός των ακαδημαϊκών κανόνων της άσκησης με τους κανόνες ασφαλείας
+    const allRules = [...rules, ...securityRules];
+
     const details: any[] = [];
     let earnedWeight = 0;
-    let totalPossibleWeight = 0; // NEW: Track the sum of all weights
+    let totalPossibleWeight = 0;
 
-    for (const rule of rules) {
+    for (const rule of allRules) {
       let passed = false;
-      const weight = rule.weight || 10;
-      totalPossibleWeight += weight;
+      const weight = rule.weight || 0;
 
+      // Υπολογισμός συνολικού βάρους μόνο για κανόνες με weight > 0
+      if (weight > 0) {
+        totalPossibleWeight += weight;
+      }
+
+      // Λογική ελέγχου ανάλογα με τον στόχο (target)
       if (rule.target === "recursion") {
         passed = this.detectRecursion(root);
-      } else if (rule.type === "FORBID" && rule.target === "function_call") {
+      } 
+      else if (rule.type === "FORBID" && rule.target === "function_call") {
+        // Ο κανόνας FORBID πετυχαίνει αν ΔΕΝ βρεθεί η συνάρτηση
         const forbiddenName = rule.name || "pow";
         passed = !this.findFunctionCall(root, forbiddenName);
       }
+      else if (rule.type === "REQUIRE" && rule.target === "function_call") {
+        // Ο κανόνας REQUIRE πετυχαίνει αν βρεθεί η συνάρτηση
+        const requiredName = rule.name;
+        passed = !!requiredName && this.findFunctionCall(root, requiredName);
+      }
 
-      if (passed) earnedWeight += weight;
+      // Αν ο κανόνας πέρασε και έχει βάρος, πρόσθεσέ το στο σκορ
+      if (passed && weight > 0) {
+        earnedWeight += weight;
+      }
 
       details.push({
+        type: rule.type,
+        target: rule.target,
+        name: rule.name,
         description: rule.description,
         passed: passed,
         weight: weight,
@@ -62,11 +107,9 @@ export class StructuralAnalysisService {
   }
 
   private static detectRecursion(node: Parser.SyntaxNode): boolean {
-    // Find all function definitions
     const functions = node.descendantsOfType("function_definition");
 
     for (const fn of functions) {
-      // Find the identifier (name) of the function
       const nameNode = fn
         .descendantsOfType("identifier")
         .find((n) => n.parent?.type === "function_declarator");
@@ -74,9 +117,9 @@ export class StructuralAnalysisService {
       if (!nameNode) continue;
       const fnName = nameNode.text;
 
-      // 3. Fixed 'childBlocks' error: Using .children and checking type
       const body = fn.children.find((c) => c.type === "compound_statement");
 
+      // Αν μέσα στο σώμα της συνάρτησης υπάρχει κλήση προς το όνομα της ίδιας της συνάρτησης
       if (body && this.findFunctionCall(body, fnName)) {
         return true;
       }
@@ -89,7 +132,6 @@ export class StructuralAnalysisService {
     name: string,
   ): boolean {
     return node.descendantsOfType("call_expression").some((call) => {
-      // Check if any identifier inside the call matches our target name
       const identifier = call.descendantsOfType("identifier")[0];
       return identifier && identifier.text === name;
     });

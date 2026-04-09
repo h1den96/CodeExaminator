@@ -6,6 +6,7 @@ import { TestService } from "./testService";
 import type { TestTemplateRow, SubmitAnswerDto } from "../types/examTypes";
 import { StructuralAnalysisService } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
+import { assertNever } from "zod/v4/core/util.cjs";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
@@ -113,8 +114,8 @@ export class SubmissionService {
                 source_code: Buffer.from(finalSource).toString("base64"),
                 language_id: languageId || 54,
                 stdin: Buffer.from(inputStr).toString("base64"),
-                cpu_time_limit: null,    // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
-                memory_limit: null,      // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
+                cpu_time_limit: limits.cpu ? Number(limits.cpu) : 2.0, 
+                memory_limit: limits.memory ? Number(limits.memory) : 128000,
                 base64_encoded: true,
                 wait: true
             };
@@ -270,6 +271,15 @@ export class SubmissionService {
         );
     }
 
+    private static validateSecurity(code: string) {
+        const forbiddenPatterns = ["/*", "*/"]; // Μπλοκάρουμε τα block comments για να μην κλείνουν το template
+        for (const pattern of forbiddenPatterns) {
+            if (code.includes(pattern)) {
+                throw new Error(`SECURITY_VIOLATION: Forbidden pattern detected: ${pattern}`);
+            }
+        }
+    }
+
     static async submitAndGrade(submissionId: number, studentId: string, db: Pool, codeOverride?: string) {
         // FIX 4: Προσθήκη pq.language_id στο Query
         const dataQuery = `
@@ -340,6 +350,24 @@ export class SubmissionService {
 
                         const wbResult = await StructuralAnalysisService.analyze(codeToGrade, ans.structural_rules || []);
                         
+                        const securityViolation = wbResult.details.find((d: any) => d.weight === 0 && !d.passed);
+                        
+                        if (securityViolation) {
+                            console.error(`[SECURITY] Violation detected: ${securityViolation.description}`);
+                            
+                            earnedPoints = 0; // Μηδενισμός βαθμού
+                            evalResult = {
+                                type: 'programming',
+                                status: 'SECURITY_ERROR',
+                                feedback: `Submission denied: ${securityViolation.description}`,
+                                details: wbResult.details
+                            };
+                            
+                            // Με το 'continue' σταματάμε εδώ και δεν στέλνουμε καν τον κώδικα στον Judge0
+                            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
+                            continue; 
+                        }
+
                         // FIX 5: Πέρασμα του σωστού language_id από τη βάση
                         const bbResult = await this.runJudge0Assessment(
                             codeToGrade,
