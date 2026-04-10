@@ -77,26 +77,34 @@ export default function CreateTestPage() {
 
     setLoading(true);
     try {
-      // TypeScript should be happy now!
+      // ΜΕΤΑΤΡΟΠΗ ΣΕ ISO STRING (Αυτό θα στείλει π.χ. 12:35Z αν εσύ έβαλες 15:35)
+      const isoAvailableFrom = formData.available_from 
+        ? new Date(formData.available_from).toISOString() 
+        : null;
+        
+      const isoAvailableUntil = formData.available_until 
+        ? new Date(formData.available_until).toISOString() 
+        : null;
+
       await createTest({
         title: formData.title,
         description: formData.description,
-        available_from: formData.available_from || null,
-        available_until: formData.available_until || null,
+        available_from: isoAvailableFrom,
+        available_until: isoAvailableUntil,
         duration_minutes: formData.duration_minutes,
         strict_deadline: formData.strict_deadline,
         is_random: true,
-        slots: formData.slots, // Ensure this matches the Slot[] type
-      });
+        slots: formData.slots,
+    });
 
-      alert("Test Blueprint Created!");
-      navigate("/teacher/dashboard");
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create test blueprint.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    alert("Test Blueprint Created!");
+    navigate("/teacher/dashboard");
+  } catch (err: any) {
+    setError(err.response?.data?.error || "Failed to create test blueprint.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Styles
   const cardStyle = {

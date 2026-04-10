@@ -7,6 +7,8 @@ import type { TestTemplateRow, SubmitAnswerDto } from "../types/examTypes";
 import { StructuralAnalysisService } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
 import { assertNever } from "zod/v4/core/util.cjs";
+import { SecurityAuditService } from "./securityAuditService";
+
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
@@ -356,19 +358,32 @@ export class SubmissionService {
                             "bits/stdc++.h"
                         ];
 
-                        const securityCheck = GradingService.performStaticAnalysis(codeToGrade, forbiddenKeywords, []);
+                        const securityCheck = GradingService.performStaticAnalysis(codeToGrade, forbiddenKeywords, ans.required_keywords || []);
                         
                         if (!securityCheck.passed) {
-                            earnedPoints = 0;
-                            evalResult = {
-                                type: 'programming',
-                                status: 'SECURITY_ERROR',
-                                feedback: securityCheck.error,
-                                details: []
-                            };
-                            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
-                            continue;
-                        }
+            // 3. ΚΑΤΑΓΡΑΦΗ ΤΗΣ ΠΑΡΑΒΙΑΣΗΣ (Security Audit)
+            // Σιγουρέψου ότι έχεις κάνει import το SecurityAuditService στην αρχή του αρχείου
+            if (securityCheck.violationType) {
+                await SecurityAuditService.logViolation(
+                    studentId, 
+                    ans.question_id, 
+                    codeToGrade, 
+                    `Forbidden keyword: ${securityCheck.violationType}`
+                );
+            }
+
+            earnedPoints = 0;
+            evalResult = {
+                type: 'programming',
+                status: 'SECURITY_ERROR',
+                feedback: securityCheck.error,
+                details: []
+            };
+            
+            // Σταματάμε την επεξεργασία αυτής της ερώτησης εδώ
+            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
+            continue; 
+        }
 
                         const finalHarness = (ans.category === 'CUSTOM' && ans.boilerplate_code)
                             ? ans.boilerplate_code

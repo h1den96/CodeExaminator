@@ -45,37 +45,58 @@ export class GradingService {
    */
   static performStaticAnalysis(
     code: string,
-    forbidden: string[],
-    required: string[],
-  ): { passed: boolean; error?: string } {
-    if (!code) return { passed: false, error: "No code submitted." };
-
-    // 1. Check Forbidden Keywords
-    if (forbidden && forbidden.length > 0) {
-      for (const word of forbidden) {
-        if (code.includes(word)) {
-          return {
-            passed: false,
-            error: `Static Analysis Failed: Forbidden keyword '${word}' detected.`,
-          };
-        }
-      }
+    forbidden: string[] = [],
+    required: string[] = []
+): { passed: boolean; error?: string; violationType?: string } {
+    
+    if (!code || code.trim().length === 0) {
+        return { passed: false, error: "No code submitted." };
     }
 
-    // 2. Check Required Keywords
-    if (required && required.length > 0) {
-      for (const word of required) {
-        if (!code.includes(word)) {
-          return {
-            passed: false,
-            error: `Static Analysis Failed: Missing required keyword '${word}'.`,
-          };
+    // 1. Προετοιμασία: Καθαρισμός κώδικα από κενά και tabs
+    // Αυτό εμποδίζει bypasses όπως το "system  (" ή "fork  ()"
+    const normalizedCode = code.replace(/\s+/g, '');
+
+    // 2. Εσωτερική Λίστα Ασφαλείας (Hardcoded Security Rules)
+    // Αυτά τα keywords ελέγχονται ΠΑΝΤΑ για την προστασία του server
+    const systemSecurityList = [
+        "system(", "fork(", "fstream", "ifstream", "ofstream",
+        "asm", "__asm__", "syscall", "int0x80", "\\x", "__attribute__"
+    ];
+
+    // Συνδυασμός της λίστας του καθηγητή με τη λίστα ασφαλείας
+    const finalForbidden = Array.from(new Set([...forbidden, ...systemSecurityList]));
+
+    // 3. Έλεγχος Απαγορευμένων (Forbidden Keywords)
+    for (const word of finalForbidden) {
+        // Αν το word περιλαμβάνει παρενθέσεις, τις ελέγχουμε στον normalizedCode
+        // Αλλιώς ελέγχουμε στον κανονικό κώδικα (για βιβλιοθήκες π.χ. <fstream>)
+        const targetCode = word.includes('(') ? normalizedCode : code;
+        
+        if (targetCode.includes(word)) {
+            return {
+                passed: false,
+                error: `Security/Static Analysis Failed: Forbidden keyword '${word}' detected.`,
+                violationType: word
+            };
         }
-      }
+    }
+
+    // 4. Έλεγχος Απαιτούμενων (Required Keywords)
+    // Εδώ χρησιμοποιούμε τον κανονικό κώδικα για να μην έχουμε θέματα με strings
+    if (required && required.length > 0) {
+        for (const word of required) {
+            if (!code.includes(word)) {
+                return {
+                    passed: false,
+                    error: `Static Analysis Failed: Missing required keyword '${word}'.`,
+                };
+            }
+        }
     }
 
     return { passed: true };
-  }
+}
 
   static smartCompare(actual: string, expected: string): boolean {
     const a = actual.trim();
