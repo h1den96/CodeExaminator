@@ -261,8 +261,8 @@ export async function runSubmissionCode(req: Request, res: Response) {
 
     // Calculation: (10 * 0.2 * 1.0) + (10 * 0.8 * 1.0) = 10.0
 
-    // THIS LINE MIGHT HAVE WRONG FORMULA PLEASE CHECK AGAIN
-    const earnedPoints = totalPoints * weightWB * structuralResult.score;
+    const earnedPoints = (totalPoints * weightWB * structuralResult.score) + 
+    (totalPoints * weightBB * bbPassRate);
 
     // 6. Debugging Log for Terminal
     console.log(`\n--- Internal Grading Debug (Q${question_id}) ---`);

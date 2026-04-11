@@ -255,20 +255,50 @@ export default function ExamRunner() {
     }, 500);
   };
 
-  const handleRunCode = async (qId: number, code: string) => {
+ const handleRunCode = async (qId: number, code: string) => {
     setIsRunning(true);
     setRunResult(null);
     setRunError(null);
+
+    console.log("🚀 [handleRunCode] Sending Request for Q:", qId);
+
     try {
       const res = await api.post(`/submissions/${submissionId}/run`, {
         question_id: qId,
         code,
         language: "cpp",
       });
-      setRunResult(res.data);
+
+      console.log("📡 [ExamRunner] Raw API Response:", res.data);
+
+      if (res.data) {
+        // Normalize the test results to ensure 'status' is a string and 'passed' exists
+        const rawDetails = res.data.test_results || res.data.details || [];
+        
+        const normalizedDetails = rawDetails.map((test: any) => ({
+          ...test,
+          // Flatten status object to string if needed
+          status: typeof test.status === 'object' ? test.status.description : test.status,
+          // Force a boolean for passed
+          passed: !!(test.passed || test.status_id === 3 || test.status?.id === 3 || test.status === "Accepted")
+        }));
+
+        const newResult = {
+          grade: Number(res.data.question_grade ?? res.data.grade ?? 0),
+          details: normalizedDetails
+        };
+
+        console.log("💾 [ExamRunner] Setting state to:", newResult);
+        setRunResult(newResult);
+      } else { // 👈 Added the missing closing brace here
+        console.warn("⚠️ [ExamRunner] Response received but data is empty.");
+      }
     } catch (err: any) {
-      setRunError("Compilation failed.");
+      const errorMsg = err.response?.data?.error || err.message || "Compilation failed.";
+      console.error("❌ [ExamRunner] Run Error:", errorMsg);
+      setRunError(errorMsg);
     } finally {
+      console.log("🏁 [ExamRunner] Execution Finished");
       setIsRunning(false);
     }
   };

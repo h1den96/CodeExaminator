@@ -136,4 +136,11 @@ export class StructuralAnalysisService {
       return identifier && identifier.text === name;
     });
   }
+
+  public hasLoop(code: string): boolean {
+    if (!code) return false;
+    // Regex to find 'for', 'while', or 'do' not inside a comment/string
+    const loopRegex = /\b(for|while|do)\b/g;
+    return loopRegex.test(code);
+  }
 }

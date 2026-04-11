@@ -106,7 +106,7 @@ export default function RunTestPage() {
     question,
     currentIdx,
     totalQ,
-    answer: answers[question.question_id],
+    answer: answers[question.question_id] || question.starter_code || "",
     saveStatus,
     submitting,
     onAnswer: handleAnswer,
@@ -116,6 +116,13 @@ export default function RunTestPage() {
 
   // 5. Render Layout
   if (isProgramming) {
+
+    const fullBoilerplate = question.boilerplate_code || "";
+    const parts = fullBoilerplate.split("// {{STUDENT_CODE}}");
+    
+    const topPart = parts[0] || "";
+    const bottomPart = parts[1] || "";
+
     return (
       <ProgrammingLayout
         {...commonProps}
@@ -123,6 +130,8 @@ export default function RunTestPage() {
         isRunning={isRunning}
         runResult={runResult}
         runError={runError}
+        topPart={topPart}
+        bottomPart={bottomPart}
       />
     );
   }

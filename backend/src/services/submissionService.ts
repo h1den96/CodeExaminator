@@ -203,35 +203,36 @@ export class SubmissionService {
             await client.query("BEGIN");
             const sRes = await client.query(
                 `INSERT INTO exam.submissions (student_id, test_id, status, started_at) 
-                 VALUES ($1, $2, 'in_progress', NOW()) 
+                 VALUES ($1, $2, 'started', NOW()) 
                  RETURNING submission_id, started_at`,
                 [studentId, t.test_id],
             );
             const submissionId = sRes.rows[0].submission_id;
 
-            const drawQuery = `
-                INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
-                SELECT 
-                  $1 as submission_id,
-                  q_pool.question_id,
-                  ts.slot_order,
-                  ts.points
-                FROM exam.test_slots ts
-                CROSS JOIN LATERAL (
-                  SELECT q.question_id
-                  FROM exam.questions q
-                  JOIN exam.question_topics qt ON q.question_id = qt.question_id
-                  LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-                  WHERE q.difficulty = ts.difficulty
-                  AND qt.topic_id = ts.topic_id
-                  AND q.question_type = ts.question_type
-                  AND (q.question_type != 'programming' OR pq.category = ts.category)
-                  ORDER BY RANDOM()
-                  LIMIT 1
-                ) AS q_pool
-                WHERE ts.test_id = $2
-                ORDER BY ts.slot_order ASC;
-            `;
+                const drawQuery = `
+                    INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+                    SELECT 
+                    $1, q_pool.question_id, ts.slot_order, ts.points
+                    FROM exam.test_slots ts
+                    CROSS JOIN LATERAL (
+                    SELECT q.question_id
+                    FROM exam.questions q
+                    JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                    INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                    WHERE q.difficulty = ts.difficulty
+                        AND qt.topic_id = ts.topic_id
+                        AND q.question_type = ts.question_type
+                        -- Εδώ γίνεται η αυστηρή σύγκριση
+                        AND (
+                        ts.category = 'ANY' 
+                        OR pq.category = ts.category
+                        )
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                    ) AS q_pool
+                    WHERE ts.test_id = $2
+                    ORDER BY ts.slot_order ASC;
+                `;
 
             const drawResult = await client.query(drawQuery, [submissionId, t.test_id]);
             if (drawResult.rowCount === 0) throw new Error("No matching questions found.");
@@ -252,7 +253,9 @@ export class SubmissionService {
 
     static async saveSingleAnswer(submissionId: number, studentId: string, dto: SubmitAnswerDto, db: Pool) {
         const subCheck = await db.query(
-            `SELECT submission_id FROM exam.submissions WHERE submission_id = $1 AND student_id = $2 AND status = 'in_progress'`,
+           `SELECT submission_id FROM exam.submissions 
+            WHERE submission_id = $1 AND student_id = $2 
+            AND status IN ('in_progress', 'started')`,
             [submissionId, studentId],
         );
         if (subCheck.rowCount === 0) throw new Error("Submission not found or closed");

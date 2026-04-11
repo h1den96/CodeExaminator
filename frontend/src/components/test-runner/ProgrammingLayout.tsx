@@ -97,7 +97,6 @@ export default function ProgrammingLayout({
     }
   };
 
-  // Shared style for read-only boilerplate blocks
   const boilerplateStyle: React.CSSProperties = {
     backgroundColor: "#1e1e1e",
     color: "#6a9955",
@@ -121,7 +120,7 @@ export default function ProgrammingLayout({
         zIndex: 9999,
       }}
     >
-      {/* === LEFT PANEL: INSTRUCTIONS & TERMINAL === */}
+      {/* === LEFT PANEL === */}
       <div
         style={{
           width: `${leftWidth}%`,
@@ -184,14 +183,10 @@ export default function ProgrammingLayout({
                   alignItems: "center",
                 }}
               >
-                <span
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>💻</span> CONSOLE
                 </span>
-                {isRunning && (
-                  <span style={{ color: "#38bdf8" }}>Running...</span>
-                )}
+                {isRunning && <span style={{ color: "#38bdf8" }}>Running...</span>}
               </div>
 
               <div
@@ -199,7 +194,7 @@ export default function ProgrammingLayout({
                   padding: "12px",
                   fontFamily: "monospace",
                   whiteSpace: "pre-wrap",
-                  maxHeight: "250px",
+                  maxHeight: "300px",
                   overflowY: "auto",
                 }}
               >
@@ -213,166 +208,83 @@ export default function ProgrammingLayout({
                   <>
                     <div
                       style={{
-                        marginBottom: "10px",
+                        marginBottom: "12px",
                         display: "inline-block",
-                        padding: "4px 8px",
+                        padding: "4px 10px",
                         borderRadius: "4px",
-                        background:
-                          runResult.grade === question.points
-                            ? "#166534"
-                            : "#991b1b",
+                        background: (runResult.grade ?? 0) >= (question.points ?? 0) ? "#166534" : "#991b1b",
                         color: "white",
                         fontWeight: "bold",
-                        fontSize: "0.75rem",
+                        fontSize: "0.8rem",
                       }}
                     >
-                      GRADE: {runResult.grade} / {question.points}
+                      GRADE: {runResult.grade ?? 0} / {question.points}
                     </div>
 
-                    {(() => {
-                      const details = Array.isArray(runResult.details)
-                        ? runResult.details[0]
-                        : runResult.details;
-                      if (!details)
+                    {/* RENDER INDIVIDUAL TEST CASES */}
+                    {Array.isArray(runResult.details) && runResult.details.length > 0 ? (
+                      runResult.details.map((test: any, index: number) => {
+                        
+                        // 1. Logic for passing status
+                        const isPassed = 
+                          test.passed === true || 
+                          test.status === "Accepted" || 
+                          test.status?.description === "Accepted" || 
+                          test.status?.id === 3;
+
+                        // 2. Define the missing variables for rendering
+                        const errorLog = test.error || test.compile_output || test.stderr || ""; 
+                        const output = test.stdout || test.actual || "";
+
                         return (
-                          <div style={{ color: "#94a3b8" }}>
-                            No output details available.
+                          <div 
+                            key={index} 
+                            style={{ 
+                              marginBottom: "14px", 
+                              borderLeft: `4px solid ${isPassed ? "#22c55e" : "#ef4444"}`, 
+                              paddingLeft: "12px",
+                              background: "rgba(255,255,255,0.02)",
+                              padding: "8px 12px"
+                            }}
+                          >
+                            <div style={{ fontWeight: "bold", color: isPassed ? "#4ade80" : "#fca5a5", marginBottom: "4px" }}>
+                              {isPassed ? "✅ PASSED" : "❌ FAILED"}: Test Case #{index + 1}
+                            </div>
+
+                            {test.is_public && test.input && (
+                              <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                                <strong>Input:</strong> {test.input}
+                              </div>
+                            )}
+
+                            {errorLog && (
+                              <div style={{ marginTop: "6px" }}>
+                                <pre style={{ 
+                                  fontSize: "0.75rem", 
+                                  color: "#fca5a5", 
+                                  background: "#2d2d2d", 
+                                  padding: "8px", 
+                                  borderRadius: "4px",
+                                  overflowX: "auto"
+                                }}>
+                                  {errorLog}
+                                </pre>
+                              </div>
+                            )}
+
+                            {isPassed && output && (
+                              <div style={{ fontSize: "0.75rem", color: "#f0fdf4", marginTop: "4px" }}>
+                                <strong>Output:</strong> {output}
+                              </div>
+                            )}
                           </div>
                         );
-
-                      // 🚀 THE CORRECTED LOGIC FOR YOUR BACKEND
-                      const status = details.status || ""; // This will be "Passed" or "Failed"
-                      const isPassed = status === "Passed";
-                      const isFailed = status === "Failed";
-
-                      // It is ONLY a sandbox crash if it's NOT Passed and NOT Failed.
-                      // (Like Time Limit Exceeded or Memory Limit Exceeded)
-                      const isSandboxError =
-                        !isPassed && !isFailed && !details.compile_output;
-
-                      return (
-                        <>
-                          {/* 1. Compilation Error */}
-                          {details.compile_output && (
-                            <div
-                              style={{
-                                color: "#fca5a5",
-                                marginBottom: "10px",
-                                borderLeft: "3px solid #ef4444",
-                                paddingLeft: "10px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: "bold",
-                                  color: "#ef4444",
-                                  marginBottom: "4px",
-                                }}
-                              >
-                                ❌ COMPILATION ERROR:
-                              </div>
-                              {decodeOutput(details.compile_output)}
-                            </div>
-                          )}
-
-                          {/* 2. Real Sandbox Error (TLE, MLE, etc.) */}
-                          {isSandboxError && (
-                            <div
-                              style={{
-                                color: "#fca5a5",
-                                marginBottom: "10px",
-                                borderLeft: "3px solid #ef4444",
-                                paddingLeft: "10px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: "bold",
-                                  color: "#ef4444",
-                                  marginBottom: "4px",
-                                }}
-                              >
-                                ⚠️ SANDBOX TERMINATED:
-                              </div>
-                              Your program was stopped by the environment. Check
-                              for infinite loops or massive memory usage.
-                            </div>
-                          )}
-
-                          {/* 3. Runtime Error (stderr) */}
-                          {details.stderr && (
-                            <div
-                              style={{
-                                color: "#fca5a5",
-                                marginBottom: "10px",
-                                borderLeft: "3px solid #ef4444",
-                                paddingLeft: "10px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: "bold",
-                                  color: "#ef4444",
-                                  marginBottom: "4px",
-                                }}
-                              >
-                                ⚠️ RUNTIME ERROR:
-                              </div>
-                              {details.stderr}
-                            </div>
-                          )}
-
-                          {/* 4. Output (Visible if the program actually ran) */}
-                          {details.stdout && (
-                            <div
-                              style={{
-                                color: "#f0fdf4",
-                                marginBottom: "5px",
-                                borderLeft: "3px solid #22c55e",
-                                paddingLeft: "10px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: "bold",
-                                  color: "#4ade80",
-                                  marginBottom: "4px",
-                                }}
-                              >
-                                ✅ OUTPUT:
-                              </div>
-                              {details.stdout}
-                            </div>
-                          )}
-
-                          {/* 5. Fallback Success Message */}
-                          {isPassed && !details.stdout && (
-                            <div
-                              style={{
-                                color: "#94a3b8",
-                                fontStyle: "italic",
-                                padding: "10px",
-                              }}
-                            >
-                              (Program executed successfully with no output)
-                            </div>
-                          )}
-
-                          {/* 6. Wrong Answer Hint */}
-                          {isFailed && !details.stdout && !details.stderr && (
-                            <div
-                              style={{
-                                color: "#94a3b8",
-                                fontStyle: "italic",
-                                padding: "10px",
-                              }}
-                            >
-                              (Program finished but the answer was incorrect)
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
+                      })
+                    ) : (
+                      <div style={{ color: "#94a3b8", fontStyle: 'italic' }}>
+                        No detailed test results found.
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -380,6 +292,7 @@ export default function ProgrammingLayout({
           )}
         </div>
 
+        {/* === BUTTON SECTION === */}
         <div
           style={{
             padding: "20px",
@@ -438,9 +351,7 @@ export default function ProgrammingLayout({
         }}
       >
         {topPart && (
-          <div
-            style={{ ...boilerplateStyle, borderBottom: "1px solid #2d2d2d" }}
-          >
+          <div style={{ ...boilerplateStyle, borderBottom: "1px solid #2d2d2d" }}>
             {topPart.trim()}
           </div>
         )}

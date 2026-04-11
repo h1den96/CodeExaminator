@@ -145,8 +145,8 @@ export const submitCode = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      grade: result.question_grade,
-      details: result.details,
+      question_grade: result.question_grade, // Frontend looks for 'question_grade'
+      test_results: result.details || [],    // Frontend looks for 'test_results'
     });
   } catch (error: any) {
     console.error("Code Execution Error:", error);

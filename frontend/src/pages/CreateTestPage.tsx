@@ -7,6 +7,7 @@ interface Slot {
   topic_id: number;
   question_type: "true_false" | "multiple_choice" | "programming";
   difficulty: "easy" | "medium" | "hard";
+  category: "SCALAR" | "LINEAR" | "CUSTOM"; // Strict typing: No more "ANY"
   points: number;
   weight_bb: number; // Black-box (Results)
   weight_wb: number; // White-box (Logic)
@@ -26,7 +27,7 @@ export default function CreateTestPage() {
     available_until: "",
     duration_minutes: 60,
     strict_deadline: true,
-    slots: [] as Slot[], // 🚀 THE NEW CORE: Array of Slots
+    slots: [] as Slot[], 
   });
 
   useEffect(() => {
@@ -37,8 +38,9 @@ export default function CreateTestPage() {
     if (topics.length === 0) return;
     const newSlot: Slot = {
       topic_id: topics[0].topic_id,
-      question_type: "multiple_choice",
+      question_type: "programming", // Default to programming to show categories immediately
       difficulty: "easy",
+      category: "SCALAR", // Forced default to Scalar
       points: 10,
       weight_bb: 0.8,
       weight_wb: 0.2,
@@ -50,11 +52,11 @@ export default function CreateTestPage() {
     const newSlots = [...formData.slots];
     newSlots[index] = { ...newSlots[index], ...updates };
 
-    // Auto-balance weights if one changes
+    // Maintain weight balance (BB + WB = 1.0)
     if (updates.weight_bb !== undefined)
-      newSlots[index].weight_wb = 1 - updates.weight_bb;
+      newSlots[index].weight_wb = Number((1 - updates.weight_bb).toFixed(2));
     if (updates.weight_wb !== undefined)
-      newSlots[index].weight_bb = 1 - updates.weight_wb;
+      newSlots[index].weight_bb = Number((1 - updates.weight_wb).toFixed(2));
 
     setFormData((prev) => ({ ...prev, slots: newSlots }));
   };
@@ -66,8 +68,6 @@ export default function CreateTestPage() {
     }));
   };
 
-  // Inside CreateTestPage.tsx
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.slots.length === 0) {
@@ -77,7 +77,6 @@ export default function CreateTestPage() {
 
     setLoading(true);
     try {
-      // ΜΕΤΑΤΡΟΠΗ ΣΕ ISO STRING (Αυτό θα στείλει π.χ. 12:35Z αν εσύ έβαλες 15:35)
       const isoAvailableFrom = formData.available_from 
         ? new Date(formData.available_from).toISOString() 
         : null;
@@ -86,27 +85,24 @@ export default function CreateTestPage() {
         ? new Date(formData.available_until).toISOString() 
         : null;
 
+      // Submit the full formData including strict slots
       await createTest({
-        title: formData.title,
-        description: formData.description,
+        ...formData,
         available_from: isoAvailableFrom,
         available_until: isoAvailableUntil,
-        duration_minutes: formData.duration_minutes,
-        strict_deadline: formData.strict_deadline,
         is_random: true,
-        slots: formData.slots,
-    });
+      });
 
-    alert("Test Blueprint Created!");
-    navigate("/teacher/dashboard");
-  } catch (err: any) {
-    setError(err.response?.data?.error || "Failed to create test blueprint.");
-  } finally {
-    setLoading(false);
-  }
-};
+      alert("Strict Exam Blueprint Created!");
+      navigate("/teacher/dashboard");
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create test blueprint.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Styles
+  // Shared Styles
   const cardStyle = {
     backgroundColor: colors.card,
     padding: "20px",
@@ -133,14 +129,23 @@ export default function CreateTestPage() {
     >
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <header style={{ marginBottom: "30px" }}>
-          <h1 style={{ margin: 0 }}>Create Exam Blueprint</h1>
+          <h1 style={{ margin: 0 }}>Create Strict Exam Blueprint</h1>
           <p style={{ color: colors.textSec }}>
-            Design the "Slots" that define the student experience.
+            Define specific requirements for randomized question selection.
           </p>
         </header>
 
         {error && (
-          <div style={{ color: "red", marginBottom: "20px" }}>{error}</div>
+          <div style={{ 
+            padding: "12px", 
+            backgroundColor: "#fee2e2", 
+            color: "#b91c1c", 
+            borderRadius: "8px", 
+            marginBottom: "20px",
+            border: "1px solid #fca5a5" 
+          }}>
+            {error}
+          </div>
         )}
 
         <form
@@ -159,58 +164,45 @@ export default function CreateTestPage() {
                 placeholder="Exam Title"
                 style={{ ...inputBase, width: "100%", marginBottom: "15px" }}
                 value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 required
               />
               <textarea
                 placeholder="Instructions..."
                 style={{ ...inputBase, width: "100%", minHeight: "100px" }}
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
 
             <div style={cardStyle}>
               <h3>Timing</h3>
               <div style={{ marginBottom: "10px" }}>
-                <label>Opens:</label>
+                <label style={{ display: "block", marginBottom: "5px" }}>Opens:</label>
                 <input
                   type="datetime-local"
                   style={{ ...inputBase, width: "100%" }}
-                  onChange={(e) =>
-                    setFormData({ ...formData, available_from: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, available_from: e.target.value })}
+                  required
                 />
               </div>
               <div style={{ marginBottom: "10px" }}>
-                <label>Closes:</label>
+                <label style={{ display: "block", marginBottom: "5px" }}>Closes:</label>
                 <input
                   type="datetime-local"
                   style={{ ...inputBase, width: "100%" }}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      available_until: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setFormData({ ...formData, available_until: e.target.value })}
+                  required
                 />
               </div>
               <div>
-                <label>Duration (Mins):</label>
+                <label style={{ display: "block", marginBottom: "5px" }}>Duration (Mins):</label>
                 <input
                   type="number"
                   value={formData.duration_minutes}
                   style={{ ...inputBase, width: "100%" }}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      duration_minutes: Number(e.target.value),
-                    })
-                  }
+                  onChange={(e) => setFormData({ ...formData, duration_minutes: Number(e.target.value) })}
+                  required
                 />
               </div>
             </div>
@@ -219,17 +211,10 @@ export default function CreateTestPage() {
           {/* RIGHT: THE SLOT MANAGER */}
           <section>
             <div style={cardStyle}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "20px",
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
                 <h3 style={{ margin: 0 }}>Question Slots</h3>
                 <span style={{ fontWeight: "bold", color: colors.textSec }}>
-                  {formData.slots.length} Questions Total
+                  {formData.slots.length} Strict Requirements
                 </span>
               </div>
 
@@ -238,7 +223,7 @@ export default function CreateTestPage() {
                   key={index}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.5fr 1fr 1fr 100px 2fr auto",
+                    gridTemplateColumns: "1.5fr 1fr 1fr 1.5fr 80px 2fr auto",
                     gap: "10px",
                     alignItems: "center",
                     padding: "15px",
@@ -248,82 +233,69 @@ export default function CreateTestPage() {
                     backgroundColor: colors.bg,
                   }}
                 >
-                  {/* Topic */}
+                  {/* Topic selection */}
                   <select
                     style={inputBase}
                     value={slot.topic_id}
-                    onChange={(e) =>
-                      updateSlot(index, { topic_id: Number(e.target.value) })
-                    }
+                    onChange={(e) => updateSlot(index, { topic_id: Number(e.target.value) })}
                   >
                     {topics.map((t) => (
-                      <option key={t.topic_id} value={t.topic_id}>
-                        {t.name}
-                      </option>
+                      <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
                     ))}
                   </select>
 
-                  {/* Type */}
+                  {/* Question Type */}
                   <select
                     style={inputBase}
                     value={slot.question_type}
-                    onChange={(e) =>
-                      updateSlot(index, {
-                        question_type: e.target.value as any,
-                      })
-                    }
+                    onChange={(e) => updateSlot(index, { question_type: e.target.value as any })}
                   >
+                    <option value="programming">Code</option>
                     <option value="multiple_choice">MCQ</option>
                     <option value="true_false">T/F</option>
-                    <option value="programming">Code</option>
                   </select>
 
-                  {/* Difficulty */}
+                  {/* Difficulty level */}
                   <select
                     style={inputBase}
                     value={slot.difficulty}
-                    onChange={(e) =>
-                      updateSlot(index, { difficulty: e.target.value as any })
-                    }
+                    onChange={(e) => updateSlot(index, { difficulty: e.target.value as any })}
                   >
                     <option value="easy">Easy</option>
                     <option value="medium">Medium</option>
                     <option value="hard">Hard</option>
                   </select>
 
-                  {/* Points */}
+                  {/* STRICT CATEGORY SELECTION */}
+                  <select
+                    style={{
+                      ...inputBase,
+                      opacity: slot.question_type === "programming" ? 1 : 0.5,
+                    }}
+                    disabled={slot.question_type !== "programming"}
+                    value={slot.category}
+                    onChange={(e) => updateSlot(index, { category: e.target.value as any })}
+                  >
+                    <option value="SCALAR">Scalar (Simple Function)</option>
+                    <option value="LINEAR">Linear (Arrays/Vectors)</option>
+                    <option value="CUSTOM">Custom (Full Program)</option>
+                  </select>
+
+                  {/* Points value */}
                   <input
                     type="number"
                     style={inputBase}
                     value={slot.points}
-                    onChange={(e) =>
-                      updateSlot(index, { points: Number(e.target.value) })
-                    }
+                    onChange={(e) => updateSlot(index, { points: Number(e.target.value) })}
                   />
 
-                  {/* Hybrid Weights (Only show for Programming) */}
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "2px",
-                    }}
-                  >
+                  {/* Grading Balance */}
+                  <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "2px" }}>
                     {slot.question_type === "programming" ? (
                       <>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span>
-                            Result: {Math.round(slot.weight_bb * 100)}%
-                          </span>
-                          <span>
-                            Logic: {Math.round(slot.weight_wb * 100)}%
-                          </span>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Result: {Math.round(slot.weight_bb * 100)}%</span>
+                          <span>Logic: {Math.round(slot.weight_wb * 100)}%</span>
                         </div>
                         <input
                           type="range"
@@ -331,18 +303,12 @@ export default function CreateTestPage() {
                           max="1"
                           step="0.1"
                           value={slot.weight_bb}
-                          onChange={(e) =>
-                            updateSlot(index, {
-                              weight_bb: parseFloat(e.target.value),
-                            })
-                          }
+                          onChange={(e) => updateSlot(index, { weight_bb: parseFloat(e.target.value) })}
                         />
                       </>
                     ) : (
-                      <span
-                        style={{ color: colors.textSec, fontStyle: "italic" }}
-                      >
-                        Auto-graded (100% Result)
+                      <span style={{ color: colors.textSec, fontStyle: "italic" }}>
+                        Auto-graded
                       </span>
                     )}
                   </div>
@@ -350,13 +316,7 @@ export default function CreateTestPage() {
                   <button
                     type="button"
                     onClick={() => removeSlot(index)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#ef4444",
-                      cursor: "pointer",
-                      fontSize: "1.2rem",
-                    }}
+                    style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: "1.2rem" }}
                   >
                     ×
                   </button>
@@ -377,7 +337,7 @@ export default function CreateTestPage() {
                   fontWeight: "bold",
                 }}
               >
-                + Add New Random Slot
+                + Add Strict Random Slot
               </button>
             </div>
 
@@ -393,10 +353,10 @@ export default function CreateTestPage() {
                 borderRadius: "12px",
                 fontSize: "1.2rem",
                 fontWeight: "bold",
-                cursor: "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
               }}
             >
-              {loading ? "Saving Blueprint..." : "🚀 Create Randomized Exam"}
+              {loading ? "Creating Exam..." : "🚀 Create Strict Randomized Exam"}
             </button>
           </section>
         </form>
