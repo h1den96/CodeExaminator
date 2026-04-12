@@ -17,11 +17,9 @@ interface ParsedSignature {
 }
 
 export class BoilerplateFactory {
-  /**
-   * Αναλύει το signature και διαχωρίζει τύπους, ονόματα και σύμβολα (&, *).
-   */
   private static parseSignature(signature: string): ParsedSignature {
-    const regex = /(.+)\s+(\w+)\s*\((.*)\)/;
+    // Regex που αντέχει περισσότερα κενά και ειδικούς χαρακτήρες
+    const regex = /(.+?)\s+(\w+)\s*\((.*)\)/;
     const match = signature.match(regex);
 
     if (!match) {
@@ -33,9 +31,8 @@ export class BoilerplateFactory {
       ? rawParams.split(",").map((p) => {
           const parts = p.trim().split(/\s+/);
           const nameWithSymbols = parts.pop() || "";
-          
-          const name = nameWithSymbols.replace(/[&*]/g, ""); 
-          const symbols = nameWithSymbols.match(/[&*]+/g)?.[0] || "";
+          const name = nameWithSymbols.replace(/[&*\[\]]/g, ""); 
+          const symbols = nameWithSymbols.match(/[&*\[\]]+/g)?.[0] || "";
           const type = parts.join(" ") + " " + symbols; 
           
           return { type: type.trim(), name: name.trim() };
@@ -49,208 +46,84 @@ export class BoilerplateFactory {
     };
   }
 
-  /**
-   * Κύρια μέθοδος παραγωγής κώδικα C++
-   */
   static createFullHarness(category: QuestionCategory, signature: string): string {
-    const baseIncludes = `#include <iostream>
-      #include <vector>
-      #include <string>
-      #include <algorithm>
-      #include <cmath>
-      #include <iomanip>
+    const baseIncludes = `#include <iostream>\n#include <vector>\n#include <string>\n#include <algorithm>\n#include <cmath>\n#include <iomanip>\n\nusing namespace std;`;
+    const marker = `// [[STUDENT_CODE_ZONE]]`;
 
-      using namespace std;`;
-
-    // 1. Αν είναι CUSTOM, επιστρέφουμε αμέσως χωρίς να αναλύσουμε το signature
     if (category === "CUSTOM") {
-        return `${baseIncludes}\n\n// {{STUDENT_CODE}}\n`;
+        return `${baseIncludes}\n\n${marker}\n`;
     }
 
-    // 2. Για όλες τις άλλες κατηγορίες, αναλύουμε το signature
-    const sig = this.parseSignature(signature);
-
-    const studentFuncHeader = `${sig.returnType} ${sig.functionName}(${sig.params
-      .map((p) => `${p.type} ${p.name}`)
-      .join(", ")}) {`;
-
-    switch (category) {
-      case "SCALAR":
-        return this.generateScalarHarness(baseIncludes, studentFuncHeader, sig);
-      case "LINEAR":
-        return this.generateLinearHarness(baseIncludes, studentFuncHeader, sig);
-      case "GRID":
-        return this.generateGridHarness(baseIncludes, studentFuncHeader, sig);
-      case "LINKED_LIST":
-        return this.generateLinkedListHarness(baseIncludes, studentFuncHeader, sig);
-      default:
-        return `${baseIncludes}\n\n${studentFuncHeader}\n    // {{STUDENT_CODE}}\n}\n\nint main() { return 0; }`;
+    // Fallback για κενά signatures από τη βάση
+    if (!signature || signature.trim() === "") {
+        return `${baseIncludes}\n\n${marker}\n\nint main() { return 0; }`;
     }
-  }
 
-  /**
-   * Template για SCALAR: Υποστηρίζει Ν παραμέτρους
-   */
-  private static generateScalarHarness(includes: string, header: string, sig: ParsedSignature): string {
-    const declarations = sig.params.map((p, i) => `${p.type.replace(/[&]/g, "")} p${i};`).join("\n    ");
-    const reads = sig.params.map((_, i) => `p${i}`).join(" >> ");
-    const callArgs = sig.params.map((_, i) => `p${i}`).join(", ");
+    try {
+        const sig = this.parseSignature(signature);
 
-    return `${includes}
-
-${header}
-    // {{STUDENT_CODE}}
-}
-
-int main() {
-    ${declarations}
-    if (cin >> ${reads}) {
-        ${sig.returnType === "void" 
-            ? `${sig.functionName}(${callArgs});` 
-            : `auto result = ${sig.functionName}(${callArgs});
-        cout << fixed << setprecision(4) << result << endl;`
+        switch (category) {
+            case "SCALAR":
+                return this.generateScalarHarness(baseIncludes, marker, sig);
+            case "LINEAR":
+                return this.generateLinearHarness(baseIncludes, marker, sig);
+            case "GRID":
+                return this.generateGridHarness(baseIncludes, marker, sig);
+            case "LINKED_LIST":
+                return this.generateLinkedListHarness(baseIncludes, marker, sig);
+            default:
+                return `${baseIncludes}\n\n${marker}\n\nint main() { return 0; }`;
         }
+    } catch (e) {
+        console.error("Harness generation failed:", e);
+        return `${baseIncludes}\n\n${marker}\n\n// Error parsing signature: ${signature}\nint main() { return 0; }`;
     }
-    return 0;
-}
-`;
   }
 
-  /**
-   * Template για LINEAR: vector<T> + Extra Scalars
-   */
-  private static generateLinearHarness(includes: string, header: string, sig: ParsedSignature): string {
+  private static generateScalarHarness(includes: string, marker: string, sig: ParsedSignature): string {
+    const decls = sig.params.map((p, i) => `${p.type.replace(/[&]/g, "")} p${i};`).join("\n    ");
+    const reads = sig.params.map((_, i) => `p${i}`).join(" >> ");
+    const args = sig.params.map((_, i) => `p${i}`).join(", ");
+
+    return `${includes}\n\n${marker}\n\nint main() {\n    ${decls}\n    if (cin >> ${reads}) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${args});` : `auto res = ${sig.functionName}(${args});\n        cout << fixed << setprecision(4) << res << endl;`}\n    }\n    return 0;\n}`;
+  }
+
+  private static generateLinearHarness(includes: string, marker: string, sig: ParsedSignature): string {
+    // Υποστήριξη και για vector<T> και για T arr[]
+    const isCArray = sig.params[0]?.type.includes("[]");
     const vectorTypeMatch = sig.params[0]?.type.match(/vector<(.+)>/);
-    const innerType = vectorTypeMatch ? vectorTypeMatch[1].replace(/const|&/g, "").trim() : "int";
+    
+    let innerType = "int";
+    if (vectorTypeMatch) innerType = vectorTypeMatch[1].replace(/const|&/g, "").trim();
+    else if (isCArray) innerType = sig.params[0].type.replace("[]", "").trim();
 
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
-    const extraReads = sig.params.length > 1 
-        ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") 
-        : "";
-    const callArgs = ["v", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
-
-    return `${includes}
-
-${header}
-    // {{STUDENT_CODE}}
-}
-
-int main() {
-    int n;
-    if (!(cin >> n)) return 0;
-    vector<${innerType}> v(n);
-    for(int i = 0; i < n; i++) cin >> v[i];
+    const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     
-    ${extraDecls}
-    if (cin ${extraReads} || true) { 
-        ${sig.returnType === "void" 
-            ? `${sig.functionName}(${callArgs});
-        for(int i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : " ");
-        cout << endl;` 
-            : `cout << ${sig.functionName}(${callArgs}) << endl;`
-        }
-    }
-    return 0;
-}
-`;
+    // Αν είναι C-array περνάμε το v.data(), αλλιώς το v
+    const firstArg = isCArray ? "v.data()" : "v";
+    const callArgs = [firstArg, ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
+
+    return `${includes}\n\n${marker}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<${innerType}> v(n);\n    for(int i = 0; i < n; i++) cin >> v[i];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});\n        for(int i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : " ");\n        cout << endl;` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
   }
 
-  /**
-   * Template για GRID: vector<vector<T>> + Extra Scalars
-   */
-  private static generateGridHarness(includes: string, header: string, sig: ParsedSignature): string {
+  private static generateGridHarness(includes: string, marker: string, sig: ParsedSignature): string {
     const gridTypeMatch = sig.params[0]?.type.match(/vector<vector<(.+)>>/);
     const innerType = gridTypeMatch ? gridTypeMatch[1].replace(/const|&/g, "").trim() : "int";
-
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
-    const extraReads = sig.params.length > 1 
-        ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") 
-        : "";
+    const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     const callArgs = ["g", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
 
-    return `${includes}
-
-${header}
-    // {{STUDENT_CODE}}
-}
-
-int main() {
-    int r, c;
-    if (!(cin >> r >> c)) return 0;
-    vector<vector<${innerType}>> g(r, vector<${innerType}>(c));
-    for(int i=0; i<r; i++)
-        for(int j=0; j<c; j++) cin >> g[i][j];
-
-    ${extraDecls}
-    if (cin ${extraReads} || true) {
-        ${sig.returnType === "void" 
-            ? `${sig.functionName}(${callArgs});` 
-            : `cout << ${sig.functionName}(${callArgs}) << endl;`
-        }
-    }
-    return 0;
-}
-`;
+    return `${includes}\n\n${marker}\n\nint main() {\n    int r, c;\n    if (!(cin >> r >> c)) return 0;\n    vector<vector<${innerType}>> g(r, vector<${innerType}>(c));\n    for(int i=0; i<r; i++) for(int j=0; j<c; j++) cin >> g[i][j];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
   }
 
-  /**
-   * Template για LINKED_LIST: struct ListNode + Helpers
-   */
-  private static generateLinkedListHarness(includes: string, header: string, sig: ParsedSignature): string {
+  private static generateLinkedListHarness(includes: string, marker: string, sig: ParsedSignature): string {
+    // Αναγνώριση οποιουδήποτε Node structure
+    const nodeType = sig.params[0]?.type.replace("*", "").trim() || "ListNode";
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
     const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     const callArgs = ["head", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
 
-    return `${includes}
-
-struct ListNode {
-    int val;
-    ListNode *next;
-    ListNode(int x) : val(x), next(NULL) {}
-};
-
-${header}
-    // {{STUDENT_CODE}}
-}
-
-ListNode* buildList(const vector<int>& values) {
-    if (values.empty()) return NULL;
-    ListNode* head = new ListNode(values[0]);
-    ListNode* curr = head;
-    for (size_t i = 1; i < values.size(); i++) {
-        curr->next = new ListNode(values[i]);
-        curr = curr->next;
-    }
-    return head;
-}
-
-void printList(ListNode* head) {
-    while (head) {
-        cout << head->val << (head->next ? " " : "");
-        head = head->next;
-    }
-    cout << endl;
-}
-
-int main() {
-    int n;
-    if (!(cin >> n)) return 0;
-    vector<int> v(n);
-    for(int i=0; i<n; i++) cin >> v[i];
-    
-    ListNode* head = buildList(v);
-    ${extraDecls}
-    
-    if (cin ${extraReads} || true) {
-        ${sig.returnType.includes("ListNode*") 
-            ? `ListNode* result = ${sig.functionName}(${callArgs}); printList(result);`
-            : sig.returnType === "void"
-                ? `${sig.functionName}(${callArgs}); printList(head);`
-                : `cout << ${sig.functionName}(${callArgs}) << endl;`
-        }
-    }
-    return 0;
-}
-`;
+    return `${includes}\n\nstruct ${nodeType} {\n    int val;\n    ${nodeType} *next;\n    ${nodeType}(int x) : val(x), next(NULL) {}\n};\n\n${marker}\n\n${nodeType}* buildList(const vector<int>& values) {\n    if (values.empty()) return NULL;\n    ${nodeType}* head = new ${nodeType}(values[0]);\n    ${nodeType}* curr = head;\n    for (size_t i = 1; i < values.size(); i++) {\n        curr->next = new ${nodeType}(values[i]);\n        curr = curr->next;\n    }\n    return head;\n}\n\nvoid printList(${nodeType}* head) {\n    while (head) {\n        cout << head->val << (head->next ? " " : "");\n        head = head->next;\n    }\n    cout << endl;\n}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<int> v(n);\n    for(int i=0; i<n; i++) cin >> v[i];\n    ${nodeType}* head = buildList(v);\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType.includes("*") ? `${nodeType}* result = ${sig.functionName}(${callArgs}); printList(result);` : sig.returnType === "void" ? `${sig.functionName}(${callArgs}); printList(head);` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
   }
 }

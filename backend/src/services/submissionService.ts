@@ -6,9 +6,7 @@ import { TestService } from "./testService";
 import type { TestTemplateRow, SubmitAnswerDto } from "../types/examTypes";
 import { StructuralAnalysisService } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
-import { assertNever } from "zod/v4/core/util.cjs";
 import { SecurityAuditService } from "./securityAuditService";
-
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
@@ -24,57 +22,51 @@ export class SubmissionService {
                   .join("\n");
     }
 
+    /**
+     * Καθαρίζει τον κώδικα του μαθητή από directives που παρέχει το boilerplate
+     */
+    private static cleanStudentCode(code: string): string {
+        if (!code) return "";
+        return code
+            .replace(/^\s*#include\s*[<|"].*[>|"]/gm, '// removed header')
+            .replace(/^\s*using\s+namespace\s+std\s*;/gm, '// removed namespace')
+            .trim();
+    }
+
     static async getAvailableTestsForStudent(userId: number, db: Pool) {
         const query = `
-      SELECT 
-        test_id, 
-        title, 
-        description,
-        available_from,
-        available_until, 
-        duration_minutes
-      FROM exam.tests 
-      WHERE is_published = true 
-        AND (available_until IS NULL OR available_until > NOW())
-      ORDER BY created_at DESC
-    `;
+            SELECT test_id, title, description, available_from, available_until, duration_minutes
+            FROM exam.tests 
+            WHERE is_published = true 
+            AND (available_until IS NULL OR available_until > NOW())
+            ORDER BY created_at DESC
+        `;
         const res = await db.query(query);
         return res.rows;
     }
 
-    static async getSubmissionResult(
-        submissionId: number,
-        studentId: string,
-        db: Pool,
-    ) {
+    static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
         const query = `
-      SELECT 
-        s.submission_id,
-        s.test_id,
-        t.title as test_title,
-        s.total_grade,
-        s.status,
-        s.submitted_at,
-        (
-          SELECT json_agg(json_build_object(
-            'question_id', q.question_id,
-            'question_text', q.body,
-            'type', q.question_type,
-            'points_earned', sa.question_grade,
-            'points_possible', sq.points,
-            'eval_details', sa.eval_result,
-            'student_code', sa.code_answer
-          ))
-          FROM exam.submission_questions sq
-          JOIN exam.questions q ON sq.question_id = q.question_id
-          LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-          WHERE sq.submission_id = s.submission_id
-        ) as questions
-      FROM exam.submissions s
-      JOIN exam.tests t ON s.test_id = t.test_id
-      WHERE s.submission_id = $1 AND s.student_id = $2
-    `;
-
+            SELECT s.submission_id, s.test_id, t.title as test_title, s.total_grade, s.status, s.submitted_at,
+            (
+                SELECT json_agg(json_build_object(
+                    'question_id', q.question_id,
+                    'question_text', q.body,
+                    'type', q.question_type,
+                    'points_earned', sa.question_grade,
+                    'points_possible', sq.points,
+                    'eval_details', sa.eval_result,
+                    'student_code', sa.code_answer
+                ))
+                FROM exam.submission_questions sq
+                JOIN exam.questions q ON sq.question_id = q.question_id
+                LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+                WHERE sq.submission_id = s.submission_id
+            ) as questions
+            FROM exam.submissions s
+            JOIN exam.tests t ON s.test_id = t.test_id
+            WHERE s.submission_id = $1 AND s.student_id = $2
+        `;
         const res = await db.query(query, [submissionId, studentId]);
         return res.rows[0];
     }
@@ -87,30 +79,26 @@ export class SubmissionService {
         languageId: number
     ): Promise<{ scoreWeight: number; feedback: string; details: any[] }> {
         
-        // FIX 1: Μετατροπή των test cases από JSONB/String σε Array
         const actualTestCases = typeof testCases === 'string' ? JSON.parse(testCases) : testCases;
-        
-        const finalSource = boilerplate
-            ? boilerplate.replace("// {{STUDENT_CODE}}", studentCode)
-            : studentCode;
-        
+        const marker = "// [[STUDENT_CODE_ZONE]]";
+        let finalSource = "";
 
-        console.log("--- [DEBUG] FINAL CODE SENT TO JUDGE0 ---");
-        console.log(finalSource);
-        console.log("-----------------------------------------");
+        const cleanedCode = this.cleanStudentCode(studentCode);
+
+        if (boilerplate && boilerplate.includes(marker)) {
+            finalSource = boilerplate.replace(marker, cleanedCode);
+        } else if (boilerplate) {
+            finalSource = boilerplate + "\n\n" + cleanedCode;
+        } else {
+            finalSource = `#include <iostream>\n#include <vector>\nusing namespace std;\n\n${cleanedCode}\n\nint main() { return 0; }`;
+        }
 
         const results: any[] = [];
         let passedCount = 0;
 
-        // FIX 2: Loop πάνω στο actualTestCases (όχι στο testCases)
         for (const tCase of actualTestCases) {
-
-            const inputStr = (tCase.input !== undefined && tCase.input !== null) 
-                ? String(tCase.input) 
-                : "";
-            const expectedStr = (tCase.expected_output !== undefined && tCase.expected_output !== null) 
-                ? String(tCase.expected_output) 
-                : "";
+            const inputStr = tCase.input ? String(tCase.input) : "";
+            const expectedStr = tCase.expected_output ? String(tCase.expected_output) : "";
 
             const payload = {
                 source_code: Buffer.from(finalSource).toString("base64"),
@@ -122,21 +110,10 @@ export class SubmissionService {
                 wait: true
             };
 
-            const res = await axios.post(
-                `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`,
-                payload,
-            );
-
-            // --- ΠΡΟΣΘΕΣΕ ΑΥΤΟ ΤΟ LOG ---
-            console.log(`[DEBUG] Judge0 Response (Status ID: ${res.data.status?.id}):`, {
-                stdout: res.data.stdout,
-                stderr: res.data.stderr,
-                compile_output: res.data.compile_output
-            });
-
+            const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
             const { status, stdout, stderr, compile_output } = res.data;
+            
             const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
-
             const normalizedActual = this.normalizeOutput(actualOutput);
             const normalizedExpected = this.normalizeOutput(expectedStr);
 
@@ -145,24 +122,28 @@ export class SubmissionService {
             
             if (isCorrect) passedCount++;
 
-                results.push({
-                    status: status.description,
-                    is_public: !!tCase.is_public,
-                    input: tCase.is_public ? inputStr : "Hidden",
-                    expected: tCase.is_public ? expectedStr : "REDACTED",
-                    actual: tCase.is_public ? actualOutput : "REDACTED",
-                    passed: isCorrect,
-                    error: stderr || compile_output
-                        ? Buffer.from(stderr || compile_output, "base64").toString()
-                        : null,
-                });
+            let errorDetails: string | null = null;
+            if (stderr || compile_output) {
+                const rawError = Buffer.from(stderr || compile_output, "base64").toString();
+                errorDetails = rawError.includes("redefinition of 'int main'") 
+                    ? "Constraint Violation: You have included a main() function." 
+                    : rawError;
             }
 
-        // FIX 3: Υπολογισμός με βάση το πραγματικό μήκος του Array
+            results.push({
+                status: status.description,
+                is_public: !!tCase.is_public,
+                input: tCase.is_public ? inputStr : "Hidden",
+                expected: tCase.is_public ? expectedStr : "REDACTED",
+                actual: tCase.is_public ? actualOutput : "REDACTED",
+                passed: isCorrect,
+                error: errorDetails,
+            });
+        }
+
         const total = actualTestCases.length || 1;
         const scoreWeight = passedCount / total;
 
-        
         return {
             scoreWeight,
             feedback: `Passed ${passedCount}/${total} functional tests (${(scoreWeight * 100).toFixed(0)}%).`,
@@ -209,34 +190,55 @@ export class SubmissionService {
             );
             const submissionId = sRes.rows[0].submission_id;
 
-                const drawQuery = `
-                    INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
-                    SELECT 
-                    $1, q_pool.question_id, ts.slot_order, ts.points
-                    FROM exam.test_slots ts
+            const drawQuery = `
+            INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+            WITH RECURSIVE 
+            slots AS (
+                SELECT slot_id, slot_order, topic_id, difficulty, question_type, category, points,
+                        ROW_NUMBER() OVER (ORDER BY slot_order) as rn
+                FROM exam.test_slots
+                WHERE test_id = $2
+            ),
+            picker AS (
+                (
+                    SELECT s.slot_order, s.points, q_pool.question_id, ARRAY[q_pool.question_id] as used_ids, s.rn
+                    FROM slots s
                     CROSS JOIN LATERAL (
+                        SELECT q.question_id
+                        FROM exam.questions q
+                        JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                        INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                        WHERE q.difficulty = s.difficulty
+                        AND qt.topic_id = s.topic_id
+                        AND q.question_type = s.question_type
+                        AND (s.category = 'ANY' OR pq.category = s.category)
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                    ) q_pool
+                    WHERE s.rn = 1
+                )
+                UNION ALL
+                SELECT s.slot_order, s.points, q_pool.question_id, p.used_ids || q_pool.question_id, s.rn
+                FROM slots s
+                JOIN picker p ON s.rn = p.rn + 1
+                CROSS JOIN LATERAL (
                     SELECT q.question_id
                     FROM exam.questions q
                     JOIN exam.question_topics qt ON q.question_id = qt.question_id
                     INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-                    WHERE q.difficulty = ts.difficulty
-                        AND qt.topic_id = ts.topic_id
-                        AND q.question_type = ts.question_type
-                        -- Εδώ γίνεται η αυστηρή σύγκριση
-                        AND (
-                        ts.category = 'ANY' 
-                        OR pq.category = ts.category
-                        )
+                    WHERE q.difficulty = s.difficulty
+                        AND qt.topic_id = s.topic_id
+                        AND q.question_type = s.question_type
+                        AND (s.category = 'ANY' OR pq.category = s.category)
+                        AND q.question_id != ALL(p.used_ids)
                     ORDER BY RANDOM()
                     LIMIT 1
-                    ) AS q_pool
-                    WHERE ts.test_id = $2
-                    ORDER BY ts.slot_order ASC;
-                `;
+                ) q_pool
+            )
+            SELECT $1, question_id, slot_order, points FROM picker;
+            `;
 
-            const drawResult = await client.query(drawQuery, [submissionId, t.test_id]);
-            if (drawResult.rowCount === 0) throw new Error("No matching questions found.");
-
+            await client.query(drawQuery, [submissionId, t.test_id]);
             await client.query("COMMIT");
             const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
             return {
@@ -278,7 +280,7 @@ export class SubmissionService {
     }
 
     private static validateSecurity(code: string) {
-        const forbiddenPatterns = ["/*", "*/"]; // Μπλοκάρουμε τα block comments για να μην κλείνουν το template
+        const forbiddenPatterns = ["/*", "*/"];
         for (const pattern of forbiddenPatterns) {
             if (code.includes(pattern)) {
                 throw new Error(`SECURITY_VIOLATION: Forbidden pattern detected: ${pattern}`);
@@ -287,49 +289,32 @@ export class SubmissionService {
     }
 
     static async submitAndGrade(submissionId: number, studentId: string, db: Pool, codeOverride?: string) {
-        // FIX 4: Προσθήκη pq.language_id στο Query
         const dataQuery = `
-      SELECT 
-        sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
-        q.question_id, q.question_type, sq.points as question_points,
-        q.structural_rules, q.weight_wb, q.weight_bb,
-        pq.test_cases, 
-        pq.language_id, -- <--- ΚΡΙΣΙΜΟ!
-        pq.category,
-        pq.function_signature,
-        pq.boilerplate_code, 
-        pq.cpu_time_limit, 
-        pq.memory_limit,
-        tf.correct_answer as tf_correct,
-        t.enable_negative_grading,
-        s.started_at,
-        t.duration_minutes,
-        s.status as current_status,
-        (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
-         FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
-      FROM exam.submission_questions sq
-      JOIN exam.submissions s ON sq.submission_id = s.submission_id
-      JOIN exam.tests t ON s.test_id = t.test_id
-      JOIN exam.questions q ON sq.question_id = q.question_id
-      LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
-      LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-      LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
-      WHERE sq.submission_id = $1 AND s.student_id = $2
-    `;
+            SELECT sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
+            q.question_id, q.question_type, sq.points as question_points,
+            q.structural_rules, q.weight_wb, q.weight_bb,
+            pq.test_cases, pq.language_id, pq.category, pq.function_signature,
+            pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
+            tf.correct_answer as tf_correct, t.enable_negative_grading,
+            s.started_at, t.duration_minutes, s.status as current_status,
+            (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
+             FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
+            FROM exam.submission_questions sq
+            JOIN exam.submissions s ON sq.submission_id = s.submission_id
+            JOIN exam.tests t ON s.test_id = t.test_id
+            JOIN exam.questions q ON sq.question_id = q.question_id
+            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+            LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+            LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
+            WHERE sq.submission_id = $1 AND s.student_id = $2
+        `;
 
         const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId, studentId]);
         if (questionsToGrade.length === 0) throw new Error("Submission not found.");
 
         const firstRow = questionsToGrade[0];
-        if (firstRow.current_status !== 'in_progress') throw new Error("SUBMISSION_CLOSED");
-
-        const startTime = new Date(firstRow.started_at).getTime();
-        const durationMs = (Number(firstRow.duration_minutes) || 0) * 60 * 1000;
-        const now = Date.now();
-        const gracePeriod = 2 * 60 * 1000;
-
-        if (now > (startTime + durationMs + gracePeriod)) {
-            throw new Error("TIME_EXPIRED");
+        if (firstRow.current_status !== 'in_progress' && firstRow.current_status !== 'started') {
+             throw new Error("SUBMISSION_CLOSED");
         }
 
         const gradingResults: any[] = [];
@@ -348,88 +333,40 @@ export class SubmissionService {
                     earnedPoints = GradingService.calculateTrueFalse(points, ans.tf_answer, ans.tf_correct);
                     evalResult = { type: 'tf', student_ans: ans.tf_answer, correct_ans: ans.tf_correct };
                 } else if (ans.question_type === 'programming') {
-                    const codeToGrade = codeOverride || ans.code_answer;
-                    if (codeToGrade) {
-
-                        const forbiddenKeywords = [
-                            "system(", 
-                            "fork(", 
-                            "fstream", 
-                            "ifstream", 
-                            "ofstream", 
-                            "<filesystem>", 
-                            "bits/stdc++.h"
-                        ];
-
-                        const securityCheck = GradingService.performStaticAnalysis(codeToGrade, forbiddenKeywords, ans.required_keywords || []);
+                    const rawCode = codeOverride || ans.code_answer;
+                    if (rawCode) {
+                        const forbiddenKeywords = ["system(", "fork(", "fstream", "ifstream", "ofstream", "<filesystem>", "bits/stdc++.h"];
+                        const securityCheck = GradingService.performStaticAnalysis(rawCode, forbiddenKeywords, ans.required_keywords || []);
                         
                         if (!securityCheck.passed) {
-            // 3. ΚΑΤΑΓΡΑΦΗ ΤΗΣ ΠΑΡΑΒΙΑΣΗΣ (Security Audit)
-            // Σιγουρέψου ότι έχεις κάνει import το SecurityAuditService στην αρχή του αρχείου
-            if (securityCheck.violationType) {
-                await SecurityAuditService.logViolation(
-                    studentId, 
-                    ans.question_id, 
-                    codeToGrade, 
-                    `Forbidden keyword: ${securityCheck.violationType}`
-                );
-            }
-
-            earnedPoints = 0;
-            evalResult = {
-                type: 'programming',
-                status: 'SECURITY_ERROR',
-                feedback: securityCheck.error,
-                details: []
-            };
-            
-            // Σταματάμε την επεξεργασία αυτής της ερώτησης εδώ
-            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
-            continue; 
-        }
-
-                        const finalHarness = (ans.category === 'CUSTOM' && ans.boilerplate_code)
-                            ? ans.boilerplate_code
-                            : BoilerplateFactory.createFullHarness(ans.category, ans.function_signature);
-
-                        const wbResult = await StructuralAnalysisService.analyze(codeToGrade, ans.structural_rules || []);
-                        
-                        const securityViolation = wbResult.details.find((d: any) => d.weight === 0 && !d.passed);
-                        
-                        if (securityViolation) {
-                            console.error(`[SECURITY] Violation detected: ${securityViolation.description}`);
+                            if (securityCheck.violationType) {
+                                await SecurityAuditService.logViolation(studentId, ans.question_id, rawCode, `Forbidden keyword: ${securityCheck.violationType}`);
+                            }
+                            evalResult = { type: 'programming', status: 'SECURITY_ERROR', feedback: securityCheck.error, details: [] };
+                        } else {
+                            const wbResult = await StructuralAnalysisService.analyze(rawCode, ans.structural_rules || []);
+                            const structuralViolation = wbResult.details.find((d: any) => !d.passed && (d.weight === 0 || d.description.includes("forbidden")));
                             
-                            earnedPoints = 0; // Μηδενισμός βαθμού
-                            evalResult = {
-                                type: 'programming',
-                                status: 'SECURITY_ERROR',
-                                feedback: `Submission denied: ${securityViolation.description}`,
-                                details: wbResult.details
-                            };
-                            
-                            // Με το 'continue' σταματάμε εδώ και δεν στέλνουμε καν τον κώδικα στον Judge0
-                            gradingResults.push({ answerId: ans.answer_id, score: 0, evalResult });
-                            continue; 
+                            if (structuralViolation) {
+                                evalResult = { type: 'programming', status: 'SECURITY_ERROR', feedback: structuralViolation.description, details: wbResult.details };
+                            } else {
+                                const finalHarness = (ans.boilerplate_code && ans.boilerplate_code.trim().length > 0)
+                                    ? ans.boilerplate_code
+                                    : BoilerplateFactory.createFullHarness(ans.category, ans.function_signature);
+
+                                const bbResult = await this.runJudge0Assessment(rawCode, ans.test_cases || [], finalHarness, { cpu: ans.cpu_time_limit, memory: ans.memory_limit }, ans.language_id || 54);
+
+                                const wWB = Number(ans.weight_wb) || 0.2;
+                                const wBB = Number(ans.weight_bb) || 0.8;
+                                earnedPoints = (points * wWB * wbResult.score) + (points * wBB * bbResult.scoreWeight);
+
+                                evalResult = {
+                                    summary: { final_score_ratio: (earnedPoints / points).toFixed(4), points_earned: earnedPoints },
+                                    white_box: { ratio: wbResult.score, details: wbResult.details },
+                                    black_box: { ratio: bbResult.scoreWeight, feedback: bbResult.feedback, test_results: bbResult.details }
+                                };
+                            }
                         }
-
-                        // FIX 5: Πέρασμα του σωστού language_id από τη βάση
-                        const bbResult = await this.runJudge0Assessment(
-                            codeToGrade,
-                            ans.test_cases || [],
-                            finalHarness,
-                            { cpu: Number(ans.cpu_time_limit), memory: Number(ans.memory_limit) },
-                            ans.language_id || 54
-                        );
-
-                        const wWB = Number(ans.weight_wb) || 0.2;
-                        const wBB = Number(ans.weight_bb) || 0.8;
-                        earnedPoints = (points * wWB * wbResult.score) + (points * wBB * bbResult.scoreWeight);
-
-                        evalResult = {
-                            summary: { final_score_ratio: (earnedPoints / points).toFixed(4), points_earned: earnedPoints },
-                            white_box: { ratio: wbResult.score, details: wbResult.details },
-                            black_box: { ratio: bbResult.scoreWeight, feedback: bbResult.feedback, test_results: bbResult.details }
-                        };
                     }
                 }
             }
@@ -453,12 +390,7 @@ export class SubmissionService {
                 [submissionId, totalScore]
             );
             await client.query("COMMIT");
-            return { 
-                submission_id: submissionId, 
-                status: 'submitted', 
-                final_score: totalScore,
-                questions: gradingResults // <--- ΠΡΟΣΘΕΣΕ ΑΥΤΟ
-            };
+            return { submission_id: submissionId, status: 'submitted', final_score: totalScore, questions: gradingResults };
         } catch (e) {
             await client.query("ROLLBACK");
             throw e;

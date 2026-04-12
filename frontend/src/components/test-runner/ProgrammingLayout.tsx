@@ -53,10 +53,15 @@ export default function ProgrammingLayout({
   const codeRef = useRef(answer || question.starter_code || "");
 
   useEffect(() => {
-    if (answer !== undefined) {
-      codeRef.current = answer;
-    }
-  }, [answer]);
+    // Priority: 1. Existing Answer, 2. Question Starter Code, 3. Empty String
+    const newCode = (answer !== undefined && answer !== null) 
+      ? answer 
+      : (question.starter_code || "");
+    
+    codeRef.current = newCode;
+    
+    console.log(`📡 Editor synced to Question: ${question.question_id}`);
+  }, [question.question_id, answer]);
 
   const handleEditorChange = (value: string | undefined) => {
     const val = value || "";
@@ -358,12 +363,20 @@ export default function ProgrammingLayout({
 
         <div style={{ flex: 1 }}>
           <Editor
+            // 1. The key forces a total destroy/rebuild of the editor
+            key={question.question_id} 
+            
             height="100%"
             width="100%"
             defaultLanguage="cpp"
             theme={theme === "dark" ? "vs-dark" : "light"}
-            value={codeRef.current}
+            
+            // 2. Use defaultValue so Monaco sets the text only on mount
+            defaultValue={answer || question.starter_code || ""}
+            
+            // 3. Keep your change handler to update your ref/state
             onChange={handleEditorChange}
+            
             options={{
               minimap: { enabled: false },
               fontSize: 14,
