@@ -2,6 +2,43 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
+// --- 💡 Helper function για Pedagogical Feedback ---
+const getStatusFeedback = (status: string) => {
+  const feedbackMap: Record<string, { msg: string; color: string; bg: string; icon: string }> = {
+    "Time Limit Exceeded": {
+      msg: "Ο κώδικάς σου ξεπέρασε το χρόνο εκτέλεσης. Μήπως έχεις κάποιο άπειρο loop ή πολύ αργό αλγόριθμο;",
+      color: "#9a3412",
+      bg: "#fff7ed",
+      icon: "⏳"
+    },
+    "Memory Limit Exceeded": {
+      msg: "Η μνήμη εξαντλήθηκε. Απόφευγε τη δημιουργία τεράστιων πινάκων ή την υπερβολική αναδρομή (recursion).",
+      color: "#991b1b",
+      bg: "#fef2f2",
+      icon: "🧠"
+    },
+    "SECURITY_ERROR": {
+      msg: "Η υποβολή απορρίφθηκε από το σύστημα ασφαλείας. Η χρήση συστημικών κλήσεων (system, fopen κτλ) απαγορεύεται αυστηρά.",
+      color: "#7f1d1d",
+      bg: "#fee2e2",
+      icon: "🛡️"
+    },
+    "Runtime Error": {
+      msg: "Το πρόγραμμα τερματίστηκε απότομα (crash). Έλεγξε για διαίρεση με το μηδέν ή λάθη σε διαχείριση μνήμης/δείκτες.",
+      color: "#991b1b",
+      bg: "#fef2f2",
+      icon: "💥"
+    },
+    "Wrong Answer": {
+      msg: "Ο κώδικας εκτελέστηκε, αλλά το αποτέλεσμα δεν είναι το αναμενόμενο. Έλεγξε ξανά τις λεπτομέρειες της εκφώνησης.",
+      color: "#854d0e",
+      bg: "#fefce8",
+      icon: "❌"
+    }
+  };
+  return feedbackMap[status] || null;
+};
+
 export default function Results() {
   const { submissionId } = useParams();
   const navigate = useNavigate();
@@ -11,7 +48,6 @@ export default function Results() {
   useEffect(() => {
     if (!submissionId) return;
 
-    // 🚀 Fetching the deep-dive report from the backend
     api
       .get(`/submissions/${submissionId}/result`)
       .then((res) => {
@@ -21,7 +57,6 @@ export default function Results() {
       .catch((err) => {
         console.error("Result fetch error:", err);
         setLoading(false);
-        // If the backend fails (500), check your terminal for the column name error
         if (err.response?.status === 404) navigate("/tests");
       });
   }, [submissionId, navigate]);
@@ -38,9 +73,9 @@ export default function Results() {
 
   if (!data) return null;
 
-  // Calculate the total points possible across all questions
+  // Υπολογισμός συνολικών πόντων χρησιμοποιώντας το points_possible από το JSON
   const totalPossible = (data.questions ?? []).reduce(
-    (acc: number, q: any) => acc + (Number(q.max_points) || 0),
+    (acc: number, q: any) => acc + (Number(q.points_possible) || 0),
     0,
   );
 
@@ -107,9 +142,12 @@ export default function Results() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
         {(data.questions ?? []).map((q: any, i: number) => {
-          const isCorrect = Number(q.points) >= Number(q.max_points);
-          const isPartial = Number(q.points) > 0 && !isCorrect;
-
+          const isCorrect = Number(q.points_earned) >= Number(q.points_possible);
+          const isPartial = Number(q.points_earned) > 0 && !isCorrect;
+          
+          // Test Results mapping για programming ερωτήσεις
+          const testResults = q.eval_details?.black_box?.test_results || [];
+          
           return (
             <div
               key={i}
@@ -132,7 +170,7 @@ export default function Results() {
               >
                 <div style={{ flex: 1, paddingRight: "20px" }}>
                   <h3 style={{ margin: "0 0 8px 0", color: "#1e293b" }}>
-                    {i + 1}. {q.title}
+                    {i + 1}. {q.title || `Question ${i + 1}`}
                   </h3>
                   <div
                     style={{
@@ -141,7 +179,7 @@ export default function Results() {
                       lineHeight: "1.5",
                     }}
                   >
-                    {q.body}
+                    {q.question_text}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -164,7 +202,7 @@ export default function Results() {
                       border: `1px solid ${isCorrect ? "#bbf7d0" : isPartial ? "#fdba74" : "#fecaca"}`,
                     }}
                   >
-                    {q.points ?? 0} / {q.max_points ?? 0}
+                    {q.points_earned ?? 0} / {q.points_possible ?? 0}
                   </div>
                   <div
                     style={{
@@ -242,89 +280,71 @@ export default function Results() {
                 </div>
               )}
 
-              {/* --- PROGRAMMING TEST CASE GRID --- */}
-              {q.type === "programming" && q.code_results?.details && (
-                <div style={{ marginTop: "15px" }}>
-                  <p
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                      color: "#475569",
-                      marginBottom: "10px",
-                    }}
-                  >
-                    💻 Test Case Breakdown:
-                  </p>
-                  <div
-                    style={{
-                      overflowX: "auto",
-                      background: "#f8fafc",
-                      padding: "10px",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <thead>
-                        <tr
-                          style={{
-                            textAlign: "left",
-                            color: "#94a3b8",
-                            borderBottom: "1px solid #e2e8f0",
-                          }}
-                        >
-                          <th style={{ padding: "10px" }}>Test Case</th>
-                          <th style={{ padding: "10px" }}>Status</th>
-                          <th style={{ padding: "10px" }}>Execution</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {q.code_results.details.map(
-                          (test: any, idx: number) => (
-                            <tr
-                              key={idx}
-                              style={{ borderBottom: "1px solid #f1f5f9" }}
-                            >
-                              <td
-                                style={{
-                                  padding: "10px",
-                                  fontFamily: "monospace",
-                                  color: "#1e293b",
-                                }}
-                              >
-                                {test.input
-                                  ? `Input: ${test.input}`
-                                  : `Base Case #${idx + 1}`}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "10px",
-                                  fontWeight: "bold",
-                                  color:
-                                    test.status === "Passed"
-                                      ? "#16a34a"
-                                      : "#dc2626",
-                                }}
-                              >
-                                {test.status === "Passed"
-                                  ? "✓ Passed"
-                                  : `✗ ${test.status}`}
-                              </td>
-                              <td style={{ padding: "10px", color: "#94a3b8" }}>
-                                {test.time ? `${test.time}s` : "--"}
-                              </td>
+              {/* --- PROGRAMMING FEEDBACK & CODE --- */}
+              {q.type === "programming" && (
+                <>
+                  {/* Smart Pedagogical Feedback */}
+                  {testResults.length > 0 && testResults.some((t: any) => !t.passed) && (
+                    (() => {
+                        // Βρίσκουμε το πρώτο σφάλμα που δεν είναι "Accepted" (δηλαδή TLE, RE κτλ)
+                        const errorResult = testResults.find((t: any) => t.status !== "Accepted" && !t.passed);
+                        const feedback = getStatusFeedback(errorResult?.status || (isCorrect ? "Accepted" : "Wrong Answer"));
+                        
+                        return feedback ? (
+                            <div style={{ marginTop: "15px", padding: "12px 16px", borderRadius: "8px", border: `1px solid ${feedback.color}44`, background: feedback.bg, color: feedback.color, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "12px" }}>
+                                <span style={{ fontSize: "1.3rem" }}>{feedback.icon}</span>
+                                <span>{feedback.msg}</span>
+                            </div>
+                        ) : null;
+                    })()
+                  )}
+
+                  {/* Submitted Code Display */}
+                  {q.student_code && (
+                    <div style={{ marginTop: "20px" }}>
+                      <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Your Submitted Code:</p>
+                      <pre style={{ background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px", fontSize: "0.85rem", overflowX: "auto", fontFamily: "'Fira Code', monospace", border: "1px solid #334155" }}>
+                        {q.student_code}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Test Case Breakdown Grid */}
+                  {testResults.length > 0 && (
+                    <div style={{ marginTop: "20px" }}>
+                      <p style={{ fontWeight: "bold", fontSize: "0.9rem", color: "#475569", marginBottom: "10px" }}>💻 Test Case Breakdown:</p>
+                      <div style={{ overflowX: "auto", background: "#f8fafc", padding: "10px", borderRadius: "8px" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                          <thead>
+                            <tr style={{ textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #e2e8f0" }}>
+                              <th style={{ padding: "10px" }}>Visibility</th>
+                              <th style={{ padding: "10px" }}>Input</th>
+                              <th style={{ padding: "10px" }}>Status</th>
                             </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                          </thead>
+                          <tbody>
+                            {testResults.map((test: any, idx: number) => (
+                              <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                <td style={{ padding: "10px", color: "#64748b" }}>
+                                  {test.is_public ? "🌍 Public" : "🔒 Private"}
+                                </td>
+                                <td style={{ padding: "10px", fontFamily: "monospace", color: "#1e293b" }}>
+                                  {test.input}
+                                </td>
+                                <td style={{ padding: "10px", fontWeight: "bold", color: test.passed ? "#16a34a" : "#dc2626" }}>
+                                  {test.passed 
+                                    ? "✓ Passed" 
+                                    : (test.status === "Accepted" ? "✗ Wrong Answer" : `✗ ${test.status}`)
+                                  }
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
