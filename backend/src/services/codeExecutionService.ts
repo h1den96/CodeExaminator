@@ -70,7 +70,7 @@ export class CodeExecutionService {
       const blackBoxMaxPoints = maxPoints - structuralMaxPoints;
 
       let structuralPointsAwarded = 0;
-      const hasLoop = this.structuralService.hasLoop(studentCode);
+      const hasLoop = StructuralAnalysisService.hasLoop(studentCode);
 
       if (hasLoop) {
         structuralPointsAwarded = structuralMaxPoints;

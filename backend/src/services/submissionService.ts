@@ -22,16 +22,51 @@ export class SubmissionService {
                   .join("\n");
     }
 
-    /**
-     * Καθαρίζει τον κώδικα του μαθητή από directives που παρέχει το boilerplate
-     */
     private static cleanStudentCode(code: string): string {
-        if (!code) return "";
+    if (!code) return "";
+        const forbiddenPattern = /\b(system|exec|fork|popen|unistd|socket|fopen|fstream|ofstream|ifstream|freopen|remove|rename)\s*\(/i;
+    
+        const forbiddenTypes = /\b(FILE|std::fstream|std::ofstream|std::ifstream)\b/;
+
+        if (forbiddenPattern.test(code) || forbiddenTypes.test(code)) {
+            console.error("[SECURITY] Blocked forbidden system/file operation attempt.");
+            throw new Error("SECURITY_ERROR: Access to system or file operations is restricted.");
+        }
+
+        console.log("[CLEANER] Sanitizing student code headers...");
         return code
             .replace(/^\s*#include\s*[<|"].*[>|"]/gm, '// removed header')
             .replace(/^\s*using\s+namespace\s+std\s*;/gm, '// removed namespace')
             .trim();
     }
+
+    // Μέσα στο service σου, εκεί που επεξεργάζεσαι το response του Judge0
+private refineExecutionStatus(result: any, memoryLimitKb: number): string {
+    const statusId = result.status?.id;
+    const description = result.status?.description || "Unknown Error";
+    const memoryUsed = result.memory || 0; // Ο Judge0 επιστρέφει KB
+
+    // 1. Έλεγχος για Memory Limit (Τεστ 2)
+    // Αν έχουμε Runtime Error (NZEC) αλλά η μνήμη είναι πάνω από το 90% του ορίου
+    if (statusId === 11 || statusId === 4) { // 11: Internal/NZEC, 4: Runtime Error
+        if (memoryUsed >= memoryLimitKb * 0.9) {
+            return "Memory Limit Exceeded";
+        }
+    }
+
+    // 2. Έλεγχος για Output Limit (Τεστ 5)
+    // Ο Judge0 κανονικά έχει ID 9 για το Output Limit. 
+    // Αν όμως επιστρέφει NZEC, ελέγχουμε αν το stdout είναι πολύ μεγάλο
+    if (statusId === 11 || statusId === 4) {
+        // Αν το stdout πλησιάζει το default όριο (π.χ. 1MB ή 1024KB)
+        if (result.stdout && result.stdout.length > 100000) { 
+            return "Output Limit Exceeded";
+        }
+    }
+
+    // 3. Fallback στο αρχικό description αν δεν βρούμε κάτι "ύποπτο"
+    return description;
+}
 
     static async getAvailableTestsForStudent(userId: number, db: Pool) {
         const query = `
@@ -85,61 +120,83 @@ export class SubmissionService {
 
         const cleanedCode = this.cleanStudentCode(studentCode);
 
+        // --- LOG: ΕΛΕΓΧΟΣ STITCHING ---
+        console.log("--- STITCHING PROCESS START ---");
         if (boilerplate && boilerplate.includes(marker)) {
+            console.log("[STITCHER] Success: Marker found in boilerplate. Injecting code.");
             finalSource = boilerplate.replace(marker, cleanedCode);
         } else if (boilerplate) {
+            console.warn("[STITCHER] Warning: No marker found. Appending code to boilerplate.");
             finalSource = boilerplate + "\n\n" + cleanedCode;
         } else {
-            finalSource = `#include <iostream>\n#include <vector>\nusing namespace std;\n\n${cleanedCode}\n\nint main() { return 0; }`;
+            console.error("[STITCHER] Error: Boilerplate is NULL. Using raw student code.");
+            finalSource = cleanedCode;
         }
+
+        // --- LOG: ΤΕΛΙΚΟΣ ΚΩΔΙΚΑΣ ΠΟΥ ΦΕΥΓΕΙ ΓΙΑ JUDGE0 ---
+        console.log("--- FINAL SOURCE CODE SENT TO JUDGE0 ---");
+        console.log(finalSource);
+        console.log("--- END OF SOURCE CODE ---");
 
         const results: any[] = [];
         let passedCount = 0;
 
-        for (const tCase of actualTestCases) {
-            const inputStr = tCase.input ? String(tCase.input) : "";
-            const expectedStr = tCase.expected_output ? String(tCase.expected_output) : "";
+        // Χρησιμοποιούμε κλασικό for loop για να έχουμε πρόσβαση στο index 'i'
+    for (let i = 0; i < actualTestCases.length; i++) {
+        const tCase = actualTestCases[i];
+        
+        const inputStr = tCase.input ? String(tCase.input) : "";
+        const expectedStr = tCase.expected_output ? String(tCase.expected_output) : "";
 
-            const payload = {
-                source_code: Buffer.from(finalSource).toString("base64"),
-                language_id: languageId || 54,
-                stdin: Buffer.from(inputStr).toString("base64"),
-                cpu_time_limit: limits.cpu ? Number(limits.cpu) : 2.0, 
-                memory_limit: limits.memory ? Number(limits.memory) : 128000,
-                base64_encoded: true,
-                wait: true
-            };
+        const payload = {
+            source_code: Buffer.from(finalSource).toString("base64"),
+            language_id: languageId || 54,
+            stdin: Buffer.from(inputStr).toString("base64"),
+            cpu_time_limit: limits.cpu ? Number(limits.cpu) : 2.0, 
+            memory_limit: limits.memory ? Number(limits.memory) : 128000,
+            base64_encoded: true,
+            wait: true
+        };
 
-            const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
-            const { status, stdout, stderr, compile_output } = res.data;
-            
-            const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
-            const normalizedActual = this.normalizeOutput(actualOutput);
-            const normalizedExpected = this.normalizeOutput(expectedStr);
+        const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
+        const { status, stdout, stderr, compile_output } = res.data;
+        
+        const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
+        const normalizedActual = this.normalizeOutput(actualOutput);
+        const normalizedExpected = this.normalizeOutput(expectedStr);
 
-            const logicMatches = GradingService.smartCompare(normalizedActual, normalizedExpected);
-            const isCorrect = (status.id === 3) && logicMatches;
-            
-            if (isCorrect) passedCount++;
+        const logicMatches = GradingService.smartCompare(normalizedActual, normalizedExpected);
+        const isCorrect = (status.id === 3) && logicMatches;
+        
+        if (isCorrect) passedCount++;
 
-            let errorDetails: string | null = null;
-            if (stderr || compile_output) {
-                const rawError = Buffer.from(stderr || compile_output, "base64").toString();
-                errorDetails = rawError.includes("redefinition of 'int main'") 
-                    ? "Constraint Violation: You have included a main() function." 
-                    : rawError;
-            }
-
-            results.push({
-                status: status.description,
-                is_public: !!tCase.is_public,
-                input: tCase.is_public ? inputStr : "Hidden",
-                expected: tCase.is_public ? expectedStr : "REDACTED",
-                actual: tCase.is_public ? actualOutput : "REDACTED",
-                passed: isCorrect,
-                error: errorDetails,
-            });
+        // --- LOG: ΑΠΟΤΕΛΕΣΜΑ TEST CASE ---
+        // Τώρα το 'i' αναγνωρίζεται κανονικά
+        console.log(`[JUDGE0] Test Case #${i + 1}: ${status.description} | Logic Matches: ${logicMatches}`);
+        
+        if (status.id !== 3 || !logicMatches) {
+            if (stderr) console.error(`[STDERR]: ${Buffer.from(stderr, "base64").toString()}`);
+            if (compile_output) console.error(`[COMPILE_OUT]: ${Buffer.from(compile_output, "base64").toString()}`);
         }
+
+        let errorDetails: string | null = null;
+        if (stderr || compile_output) {
+            const rawError = Buffer.from(stderr || compile_output, "base64").toString();
+            errorDetails = rawError.includes("redefinition of 'int main'") 
+                ? "Constraint Violation: You have included a main() function." 
+                : rawError;
+        }
+
+        results.push({
+            status: status.description,
+            is_public: !!tCase.is_public,
+            input: tCase.is_public ? inputStr : "Hidden",
+            expected: tCase.is_public ? expectedStr : "REDACTED",
+            actual: tCase.is_public ? actualOutput : "REDACTED",
+            passed: isCorrect,
+            error: errorDetails,
+        });
+    }
 
         const total = actualTestCases.length || 1;
         const scoreWeight = passedCount / total;
@@ -289,6 +346,8 @@ export class SubmissionService {
     }
 
     static async submitAndGrade(submissionId: number, studentId: string, db: Pool, codeOverride?: string) {
+        console.log(`[GRADER] Starting grading for submission ${submissionId}...`);
+        
         const dataQuery = `
             SELECT sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
             q.question_id, q.question_type, sq.points as question_points,
@@ -321,6 +380,7 @@ export class SubmissionService {
         let totalScore = 0;
 
         for (const ans of questionsToGrade) {
+            console.log(`[GRADER] Processing Question ID: ${ans.question_id} (${ans.question_type})`);
             let earnedPoints = 0;
             let evalResult: any = {};
             const points = Number(ans.question_points);
@@ -335,6 +395,12 @@ export class SubmissionService {
                 } else if (ans.question_type === 'programming') {
                     const rawCode = codeOverride || ans.code_answer;
                     if (rawCode) {
+                        console.log(`[GRADER] Boilerplate Category: ${ans.category}`);
+                        if (!ans.boilerplate_code) {
+                            console.log("[GRADER] No custom boilerplate found. Using BoilerplateFactory.");
+                        } else {
+                            console.log("[GRADER] Custom boilerplate detected from database.");
+                    }
                         const forbiddenKeywords = ["system(", "fork(", "fstream", "ifstream", "ofstream", "<filesystem>", "bits/stdc++.h"];
                         const securityCheck = GradingService.performStaticAnalysis(rawCode, forbiddenKeywords, ans.required_keywords || []);
                         
@@ -373,7 +439,8 @@ export class SubmissionService {
             gradingResults.push({ answerId: ans.answer_id, score: earnedPoints, evalResult });
             totalScore += earnedPoints;
         }
-
+        
+        console.log(`[GRADER] Finished grading. Total Score: ${totalScore}`);
         const client = await db.connect();
         try {
             await client.query("BEGIN");

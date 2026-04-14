@@ -169,5 +169,5 @@ export class StructuralAnalysisService {
     if (!code) return false;
     const loopRegex = /\b(for|while|do)\b/g;
     return loopRegex.test(code);
-}
+  }
 }
