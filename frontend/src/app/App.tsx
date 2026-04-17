@@ -15,6 +15,7 @@ import ExamRunner from "../pages/ExamRunner";
 import TeacherDashboard from "../pages/TeacherDashboard"; // Often keeps usually in root pages, but check your folder
 import CreateTestPage from "../pages/CreateTestPage";
 import TestDetailsPage from "../pages/TestDetailsPage";
+import StudentHistoryPage from "../pages/StudentHistoryPage";
 
 // Question Creation Pages
 import QuestionTypeSelection from "../pages/QuestionTypeSelection";
@@ -48,6 +49,15 @@ export default function App() {
               element={
                 <RequireAuth>
                   <RunTestPage />
+                </RequireAuth>
+              }
+            />
+
+            <Route
+              path="/history"
+              element={
+                <RequireAuth>
+                  <StudentHistoryPage />
                 </RequireAuth>
               }
             />

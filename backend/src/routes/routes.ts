@@ -14,14 +14,15 @@ import {
   createMCQ,
   createTF,
 } from "../controllers/questionController";
-// 👇 IMPORT testController functions here
+
 import {
   getAllTests,
   createTest,
   startTest,
   getAvailableTests,
+  getStudentHistory,
+  runSubmissionCode,
 } from "../controllers/testController";
-import { runSubmissionCode } from "../controllers/testController";
 
 // Middleware
 import { requireAuth, requireTeacher } from "../middleware/requireAuth";
@@ -38,6 +39,9 @@ router.get("/questions/:id", getQuestion);
 
 // Get available tests (Specific to student logic)
 router.get("/tests/available", requireAuth, getAvailableTests);
+
+router.get("/tests/history", requireAuth, getStudentHistory);
+
 // Start a test
 router.post("/tests/start", requireAuth, startTest);
 

@@ -28,15 +28,21 @@ export async function getAvailableTests(req: Request, res: Response) {
   }
 }
 
-// GET ALL TESTS (For Admin/Teacher)
+// GET ALL TESTS (For Admin/Teacher - Filtered by Teacher ID)
 export async function getAllTests(req: Request, res: Response) {
   try {
+    const user = (req as any).user as AuthUser | undefined;
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    // Φιλτράρουμε με βάση το created_by για να βλέπει ο κάθε καθηγητής μόνο τα δικά του
     const result = await examDb.query(`
       SELECT t.*, 
              (SELECT COUNT(*) FROM exam.test_slots ts WHERE ts.test_id = t.test_id) as slot_count
       FROM exam.tests t 
+      WHERE t.created_by = $1
       ORDER BY created_at DESC
-    `);
+    `, [user.user_id]);
+
     return res.status(200).json(result.rows);
   } catch (err) {
     console.error("[getAllTests] Error:", err);
@@ -307,3 +313,46 @@ export async function submitTest(req: Request, res: Response) {
     return res.status(500).json({ error: "Failed to submit exam" });
   }
 }
+
+// 9. GET STUDENT HISTORY (List of completed tests)
+export const getStudentHistory = async (req: Request, res: Response) => {
+  try {
+    // Παίρνουμε τον χρήστη από το auth middleware (req.user)
+    const user = (req as any).user;
+
+    if (!user || !user.user_id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const studentId = String(user.user_id);
+
+    console.log(`[getStudentHistory] Fetching history for student: ${studentId}`);
+
+    /**
+     * Χρησιμοποιούμε απευθείας το examDb που είναι imported στην αρχή του αρχείου.
+     * Φέρνουμε τα submissions που έχουν ολοκληρωθεί (submitted ή completed).
+     */
+    const result = await examDb.query(
+      `SELECT 
+        s.submission_id, 
+        COALESCE(t.title, 'Deleted Test') as test_title, 
+        s.submitted_at, 
+        s.total_grade,
+        s.status,
+        t.test_id
+       FROM exam.submissions s
+       LEFT JOIN exam.tests t ON s.test_id = t.test_id
+       WHERE s.student_id::text = $1::text AND s.status IN ('submitted', 'completed')
+       ORDER BY s.submitted_at DESC`,
+      [studentId]
+    );
+
+    return res.status(200).json(result.rows);
+  } catch (error: any) {
+    console.error("Fetch History Error:", error.message);
+    return res.status(500).json({ 
+      error: "Failed to load exam history",
+      details: error.message 
+    });
+  }
+};

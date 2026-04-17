@@ -119,7 +119,12 @@ export const login = async (req: Request, res: Response) => {
 
     res.json({
       accessToken,
-      user: { user_id: user.user_id, email: user.email, role: user.role },
+      user: { 
+        user_id: user.user_id, 
+        email: user.email, 
+        role: user.role,
+        full_name: user.full_name // 🔥 Προσθήκη ονόματος
+      },
     });
   } catch (err) {
     console.error("LOGIN ERR:", err);

@@ -4,6 +4,9 @@ import Home from "../pages/Home";
 import LoginPage from "../pages/LoginPage";
 import AvailableTestsPage from "../pages/AvailableTestsPage";
 import RunTestPage from "../pages/RunTestPage";
+import StudentHistoryPage from "../pages/StudentHistoryPage";
+import ResultsPage from "../pages/Results";
+import TeacherDashboard from "../pages/TeacherDashboard";
 import CreateTestPage from "../pages/CreateTestPage"; // keeping the import for later
 
 import { RequireAuth } from "../auth/RequireAuth";
@@ -26,6 +29,36 @@ export default function AppRoutes() {
           >
             IT WORKS
           </h1>
+        }
+      />
+
+        {/* 4. ΝΕΟ ROUTE ΓΙΑ ΤΟ ΙΣΤΟΡΙΚΟ */}
+      <Route
+        path="/history"
+        element={
+          <RequireAuth>
+            <StudentHistoryPage />
+          </RequireAuth>
+        }
+      />
+
+        {/* 5. ΝΕΟ ROUTE ΓΙΑ ΤΑ ΑΠΟΤΕΛΕΣΜΑΤΑ (με δυναμικό ID) */}
+      <Route
+        path="/results/:id"
+        element={
+          <RequireAuth>
+            <ResultsPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* TEACHER ROUTES */}
+      <Route
+        path="/teacher"
+        element={
+          <RequireAuth>
+            <TeacherDashboard />
+          </RequireAuth>
         }
       />
 

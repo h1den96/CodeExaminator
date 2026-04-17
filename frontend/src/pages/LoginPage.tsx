@@ -1,124 +1,3 @@
-/*import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { useTheme } from "../context/ThemeContext";
-
-const API_BASE = "http://localhost:3000";
-
-export default function LoginPage() {
-  const { login } = useAuth();
-  const { colors, theme } = useTheme();
-  const nav = useNavigate();
-  
-  const [email, setEmail] = useState("user123@email.com");
-  const [password, setPassword] = useState("Password123!");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setError(data.error || "Login failed");
-        setLoading(false);
-        return;
-      }
-
-      const token = data.accessToken || data.access_token || data.token;
-      
-      // 1. Force Save to LocalStorage (Fixes the "Redirect to Home" bug)
-      localStorage.setItem("accessToken", token);
-      
-      // 2. Update Context
-      await login(token);
-
-      // 3. Smart Redirect (Check Role)
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.role === 'teacher') {
-            // CHANGE THIS LINE:
-            nav("/teacher/dashboard"); // <--- Redirect to the new Hub
-        } else {
-            nav("/tests");
-        }
-      } catch (e) {
-        nav("/tests");
-      }
-
-    } catch (err: any) {
-      setError(err.message || "Error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div style={{ minHeight: "100vh", width: "100vw", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: colors.bg, color: colors.text }}>
-      <form onSubmit={handleSubmit} style={{ backgroundColor: colors.card, padding: "2rem", borderRadius: "8px", border: `1px solid ${colors.border}`, display: "flex", flexDirection: "column", gap: "1rem", width: "320px", boxShadow: theme === 'light' ? "0 4px 10px rgba(0,0,0,0.1)" : "none" }}>
-        <h1 style={{ margin: "0 0 1rem 0", textAlign: "center" }}>Log in</h1>
-        
-        {error && <div style={{ color: "#ef4444", textAlign: "center", fontSize: "0.9rem" }}>{error}</div>}
-        
-        <input 
-            style={{ padding: "10px", background: colors.inputBg, border: `1px solid ${colors.border}`, color: colors.text, borderRadius: 4 }} 
-            type="email" 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)} 
-            placeholder="Email" 
-            autoComplete="email" 
-        />
-        
-        <input 
-            style={{ padding: "10px", background: colors.inputBg, border: `1px solid ${colors.border}`, color: colors.text, borderRadius: 4 }} 
-            type="password" 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)} 
-            placeholder="Password" 
-            autoComplete="current-password"
-        />
-        
-        <button type="submit" disabled={loading} style={{ padding: "10px", marginTop: "10px", background: "#2563eb", color: "white", border: "none", borderRadius: 4, cursor: "pointer", opacity: loading ? 0.7 : 1 }}>
-            {loading ? "Logging in..." : "Log in"}
-        </button>
-      
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-            <div style={{ flex: 1, height: '1px', background: colors.border }}></div>
-            <span style={{ fontSize: '0.8rem', color: '#888' }}>OR</span>
-            <div style={{ flex: 1, height: '1px', background: colors.border }}></div>
-        </div>
-
-        <button 
-            type="button" 
-            onClick={() => nav("/signup")}
-            style={{ 
-                padding: "10px", 
-                background: "#22c55e", 
-                color: "white", 
-                border: "none", 
-                borderRadius: 4, 
-                cursor: "pointer",
-                fontWeight: "bold"
-            }}
-        >
-            Create an Account
-        </button>
-      </form>
-    </div>
-  );
-}*/
-
 import { type FormEvent, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom"; // Import useSearchParams
 import { useAuth } from "../auth/AuthContext";
@@ -148,47 +27,56 @@ export default function LoginPage() {
   }, [isExpired]);
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  e.preventDefault();
+  setError(null);
+  setLoading(true);
 
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
 
-      const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        setError(data.error || "Login failed");
-        setLoading(false);
-        return;
-      }
-
-      const token = data.accessToken || data.access_token || data.token;
-
-      localStorage.setItem("accessToken", token);
-      await login(token);
-
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        if (payload.role === "teacher") {
-          nav("/teacher/dashboard");
-        } else {
-          nav("/tests");
-        }
-      } catch (e) {
-        nav("/tests");
-      }
-    } catch (err: any) {
-      setError(err.message || "Error");
-    } finally {
+    if (!res.ok) {
+      setError(data.error || "Login failed");
       setLoading(false);
+      return;
     }
+
+    // 1. Παίρνουμε το token και τα στοιχεία του χρήστη από την απάντηση
+    const token = data.accessToken || data.access_token || data.token;
+    const user = data.user;
+
+    // Έλεγχος αν λείπουν βασικά δεδομένα
+    if (!token || !user) {
+      throw new Error("Ο διακομιστής δεν επέστρεψε τα απαραίτητα στοιχεία σύνδεσης.");
+    }
+
+    // 2. Ενημερώνουμε το AuthContext (και το LocalStorage αυτόματα)
+    // Εδώ είναι που το κλειδί "token" αποθηκεύεται για να το βρει μετά το Axios
+    login(token, user);
+
+    // 3. Navigation βάσει ρόλου
+    // Χρησιμοποιούμε απευθείας το user object που ήρθε από το login API
+    const userRole = user.role?.toLowerCase();
+
+    if (userRole === "teacher") {
+      nav("/teacher/dashboard");
+    } else {
+      nav("/tests");
+    }
+
+  } catch (err: any) {
+    console.error("Login Error:", err);
+    setError(err.message || "Παρουσιάστηκε σφάλμα κατά τη σύνδεση.");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div

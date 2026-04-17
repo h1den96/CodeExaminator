@@ -118,7 +118,7 @@ export default function AvailableTestsPage() {
           </p>
         </div>
 
-        {/* Action Controls: Sort + Logout */}
+        {/* Action Controls: Sort + Navigation Buttons */}
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           {/* Sorting Dropdown */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -153,31 +153,58 @@ export default function AvailableTestsPage() {
             </select>
           </div>
 
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "10px 20px",
-              backgroundColor: "transparent",
-              color: "#ef4444",
-              border: "1px solid #ef4444",
-              borderRadius: "8px",
-              fontWeight: "bold",
-              cursor: "pointer",
-              fontSize: "0.9rem",
-              transition: "all 0.2s",
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = "#ef4444";
-              e.currentTarget.style.color = "white";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "#ef4444";
-            }}
-          >
-            Logout
-          </button>
+          {/* Button Group: History & Logout */}
+          <div style={{ display: "flex", gap: "10px" }}>
+            {/* History Button */}
+            <button
+              onClick={() => navigate("/history")}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "#2563eb",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = "#1d4ed8";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = "#2563eb";
+              }}
+            >
+              📋 Test History
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "transparent",
+                color: "#ef4444",
+                border: "1px solid #ef4444",
+                borderRadius: "8px",
+                fontWeight: "bold",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = "#ef4444";
+                e.currentTarget.style.color = "white";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "#ef4444";
+              }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -212,7 +239,7 @@ export default function AvailableTestsPage() {
           const isActive = now >= start && now <= end;
           const isFuture = now < start;
           const isPast = now > end;
-          const isCompleted = test.submission_status === "completed";
+          const isCompleted = test.submission_status === "completed" || test.submission_status === "submitted";
 
           return (
             <div
