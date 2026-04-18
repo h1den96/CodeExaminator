@@ -80,9 +80,46 @@ private refineExecutionStatus(result: any, memoryLimitKb: number): string {
         return res.rows;
     }
 
-    static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
-        const query = `
-            SELECT s.submission_id, s.test_id, t.title as test_title, s.total_grade, s.status, s.submitted_at,
+    // src/services/submissionService.ts
+
+static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
+    // 1. Έλεγχος για Auto-submit
+    const checkQuery = `
+        SELECT s.status, s.started_at, t.duration_minutes
+        FROM exam.submissions s
+        JOIN exam.tests t ON s.test_id = t.test_id
+        WHERE s.submission_id = $1
+    `;
+    const checkRes = await db.query(checkQuery, [submissionId]);
+    const sub = checkRes.rows[0];
+
+    if (sub && sub.status === 'started') {
+        const startTime = new Date(sub.started_at).getTime();
+        const endTime = startTime + (sub.duration_minutes * 60000);
+        const now = Date.now();
+
+        // Αν ο χρόνος έληξε, τρέχουμε τη βαθμολόγηση "on the fly"
+        if (now > endTime) {
+            console.log(`[AUTO-SUBMIT] Time expired for sub ${submissionId}. Grading now...`);
+            try {
+                // Χρησιμοποιούμε το studentId που ήρθε (είτε ID είτε 'TEACHER_BYPASS')
+                await this.submitAndGrade(submissionId, studentId, db);
+            } catch (gradeErr) {
+                console.error("[AUTO-SUBMIT] Error during forced grading:", gradeErr);
+                // Συνεχίζουμε για να φέρουμε ό,τι δεδομένα υπάρχουν
+            }
+        }
+    }
+
+    // 2. Fetch των τελικών δεδομένων (μετά το πιθανό auto-submit)
+    const query = `
+        SELECT 
+            s.submission_id, 
+            s.test_id, 
+            t.title as test_title, 
+            s.total_grade, 
+            s.status, 
+            s.submitted_at,
             (
                 SELECT json_agg(json_build_object(
                     'question_id', q.question_id,
@@ -98,13 +135,20 @@ private refineExecutionStatus(result: any, memoryLimitKb: number): string {
                 LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
                 WHERE sq.submission_id = s.submission_id
             ) as questions
-            FROM exam.submissions s
-            JOIN exam.tests t ON s.test_id = t.test_id
-            WHERE s.submission_id = $1 AND s.student_id = $2
-        `;
-        const res = await db.query(query, [submissionId, studentId]);
-        return res.rows[0];
+        FROM exam.submissions s
+        JOIN exam.tests t ON s.test_id = t.test_id
+        WHERE s.submission_id = $1 
+          AND (s.student_id::text = $2 OR $2 = 'TEACHER_BYPASS')
+    `;
+
+    const res = await db.query(query, [submissionId, studentId]);
+    
+    if (res.rows.length === 0) {
+        throw new Error("Submission not found or access denied.");
     }
+
+    return res.rows[0];
+}
 
     private static async runJudge0Assessment(
         studentCode: string,
@@ -349,24 +393,45 @@ private refineExecutionStatus(result: any, memoryLimitKb: number): string {
         console.log(`[GRADER] Starting grading for submission ${submissionId}...`);
         
         const dataQuery = `
-            SELECT sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
-            q.question_id, q.question_type, sq.points as question_points,
-            q.structural_rules, q.weight_wb, q.weight_bb,
-            pq.test_cases, pq.language_id, pq.category, pq.function_signature,
-            pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
-            tf.correct_answer as tf_correct, t.enable_negative_grading,
-            s.started_at, t.duration_minutes, s.status as current_status,
-            (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
-             FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
-            FROM exam.submission_questions sq
-            JOIN exam.submissions s ON sq.submission_id = s.submission_id
-            JOIN exam.tests t ON s.test_id = t.test_id
-            JOIN exam.questions q ON sq.question_id = q.question_id
-            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
-            LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-            LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
-            WHERE sq.submission_id = $1 AND s.student_id = $2
-        `;
+    SELECT 
+        sa.answer_id, 
+        sq.submission_question_id, 
+        sa.mcq_option_ids, 
+        sa.tf_answer, 
+        sa.code_answer,
+        q.question_id, 
+        q.question_type, 
+        sq.points as question_points,
+        q.structural_rules, 
+        q.weight_wb, 
+        q.weight_bb,
+        pq.test_cases, 
+        pq.language_id, 
+        pq.category, 
+        pq.function_signature,
+        pq.boilerplate_code, 
+        pq.cpu_time_limit, 
+        pq.memory_limit,
+        tf.correct_answer as tf_correct, 
+        t.enable_negative_grading,
+        s.started_at, 
+        t.duration_minutes, 
+        s.status as current_status,
+        (
+            SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
+            FROM exam.mcq_options mo 
+            WHERE mo.question_id = q.question_id
+        ) as mcq_options_data
+    FROM exam.submission_questions sq
+    JOIN exam.submissions s ON sq.submission_id = s.submission_id
+    JOIN exam.tests t ON s.test_id = t.test_id
+    JOIN exam.questions q ON sq.question_id = q.question_id
+    LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+    LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+    LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
+    WHERE sq.submission_id = $1 
+      AND (s.student_id::text = $2 OR $2 = 'TEACHER_BYPASS')
+`;
 
         const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId, studentId]);
         if (questionsToGrade.length === 0) throw new Error("Submission not found.");

@@ -29,6 +29,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <BrowserRouter>
+          
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -36,108 +37,27 @@ export default function App() {
             <Route path="/signup" element={<SignUpPage />} />
 
             {/* Student Routes */}
-            <Route
-              path="/tests"
-              element={
-                <RequireAuth>
-                  <AvailableTestsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/run-test"
-              element={
-                <RequireAuth>
-                  <RunTestPage />
-                </RequireAuth>
-              }
-            />
+            <Route path="/tests" element={<RequireAuth><AvailableTestsPage /></RequireAuth>} />
+            <Route path="/run-test" element={<RequireAuth><RunTestPage /></RequireAuth>} />
+            <Route path="/history" element={<RequireAuth><StudentHistoryPage /></RequireAuth>} />
+            <Route path="/exam" element={<RequireAuth><ExamRunner /></RequireAuth>} />
 
-            <Route
-              path="/history"
-              element={
-                <RequireAuth>
-                  <StudentHistoryPage />
-                </RequireAuth>
-              }
-            />
+            {/* 🎯 ΤΟ ΜΟΝΑΔΙΚΟ ROUTE ΓΙΑ ΑΠΟΤΕΛΕΣΜΑΤΑ - Προσβάσιμο από όλους τους Auth χρήστες */}
+            <Route path="/results/:id" element={<RequireAuth><Results /></RequireAuth>} />
 
-            <Route path="/results/:submissionId" element={<Results />} />
-            <Route path="/exam" element={<ExamRunner />} />
+            {/* Teacher Routes */}
+            <Route path="/teacher/dashboard" element={<RequireAuth allowedRoles={["teacher"]}><TeacherDashboard /></RequireAuth>} />
+            <Route path="/teacher/create-test" element={<RequireAuth allowedRoles={["teacher"]}><CreateTestPage /></RequireAuth>} />
+            <Route path="/teacher/test/:testId" element={<RequireAuth allowedRoles={["teacher"]}><TestDetailsPage /></RequireAuth>} />
+            
+            {/* Question Creation Hub */}
+            <Route path="/teacher/create-question-hub" element={<RequireAuth allowedRoles={["teacher"]}><QuestionTypeSelection /></RequireAuth>} />
+            <Route path="/teacher/create-programming" element={<RequireAuth allowedRoles={["teacher"]}><CreateProgrammingQuestion /></RequireAuth>} />
+            <Route path="/teacher/create-mcq" element={<RequireAuth allowedRoles={["teacher"]}><CreateMCQ /></RequireAuth>} />
+            <Route path="/teacher/create-tf" element={<RequireAuth allowedRoles={["teacher"]}><CreateTF /></RequireAuth>} />
 
-            {/* --- TEACHER ROUTES (Protected) --- */}
-
-            {/* 1. Dashboard */}
-            <Route
-              path="/teacher/dashboard"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <TeacherDashboard />
-                </RequireAuth>
-              }
-            />
-
-            {/* 2. Create Exam Blueprint (The "Test") */}
-            <Route
-              path="/teacher/create-test"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <CreateTestPage />
-                </RequireAuth>
-              }
-            />
-
-            {/* 3. Exam Details / Grading */}
-            <Route
-              path="/teacher/test/:testId"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <TestDetailsPage />
-                </RequireAuth>
-              }
-            />
-
-            {/* 4. Question Type Hub (The Menu) */}
-            <Route
-              path="/teacher/create-question-hub"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <QuestionTypeSelection />
-                </RequireAuth>
-              }
-            />
-
-            {/* 5. Create Specific Question Types */}
-            <Route
-              path="/teacher/create-programming"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <CreateProgrammingQuestion />
-                </RequireAuth>
-              }
-            />
-
-            <Route
-              path="/teacher/create-mcq"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <CreateMCQ />
-                </RequireAuth>
-              }
-            />
-
-            <Route
-              path="/teacher/create-tf"
-              element={
-                <RequireAuth allowedRoles={["teacher"]}>
-                  <CreateTF />
-                </RequireAuth>
-              }
-            />
-
-            {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+</Routes>
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

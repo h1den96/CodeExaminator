@@ -11,6 +11,7 @@ import authRouter from "./routes/auth";
 import routes from "./routes/routes";
 import testRouter from "./routes/testStart";
 import submissionRouter from "./routes/submissions";
+import "./jobs/autoSubmitJob";
 
 const app = express();
 const PgStore = connectPg(session);
@@ -70,6 +71,7 @@ app.use(
 app.use(
   "/api/submissions",
   (req, _res, next) => {
+    console.log("[/api/submissions] hit", req.method, req.path); // 🎯 ΠΡΟΣΘΕΣΕ ΑΥΤΟ
     (req as any).db = examDb;
     next();
   },

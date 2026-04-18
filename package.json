@@ -1,12 +1,14 @@
 {
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "node-cron": "^4.2.1",
     "react-resizable-panels": "^3.0.6",
     "react-split-pane": "^0.1.92",
     "tree-sitter": "^0.22.4",
     "tree-sitter-cpp": "^0.23.4"
   },
   "devDependencies": {
+    "@types/node-cron": "^3.0.11",
     "@types/react-split-pane": "^0.1.10",
     "vite-plugin-monaco-editor": "^1.1.0"
   }

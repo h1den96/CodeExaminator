@@ -22,6 +22,8 @@ import {
   getAvailableTests,
   getStudentHistory,
   runSubmissionCode,
+  getTestById, 
+  togglePublishStatus
 } from "../controllers/testController";
 
 // Middleware
@@ -48,6 +50,8 @@ router.post("/tests/start", requireAuth, startTest);
 // --- TEACHER ROUTES ---
 router.get("/topics", requireAuth, requireTeacher, getTopics);
 router.post("/questions", requireAuth, requireTeacher, createQuestion);
+router.get("/tests/:id", requireAuth, getTestById);
+router.put("/tests/:id/publish", requireAuth, requireTeacher, togglePublishStatus);
 
 // Create Specific Questions
 router.post(

@@ -169,26 +169,35 @@ export const getSubmissionResult = async (req: Request, res: Response) => {
     const { id } = req.params;
     const user = (req as any).user;
 
-    // 🚀 FIX: Use your helper function instead of the undefined 'examDb'
     const db = getDb(req);
 
     console.log(
-      `[getSubmissionResult] Fetching result for sub: ${id}, user: ${user?.user_id}`,
+      `[getSubmissionResult] Fetching result for sub: ${id}, user: ${user?.user_id}, role: ${user?.role}`,
     );
 
     if (!user || !user.user_id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // 💡 THE FIX: If the user is a teacher, we pass 'null' or a bypass flag 
+    // to the service so it skips the student_id check.
+    const studentIdToVerify = user.role === "teacher" ? "TEACHER_BYPASS" : String(user.user_id);
+
+    // Call the service (Note: We might need to slightly update the service next)
     const result = await SubmissionService.getSubmissionResult(
       Number(id),
-      String(user.user_id),
+      studentIdToVerify, 
       db,
     );
 
     res.json(result);
   } catch (error: any) {
     console.error("DETAILED DATABASE ERROR:", error.message);
+    
+    if (error.message.includes("not found")) {
+      return res.status(404).json({ error: "Report not found or access denied." });
+    }
+
     res.status(500).json({
       error: "DATABASE_QUERY_FAILED",
       message: error.message,

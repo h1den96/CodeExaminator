@@ -40,16 +40,21 @@ const getStatusFeedback = (status: string) => {
 };
 
 export default function Results() {
-  const { submissionId } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null); // Προσθήκη state για error
 
   useEffect(() => {
-    if (!submissionId) return;
+    console.log("FETCHING RESULT FOR ID:", id);
+    if (!id || id === "undefined"){
+      console.error("ID IS MISSING OR UNDEFINED!");
+      return;
+    }
 
     api
-      .get(`/submissions/${submissionId}/result`)
+      .get(`/submissions/${id}/result`)
       .then((res) => {
         setData(res.data);
         setLoading(false);
@@ -57,23 +62,39 @@ export default function Results() {
       .catch((err) => {
         console.error("Result fetch error:", err);
         setLoading(false);
-        if (err.response?.status === 404) navigate("/tests");
+        if (err.response?.status === 403) {
+          setErrorMsg("Access Denied: You do not have permission to view this report.");
+        } else if (err.response?.status === 404) {
+          setErrorMsg("Report not found.");
+        } else {
+          setErrorMsg("Server error while fetching the report.");
+        }
       });
-  }, [submissionId, navigate]);
+  }, [id, navigate]);
 
   if (loading) {
     return (
       <div style={{ padding: "100px", textAlign: "center", color: "#64748b" }}>
-        <p style={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-          Analyzing your answers...
-        </p>
+        <p style={{ fontSize: "1.2rem", fontWeight: "bold" }}>Analyzing the answers...</p>
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div style={{ padding: "100px", textAlign: "center", color: "#dc2626" }}>
+        <h2 style={{ marginBottom: "15px" }}>⚠️ Error</h2>
+        <p>{errorMsg}</p>
+        <button onClick={() => navigate(-1)} style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}>
+          Go Back
+        </button>
       </div>
     );
   }
 
   if (!data) return null;
 
-  // Υπολογισμός συνολικών πόντων χρησιμοποιώντας το points_possible από το JSON
+  // Υπολογισμός συνολικών πόντων (Ο ΥΠΟΛΟΙΠΟΣ ΚΩΔΙΚΑΣ ΜΕΝΕΙ ΙΔΙΟΣ ΑΠΟ ΕΔΩ ΚΑΙ ΚΑΤΩ)
   const totalPossible = (data.questions ?? []).reduce(
     (acc: number, q: any) => acc + (Number(q.points_possible) || 0),
     0,
@@ -104,13 +125,9 @@ export default function Results() {
         <h1 style={{ margin: "0 0 10px 0", color: "#1e293b" }}>
           {data.test_title || "Exam Report"}
         </h1>
-        <div
-          style={{ fontSize: "4.5rem", fontWeight: "bold", color: "#2563eb" }}
-        >
+        <div style={{ fontSize: "4.5rem", fontWeight: "bold", color: "#2563eb" }}>
           {data.total_grade ?? "0.00"}
-          <span
-            style={{ fontSize: "1.5rem", color: "#94a3b8", marginLeft: "10px" }}
-          >
+          <span style={{ fontSize: "1.5rem", color: "#94a3b8", marginLeft: "10px" }}>
             / {totalPossible}.00
           </span>
         </div>
@@ -189,16 +206,8 @@ export default function Results() {
                       padding: "8px 16px",
                       borderRadius: "10px",
                       fontSize: "1.1rem",
-                      background: isCorrect
-                        ? "#f0fdf4"
-                        : isPartial
-                          ? "#fff7ed"
-                          : "#fef2f2",
-                      color: isCorrect
-                        ? "#16a34a"
-                        : isPartial
-                          ? "#ea580c"
-                          : "#dc2626",
+                      background: isCorrect ? "#f0fdf4" : isPartial ? "#fff7ed" : "#fef2f2",
+                      color: isCorrect ? "#16a34a" : isPartial ? "#ea580c" : "#dc2626",
                       border: `1px solid ${isCorrect ? "#bbf7d0" : isPartial ? "#fdba74" : "#fecaca"}`,
                     }}
                   >
@@ -237,7 +246,7 @@ export default function Results() {
                         marginBottom: "4px",
                       }}
                     >
-                      Your Answer:
+                      Student Answer:
                     </span>
                     <strong
                       style={{
@@ -286,7 +295,6 @@ export default function Results() {
                   {/* Smart Pedagogical Feedback */}
                   {testResults.length > 0 && testResults.some((t: any) => !t.passed) && (
                     (() => {
-                        // Βρίσκουμε το πρώτο σφάλμα που δεν είναι "Accepted" (δηλαδή TLE, RE κτλ)
                         const errorResult = testResults.find((t: any) => t.status !== "Accepted" && !t.passed);
                         const feedback = getStatusFeedback(errorResult?.status || (isCorrect ? "Accepted" : "Wrong Answer"));
                         
@@ -302,7 +310,7 @@ export default function Results() {
                   {/* Submitted Code Display */}
                   {q.student_code && (
                     <div style={{ marginTop: "20px" }}>
-                      <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Your Submitted Code:</p>
+                      <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Submitted Code:</p>
                       <pre style={{ background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px", fontSize: "0.85rem", overflowX: "auto", fontFamily: "'Fira Code', monospace", border: "1px solid #334155" }}>
                         {q.student_code}
                       </pre>
@@ -351,8 +359,9 @@ export default function Results() {
         })}
       </div>
 
+      {/* 🎯 ΔΙΟΡΘΩΣΗ: Αλλάξαμε το onClick για να πηγαίνει ΠΙΣΩ στο Ιστορικό ή στο Teacher Dashboard */}
       <button
-        onClick={() => navigate("/tests")}
+        onClick={() => navigate(-1)}
         style={{
           marginTop: "50px",
           padding: "18px",
@@ -369,7 +378,7 @@ export default function Results() {
         onMouseOver={(e) => (e.currentTarget.style.background = "#0f172a")}
         onMouseOut={(e) => (e.currentTarget.style.background = "#1e293b")}
       >
-        Return to Dashboard
+        &larr; Go Back
       </button>
     </div>
   );

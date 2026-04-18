@@ -121,27 +121,45 @@ export async function getTestById(req: Request, res: Response) {
   try {
     const testId = req.params.id;
 
+    // 1. Get the Test Blueprint
     const testRes = await examDb.query(
       `SELECT * FROM exam.tests WHERE test_id = $1`,
-      [testId],
+      [testId]
     );
 
     if (testRes.rows.length === 0) {
       return res.status(404).json({ error: "Test not found" });
     }
 
+    // 2. Get the specific questions (slots)
     const slotRes = await examDb.query(
       `SELECT ts.*, t.name as topic_name
        FROM exam.test_slots ts
        LEFT JOIN exam.topics t ON ts.topic_id = t.topic_id
        WHERE ts.test_id = $1
        ORDER BY ts.slot_order ASC`,
-      [testId],
+      [testId]
+    );
+
+    // 3. NEW: Get all student submissions for this test
+    const subRes = await examDb.query(
+      `SELECT 
+         submission_id, 
+         student_id, 
+         status, 
+         started_at, 
+         submitted_at, 
+         total_grade
+       FROM exam.submissions
+       WHERE test_id = $1
+       ORDER BY submitted_at DESC NULLS LAST`,
+      [testId]
     );
 
     const testData = {
       ...testRes.rows[0],
       slots: slotRes.rows,
+      submissions: subRes.rows, // Attach the submissions to the response
     };
 
     return res.json(testData);
@@ -356,3 +374,28 @@ export const getStudentHistory = async (req: Request, res: Response) => {
     });
   }
 };
+
+// 10. TOGGLE PUBLISH STATUS
+export async function togglePublishStatus(req: Request, res: Response) {
+  try {
+    const testId = req.params.id;
+    const { is_published } = req.body;
+
+    const result = await examDb.query(
+      `UPDATE exam.tests 
+       SET is_published = $1 
+       WHERE test_id = $2 
+       RETURNING *`,
+      [is_published, testId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Test not found" });
+    }
+
+    return res.json({ message: "Status updated", test: result.rows[0] });
+  } catch (err) {
+    console.error("[togglePublishStatus] Error:", err);
+    return res.status(500).json({ error: "Failed to update publish status" });
+  }
+}
