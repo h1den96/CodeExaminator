@@ -20,9 +20,33 @@ export class StructuralAnalysisService {
     }
   }
 
-  /**
-   * Ελέγχει αν ο κώδικας περιέχει ορισμό της συνάρτησης main
-   */
+  private static calculateCyclomaticComplexity(node: Parser.SyntaxNode): number {
+    let complexity = 1;
+
+    const branchingTypes = [
+      "if_statement",
+      "for_statement",
+      "while_statement",
+      "do_statement",
+      "case_statement",
+      "catch_clause",
+      "conditional_expression"
+    ];
+    
+    const branches = node.descendantsOfType(branchingTypes);
+    complexity += branches.length;
+
+    const binaryExpressions = node.descendantsOfType("binary_expression");
+    for (const expr of binaryExpressions) {
+      const operatorNode = expr.children[1];
+      if (operatorNode && (operatorNode.type === "&&" || operatorNode.type === "||")) {
+        complexity++;
+      }
+    }
+
+    return complexity;
+  }
+
   private static hasMainFunction(node: Parser.SyntaxNode): boolean {
     const functions = node.descendantsOfType("function_definition");
     for (const fn of functions) {
@@ -35,9 +59,6 @@ export class StructuralAnalysisService {
     return false;
   }
 
-  /**
-   * Ελέγχει αν ο κώδικας περιέχει preprocessor directives (#include, #define κλπ)
-   */
   private static hasPreprocessorDirectives(node: Parser.SyntaxNode): boolean {
     const types = ["preproc_include", "preproc_def", "preproc_function_def"];
     return node.descendantsOfType(types).length > 0;
@@ -51,7 +72,7 @@ export class StructuralAnalysisService {
     const tree = this.parser.parse(code);
     const root = tree.rootNode;
 
-    // 1. Άμεσος έλεγχος για "θανατηφόρα" σφάλματα συρραφής
+    // 1. Ελεγχος για "θανατηφορα" σφαλματα
     if (this.hasMainFunction(root)) {
       return { 
         score: 0, 
@@ -72,43 +93,50 @@ export class StructuralAnalysisService {
       };
     }
 
-    // 2. Ορισμός μόνιμων κανόνων ασφαλείας (Security Static Analysis)
-    const securityRules: AnalysisRule[] = [
-      { 
-        type: "FORBID", 
-        target: "function_call", 
-        name: "system", 
-        description: "Security: Use of system() is strictly forbidden", 
-        weight: 0 
-      },
-      { 
-        type: "FORBID", 
-        target: "function_call", 
-        name: "fork", 
-        description: "Security: Use of fork() is forbidden", 
-        weight: 0 
-      },
-      { 
-        type: "FORBID", 
-        target: "function_call", 
-        name: "exec", 
-        description: "Security: Use of exec() functions is forbidden", 
-        weight: 0 
-      }
-    ];
-
-    const allRules = [...rules, ...securityRules];
     const details: any[] = [];
     let earnedWeight = 0;
     let totalPossibleWeight = 0;
 
-    for (const rule of allRules) {
+    // 2. Ομαδοποιημενος Εσωτερικος Ελεγχος Ασφαλειας (Security Static Analysis)
+    // Ελεγχουμε πολλες επικινδυνες συναρτησεις αλλα επιστρεφουμε μονο ενα αποτελεσμα
+    const forbiddenFunctions = ["system", "fork", "exec", "fopen", "popen", "socket"];
+    let securityPassed = true;
+    
+    for (const fnName of forbiddenFunctions) {
+      if (this.findFunctionCall(root, fnName)) {
+        securityPassed = false;
+        break;
+      }
+    }
+
+    details.push({
+      type: "FORBID",
+      target: "security",
+      name: "Security",
+      description: "Security Policy Compliance",
+      passed: securityPassed,
+      weight: 0
+    });
+
+    // 3. Υπολογισμος Κυκλωματικης Πολυπλοκοτητας
+    const complexityScore = this.calculateCyclomaticComplexity(root);
+    details.push({
+      type: "INFO",
+      target: "complexity",
+      name: "Cyclomatic Complexity",
+      description: `Calculated Cyclomatic Complexity is ${complexityScore}. (Ideal score is < 15)`,
+      passed: complexityScore <= 15,
+      weight: 0,
+      actual_value: complexityScore
+    });
+
+    // 4. Ελεγχος των κανονων που ορισε ο καθηγητης
+    for (const rule of rules) {
       let passed = false;
       const weight = rule.weight || 0;
 
       if (weight > 0) totalPossibleWeight += weight;
 
-      // Logic ανάλογα με το target
       if (rule.target === "recursion") {
         passed = this.detectRecursion(root);
       } 
@@ -159,7 +187,6 @@ export class StructuralAnalysisService {
 
   private static findFunctionCall(node: Parser.SyntaxNode, name: string): boolean {
     return node.descendantsOfType("call_expression").some((call) => {
-      // Tree-sitter-cpp: Η κλήση μπορεί να είναι identifier ή field_expression (π.χ. std::sort)
       const identifier = call.descendantsOfType("identifier")[0];
       return identifier && identifier.text === name;
     });

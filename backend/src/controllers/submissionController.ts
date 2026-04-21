@@ -204,3 +204,72 @@ export const getSubmissionResult = async (req: Request, res: Response) => {
     });
   }
 };
+
+// 1. Function to update the TOTAL grade (from the yellow panel)
+export const overrideTotalGrade = async (req: any, res: any) => {
+  const { id } = req.params;
+  const { newGrade } = req.body;
+  
+  // Note: Adjust the db connection logic based on how your app handles the database pool
+  const client = await req.db.connect(); 
+  
+  try {
+    await client.query(
+      "UPDATE exam.submissions SET total_grade = $1, status = 'completed' WHERE submission_id = $2",
+      [newGrade, id]
+    );
+    
+    console.log(`[OVERRIDE] Total grade manually set to ${newGrade} for submission ${id}`);
+    res.json({ message: "Total grade updated successfully", newTotal: newGrade });
+  } catch (err) {
+    console.error("Total override error:", err);
+    res.status(500).json({ error: "Failed to override total grade" });
+  } finally {
+    client.release();
+  }
+};
+
+// 2. Function to update a SPECIFIC QUESTION'S grade and recalculate the total
+export const overrideQuestionGrade = async (req: any, res: any) => {
+  const { id: submissionId, answerId } = req.params;
+  const { newQuestionGrade } = req.body;
+  
+  const client = await req.db.connect();
+  
+  try {
+    await client.query("BEGIN");
+
+    // A. Update the specific question's grade
+    await client.query(
+      "UPDATE exam.student_answers SET question_grade = $1 WHERE answer_id = $2",
+      [newQuestionGrade, answerId]
+    );
+
+    // B. Recalculate the new total score for this submission
+    const totalQuery = `
+      SELECT SUM(question_grade) as total 
+      FROM exam.student_answers sa
+      JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+      WHERE sq.submission_id = $1
+    `;
+    const { rows } = await client.query(totalQuery, [submissionId]);
+    const newTotal = rows[0].total || 0;
+
+    // C. Update the submissions table with the new total
+    await client.query(
+      "UPDATE exam.submissions SET total_grade = $1 WHERE submission_id = $2",
+      [newTotal, submissionId]
+    );
+
+    await client.query("COMMIT");
+    console.log(`[OVERRIDE] Question ${answerId} set to ${newQuestionGrade}. New total: ${newTotal}`);
+    
+    res.json({ message: "Question grade updated successfully", newTotal });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Question override error:", err);
+    res.status(500).json({ error: "Failed to override question grade" });
+  } finally {
+    client.release();
+  }
+};

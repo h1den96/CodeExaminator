@@ -1,39 +1,34 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
-// --- 💡 Helper function για Pedagogical Feedback ---
+// --- Helper function για Pedagogical Feedback ---
 const getStatusFeedback = (status: string) => {
-  const feedbackMap: Record<string, { msg: string; color: string; bg: string; icon: string }> = {
+  const feedbackMap: Record<string, { msg: string; color: string; bg: string }> = {
     "Time Limit Exceeded": {
-      msg: "Ο κώδικάς σου ξεπέρασε το χρόνο εκτέλεσης. Μήπως έχεις κάποιο άπειρο loop ή πολύ αργό αλγόριθμο;",
+      msg: "Your code exceeded the execution time limit. Check for infinite loops or inefficient algorithms.",
       color: "#9a3412",
-      bg: "#fff7ed",
-      icon: "⏳"
+      bg: "#fff7ed"
     },
     "Memory Limit Exceeded": {
-      msg: "Η μνήμη εξαντλήθηκε. Απόφευγε τη δημιουργία τεράστιων πινάκων ή την υπερβολική αναδρομή (recursion).",
+      msg: "Memory limit exhausted. Avoid creating excessively large data structures or deep recursion.",
       color: "#991b1b",
-      bg: "#fef2f2",
-      icon: "🧠"
+      bg: "#fef2f2"
     },
     "SECURITY_ERROR": {
-      msg: "Η υποβολή απορρίφθηκε από το σύστημα ασφαλείας. Η χρήση συστημικών κλήσεων (system, fopen κτλ) απαγορεύεται αυστηρά.",
+      msg: "Submission rejected by the security system due to restricted system calls.",
       color: "#7f1d1d",
-      bg: "#fee2e2",
-      icon: "🛡️"
+      bg: "#fee2e2"
     },
     "Runtime Error": {
-      msg: "Το πρόγραμμα τερματίστηκε απότομα (crash). Έλεγξε για διαίρεση με το μηδέν ή λάθη σε διαχείριση μνήμης/δείκτες.",
+      msg: "The program terminated abruptly (crash). Check for memory management errors or division by zero.",
       color: "#991b1b",
-      bg: "#fef2f2",
-      icon: "💥"
+      bg: "#fef2f2"
     },
     "Wrong Answer": {
-      msg: "Ο κώδικας εκτελέστηκε, αλλά το αποτέλεσμα δεν είναι το αναμενόμενο. Έλεγξε ξανά τις λεπτομέρειες της εκφώνησης.",
+      msg: "The code executed, but the result is not as expected. Double-check the problem statement details.",
       color: "#854d0e",
-      bg: "#fefce8",
-      icon: "❌"
+      bg: "#fefce8"
     }
   };
   return feedbackMap[status] || null;
@@ -44,7 +39,27 @@ export default function Results() {
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null); // Προσθήκη state για error
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // States για το Manual Override
+  const [overrideGrade, setOverrideGrade] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+
+  const checkIsTeacher = () => {
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const userObj = JSON.parse(userStr);
+        return userObj.role === "teacher";
+      }
+    } catch (e) {
+      console.error("Failed to parse user role", e);
+    }
+    return false;
+  };
+
+  const isTeacher = checkIsTeacher();
 
   useEffect(() => {
     console.log("FETCHING RESULT FOR ID:", id);
@@ -57,6 +72,7 @@ export default function Results() {
       .get(`/submissions/${id}/result`)
       .then((res) => {
         setData(res.data);
+        setOverrideGrade(res.data.total_grade || "0");
         setLoading(false);
       })
       .catch((err) => {
@@ -72,6 +88,34 @@ export default function Results() {
       });
   }, [id, navigate]);
 
+  // Logic για το Manual Override
+  const handleManualOverride = async () => {
+    if (!window.confirm("Are you sure you want to modify the grade manually?")) return;
+    
+    setIsUpdating(true);
+    try {
+      await api.patch(`/submissions/${id}/override`, { 
+        newGrade: parseFloat(overrideGrade) 
+      });
+      setData({ ...data, total_grade: overrideGrade, status: 'completed' });
+      alert("Grade modified successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to modify grade");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Διορθωση για το Go Back button
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(isTeacher ? "/teacher/dashboard" : "/student/dashboard");
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ padding: "100px", textAlign: "center", color: "#64748b" }}>
@@ -85,7 +129,7 @@ export default function Results() {
       <div style={{ padding: "100px", textAlign: "center", color: "#dc2626" }}>
         <h2 style={{ marginBottom: "15px" }}>⚠️ Error</h2>
         <p>{errorMsg}</p>
-        <button onClick={() => navigate(-1)} style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}>
+        <button onClick={handleBack} style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}>
           Go Back
         </button>
       </div>
@@ -94,7 +138,6 @@ export default function Results() {
 
   if (!data) return null;
 
-  // Υπολογισμός συνολικών πόντων (Ο ΥΠΟΛΟΙΠΟΣ ΚΩΔΙΚΑΣ ΜΕΝΕΙ ΙΔΙΟΣ ΑΠΟ ΕΔΩ ΚΑΙ ΚΑΤΩ)
   const totalPossible = (data.questions ?? []).reduce(
     (acc: number, q: any) => acc + (Number(q.points_possible) || 0),
     0,
@@ -138,8 +181,8 @@ export default function Results() {
               borderRadius: "20px",
               fontSize: "0.9rem",
               fontWeight: "bold",
-              background: data.status === "completed" ? "#dcfce7" : "#fee2e2",
-              color: data.status === "completed" ? "#166534" : "#991b1b",
+              background: data.status === "completed" || data.status === "submitted" ? "#dcfce7" : "#fee2e2",
+              color: data.status === "completed" || data.status === "submitted" ? "#166534" : "#991b1b",
             }}
           >
             Status: {data.status?.toUpperCase()}
@@ -162,8 +205,8 @@ export default function Results() {
           const isCorrect = Number(q.points_earned) >= Number(q.points_possible);
           const isPartial = Number(q.points_earned) > 0 && !isCorrect;
           
-          // Test Results mapping για programming ερωτήσεις
           const testResults = q.eval_details?.black_box?.test_results || [];
+          const whiteBoxDetails = q.eval_details?.white_box?.details || [];
           
           return (
             <div
@@ -176,7 +219,6 @@ export default function Results() {
                 boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
               }}
             >
-              {/* Question Header & Points */}
               <div
                 style={{
                   display: "flex",
@@ -225,6 +267,25 @@ export default function Results() {
                   </div>
                 </div>
               </div>
+
+              {/* --- WHITE-BOX SECTION: Complexity & Rules --- */}
+              {q.type === "programming" && whiteBoxDetails.length > 0 && (
+                <div style={{ marginBottom: "20px", padding: "15px", background: "#f0f9ff", borderRadius: "10px", border: "1px solid #bae6fd" }}>
+                  <p style={{ margin: "0 0 10px 0", fontSize: "0.85rem", fontWeight: "bold", color: "#0369a1" }}>Code Quality & Structure (White-Box):</p>
+                  {whiteBoxDetails.map((detail: any, idx: number) => (
+                    <div key={idx} style={{ fontSize: "0.85rem", display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: idx !== whiteBoxDetails.length - 1 ? "1px solid #e0f2fe" : "none" }}>
+                      <span>
+                        {detail.target === 'complexity' ? "Logic Complexity" : detail.description}
+                      </span>
+                      <span style={{ fontWeight: "bold", color: detail.passed ? "#16a34a" : (detail.target === 'complexity' ? '#0369a1' : "#dc2626") }}>
+                        {detail.target === 'complexity' 
+                          ? (detail.actual_value < 5 ? "Simple" : detail.actual_value < 15 ? "Moderate" : "High")
+                          : (detail.passed ? (detail.type === "FORBID" ? "Compliant" : "Passed") : "Violation")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* --- MCQ & TRUE/FALSE FEEDBACK --- */}
               {(q.type === "mcq" || q.type === "true_false") && (
@@ -292,22 +353,19 @@ export default function Results() {
               {/* --- PROGRAMMING FEEDBACK & CODE --- */}
               {q.type === "programming" && (
                 <>
-                  {/* Smart Pedagogical Feedback */}
                   {testResults.length > 0 && testResults.some((t: any) => !t.passed) && (
                     (() => {
-                        const errorResult = testResults.find((t: any) => t.status !== "Accepted" && !t.passed);
-                        const feedback = getStatusFeedback(errorResult?.status || (isCorrect ? "Accepted" : "Wrong Answer"));
+                        const errorResult = testResults.find((t: any) => !t.passed);
+                        const feedback = getStatusFeedback(errorResult?.status || "Wrong Answer");
                         
                         return feedback ? (
                             <div style={{ marginTop: "15px", padding: "12px 16px", borderRadius: "8px", border: `1px solid ${feedback.color}44`, background: feedback.bg, color: feedback.color, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "12px" }}>
-                                <span style={{ fontSize: "1.3rem" }}>{feedback.icon}</span>
                                 <span>{feedback.msg}</span>
                             </div>
                         ) : null;
                     })()
                   )}
 
-                  {/* Submitted Code Display */}
                   {q.student_code && (
                     <div style={{ marginTop: "20px" }}>
                       <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Submitted Code:</p>
@@ -317,7 +375,6 @@ export default function Results() {
                     </div>
                   )}
 
-                  {/* Test Case Breakdown Grid */}
                   {testResults.length > 0 && (
                     <div style={{ marginTop: "20px" }}>
                       <p style={{ fontWeight: "bold", fontSize: "0.9rem", color: "#475569", marginBottom: "10px" }}>💻 Test Case Breakdown:</p>
@@ -359,9 +416,37 @@ export default function Results() {
         })}
       </div>
 
-      {/* 🎯 ΔΙΟΡΘΩΣΗ: Αλλάξαμε το onClick για να πηγαίνει ΠΙΣΩ στο Ιστορικό ή στο Teacher Dashboard */}
+      {/* --- INSTRUCTOR PANEL: MANUAL OVERRIDE (Μόνο για Καθηγητές) --- */}
+      {isTeacher && (
+        <div style={{ marginTop: "40px", padding: "30px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "16px" }}>
+          <h3 style={{ margin: "0 0 10px 0", color: "#92400e" }}>🛠️ Instructor Control Panel</h3>
+          <p style={{ fontSize: "0.9rem", color: "#b45309", marginBottom: "20px" }}>
+            Εαν ο αυτοματος ελεγχος απετυχε να αναγνωρισει τη σωστη προσεγγιση, μπορειτε να αλλαξετε τον τελικο βαθμο χειροκινητα.
+          </p>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: "0.8rem", marginBottom: "5px", fontWeight: "bold" }}>Final Grade</label>
+              <input 
+                type="number" 
+                value={overrideGrade} 
+                onChange={(e) => setOverrideGrade(e.target.value)}
+                style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #fbbf24" }}
+              />
+            </div>
+            <button 
+              onClick={handleManualOverride}
+              disabled={isUpdating}
+              style={{ marginTop: "22px", padding: "12px 24px", background: "#d97706", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+            >
+              {isUpdating ? "Updating..." : "Override & Finalize"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ΚΟΥΜΠΙ ΕΠΙΣΤΡΟΦΗΣ */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={handleBack}
         style={{
           marginTop: "50px",
           padding: "18px",

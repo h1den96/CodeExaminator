@@ -146,15 +146,23 @@ export class AdminService {
 
         for (let i = 0; i < dto.slots.length; i++) {
           const s = dto.slots[i];
-          const dbType = s.question_type === "mcq" ? "multiple_choice" : s.question_type;
+          
+          // Μετατροπή σε πεζά για να ταιριάζουν με το CHECK constraint της βάσης
+          // (mcq, programming, true_false)
+          let dbType = String(s.question_type).toLowerCase();
+          
+          // Διόρθωση τυχόν ασυμφωνίας ονομάτων από το frontend
+          if (dbType === "multiple_choice") dbType = "mcq";
+          if (dbType === "t/f") dbType = "true_false";
+          if (dbType === "code") dbType = "programming";
 
           await client.query(slotSql, [
             testId,
             i + 1,
             s.topic_id,
-            dbType,
-            s.difficulty,
-            s.category, // FIXED: Value is now passed to DB
+            dbType, // Πλέον στέλνει "mcq" και όχι "multiple_choice"
+            s.difficulty.toLowerCase(),
+            s.category,
             s.points,
             s.weight_bb,
             s.weight_wb,
