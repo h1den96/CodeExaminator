@@ -72,7 +72,7 @@ export class StructuralAnalysisService {
     const tree = this.parser.parse(code);
     const root = tree.rootNode;
 
-    // 1. Ελεγχος για "θανατηφορα" σφαλματα
+    // 1. Ελεγχος για "θανατηφορα" σφαλματα (Fatal Gates)
     if (this.hasMainFunction(root)) {
       return { 
         score: 0, 
@@ -97,11 +97,9 @@ export class StructuralAnalysisService {
     let earnedWeight = 0;
     let totalPossibleWeight = 0;
 
-    // 2. Ομαδοποιημενος Εσωτερικος Ελεγχος Ασφαλειας (Security Static Analysis)
-    // Ελεγχουμε πολλες επικινδυνες συναρτησεις αλλα επιστρεφουμε μονο ενα αποτελεσμα
+    // 2. Εσωτερικος Ελεγχος Ασφαλειας (Security Gate)
     const forbiddenFunctions = ["system", "fork", "exec", "fopen", "popen", "socket"];
     let securityPassed = true;
-    
     for (const fnName of forbiddenFunctions) {
       if (this.findFunctionCall(root, fnName)) {
         securityPassed = false;
@@ -118,15 +116,32 @@ export class StructuralAnalysisService {
       weight: 0
     });
 
-    // 3. Υπολογισμος Κυκλωματικης Πολυπλοκοτητας
+    // Αν αποτύχει η ασφάλεια, μηδενίζουμε το WB score ακαριαία
+    if (!securityPassed) return { score: 0, details };
+
+    // 3. Υπολογισμος Κυκλωματικής Πολυπλοκότητας (Ενεργό Score)
     const complexityScore = this.calculateCyclomaticComplexity(root);
+    const complexityWeight = 30; // Το βάρος που καταλαμβάνει η πολυπλοκότητα στο WB Score
+    const complexityThreshold = 15;
+    
+    totalPossibleWeight += complexityWeight;
+    
+    // Υπολογισμός κέρδους: 10% ποινή για κάθε μονάδα πάνω από το threshold (15)
+    let complexityEarned = complexityWeight;
+    if (complexityScore > complexityThreshold) {
+      const penaltyPercent = (complexityScore - complexityThreshold) * 0.1; 
+      complexityEarned = Math.max(0, complexityWeight * (1 - penaltyPercent));
+    }
+    earnedWeight += complexityEarned;
+
     details.push({
-      type: "INFO",
+      type: "SCORE",
       target: "complexity",
       name: "Cyclomatic Complexity",
-      description: `Calculated Cyclomatic Complexity is ${complexityScore}. (Ideal score is < 15)`,
-      passed: complexityScore <= 15,
-      weight: 0,
+      description: `Complexity is ${complexityScore}. Penalty applied if > ${complexityThreshold}.`,
+      passed: complexityScore <= complexityThreshold,
+      weight: complexityWeight,
+      earned: complexityEarned,
       actual_value: complexityScore
     });
 
@@ -164,6 +179,7 @@ export class StructuralAnalysisService {
       });
     }
 
+    // Τελικός υπολογισμός αναλογίας (0.0 - 1.0)
     const finalRatio = totalPossibleWeight > 0 ? earnedWeight / totalPossibleWeight : 1;
 
     return { score: finalRatio, details };

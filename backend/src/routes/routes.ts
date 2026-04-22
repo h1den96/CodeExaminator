@@ -13,6 +13,7 @@ import {
   createProgrammingQuestion,
   createMCQ,
   createTF,
+  getProgrammingCategories,
 } from "../controllers/questionController";
 
 import {
@@ -49,6 +50,7 @@ router.post("/tests/start", requireAuth, startTest);
 
 // --- TEACHER ROUTES ---
 router.get("/topics", requireAuth, requireTeacher, getTopics);
+router.get("/programming-categories", requireAuth, requireTeacher, getProgrammingCategories);
 router.post("/questions", requireAuth, requireTeacher, createQuestion);
 router.get("/tests/:id", requireAuth, getTestById);
 router.put("/tests/:id/publish", requireAuth, requireTeacher, togglePublishStatus);

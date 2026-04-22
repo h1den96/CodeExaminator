@@ -12,6 +12,17 @@ export const getTopics = async (req: Request, res: Response) => {
   }
 };
 
+export const getProgrammingCategories = (req: Request, res: Response) => {
+  const categories = [
+    { id: "SCALAR", name: "SCALAR (Variables, Math, Logic)" },
+    { id: "LINEAR", name: "LINEAR (Arrays, Strings, Stacks)" },
+    { id: "GRID", name: "GRID (2D Arrays, Matrices, Mazes)" },
+    { id: "LINKED_LIST", name: "LINKED_LIST (Nodes, Pointers)" },
+    { id: "CUSTOM", name: "CUSTOM (Trees, Graphs, Custom Structs)" }
+  ];
+  res.json(categories);
+};
+
 // POST /api/questions (Create Question)
 export const createQuestion = async (req: Request, res: Response) => {
   try {
