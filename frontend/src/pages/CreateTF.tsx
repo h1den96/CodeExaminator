@@ -41,7 +41,35 @@ export default function CreateTF() {
     }
   };
 
+  const handleBack = () => {
+    navigate("/teacher/create-question-hub");
+  };
+
   return (
+    <div style={{ 
+      padding: "40px",
+      background: "#f3f4f6",
+      minHeight: "100vh",
+      color: colors.text,
+      fontFamily: "sans-serif" }}>
+    <button 
+      onClick={handleBack}
+      style={{
+        marginBottom: "20px",
+        background: "transparent",
+        color: colors.text,
+        border: `1px solid ${colors.border}`,
+        padding: "8px 16px",
+        borderRadius: "6px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px"
+      }}
+    >
+      ← Back to Hub
+    </button>
+
     <div
       style={{
         padding: "40px",
@@ -189,6 +217,7 @@ export default function CreateTF() {
           Save Question
         </button>
       </div>
+    </div>
     </div>
   );
 }
