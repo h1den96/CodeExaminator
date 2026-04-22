@@ -10,8 +10,15 @@ export default function CreateTF() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [topic, setTopic] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [topics, setTopics] = useState<any[]>([]);
-  const [isTrue, setIsTrue] = useState(true); // Default correct answer
+  const [isTrue, setIsTrue] = useState(true);
+
+  const difficultiesList = [
+    { id: "easy", name: "Easy" },
+    { id: "medium", name: "Medium" },
+    { id: "hard", name: "Hard" }
+  ];
 
   useEffect(() => {
     api.get("/topics").then((res) => setTopics(res.data));
@@ -23,7 +30,7 @@ export default function CreateTF() {
       await api.post("/questions/tf", {
         title,
         body,
-        difficulty: "easy",
+        difficulty,
         topic_ids: [Number(topic)],
         is_true: isTrue,
       });
@@ -103,6 +110,29 @@ export default function CreateTF() {
             </option>
           ))}
         </select>
+
+         <select
+          style={{
+            width: "100%",
+            padding: "10px",
+            marginBottom: "20px",
+            background: colors.inputBg,
+            color: colors.text,
+            border: `1px solid ${colors.border}`,
+          }}
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value)}
+        >
+          <option value="">Select Difficulty</option>
+          {difficultiesList.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+
+
+
 
         <h3>Select the Correct Answer:</h3>
         <div style={{ display: "flex", gap: "20px", marginTop: "10px" }}>
