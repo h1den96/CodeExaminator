@@ -1,20 +1,33 @@
 // src/controllers/submissionController.ts
 import { Request, Response } from "express";
-// CHECK: Ensure this filename matches what you created earlier (examDTO.ts or examTypes.ts)
+import { Pool } from "pg";
 import { SubmitAnswerDto } from "../types/examTypes";
 import { SubmissionService } from "../services/submissionService";
 import { CodeExecutionService } from "../services/codeExecutionService";
 
-// Helper to get the DB pool from the request (injected via middleware)
-const getDb = (req: Request) => (req as any).db;
+/**
+ * Επεκτείνουμε το Request της Express για να αναγνωρίζει το TypeScript 
+ * το db pool και το user object που περνάνε από τα middleware.
+ */
+interface ExtendedRequest extends Request {
+  db: Pool;
+  user?: {
+    user_id: number;
+    role: string;
+  };
+}
 
-// 1. SAVE ANSWERS (Autosave for MCQs/Text)
+// Helper για λήψη του DB pool με σωστό typing
+const getDb = (req: ExtendedRequest): Pool => req.db || (req as any).db;
+
+// 1. SAVE ANSWERS (Autosave για MCQ/TF/Text)
 export const saveAnswers = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
   try {
-    const submissionId = Number(req.params.id);
-    const dto: SubmitAnswerDto = req.body;
+    const submissionId = Number(ereq.params.id);
+    const dto: SubmitAnswerDto = ereq.body;
 
-    const user = (req as any).user;
+    const user = ereq.user;
     if (!user || !user.user_id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -26,43 +39,33 @@ export const saveAnswers = async (req: Request, res: Response) => {
         .json({ error: "Missing submission ID or question ID" });
     }
 
-    const db = getDb(req);
-
+    const db = getDb(ereq);
     await SubmissionService.saveSingleAnswer(submissionId, studentId, dto, db);
 
     return res.status(200).json({ message: "Answer saved successfully" });
   } catch (error: any) {
     console.error("Save Answer Error:", error.message);
     if (error.message === "Submission not found or not active") {
-      return res
-        .status(404)
-        .json({ error: "Submission mismatch (Check Student ID)" });
-    }
-    if (error.message === "Question not found in this submission") {
-      return res.status(400).json({ error: "Question ID mismatch" });
+      return res.status(404).json({ error: "Submission mismatch (Check Student ID)" });
     }
     return res.status(500).json({ error: "Internal server error" });
   }
 };
 
-// 2. SUBMIT EXAM (Final Submit / Finish Test)
+// 2. SUBMIT EXAM (Οριστική Υποβολή & Αυτόματη Βαθμολόγηση)
 export const submitSubmission = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
   try {
-    const submissionId = Number(req.params.id);
+    const submissionId = Number(ereq.params.id);
+    const user = ereq.user;
 
-    const user = (req as any).user;
     if (!user || !user.user_id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     const studentId = String(user.user_id);
+    const db = getDb(ereq);
 
-    const db = getDb(req);
-
-    const result = await SubmissionService.submitAndGrade(
-      submissionId,
-      studentId,
-      db,
-    );
+    const result = await SubmissionService.submitAndGrade(submissionId, studentId, db);
 
     return res.status(200).json({
       message: "Exam submitted successfully",
@@ -70,206 +73,156 @@ export const submitSubmission = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Submit Error:", error.message);
-    if (error.message === "submission_not_found") {
-      return res.status(404).json({ error: "Submission not found" });
-    }
-    if (error.message === "already_submitted") {
-      return res.status(409).json({ error: "Exam is already submitted" });
-    }
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: error.message || "Internal server error" });
   }
 };
 
-// 3. RUN CODE (Judge0 / Docker)
-// src/controllers/submissionController.ts
-
-// src/controllers/submissionController.ts
-
+// 3. SUBMIT CODE (Εκτέλεση μέσω Judge0)
 export const submitCode = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
   try {
-    let { submissionQuestionId, submission_id, question_id, code } = req.body;
+    let { submissionQuestionId, submission_id, question_id, code } = ereq.body;
 
     if (!code) return res.status(400).json({ error: "Missing code" });
 
-    const db = getDb(req);
+    const db = getDb(ereq);
 
-    console.log("📥 Controller Received:", {
-      submissionQuestionId,
-      submission_id,
-      question_id,
-    });
-
-    // SAFEGUARD: If the frontend sends submissionQuestionId same as question_id, it's the bug.
-    // We force a lookup in that case.
+    // Safeguard για ID mismatch
     if (String(submissionQuestionId) === String(question_id)) {
-      console.warn(
-        "⚠️ Detected ID mismatch bug. Ignoring submissionQuestionId and forcing lookup.",
-      );
+      console.warn("⚠️ Detected ID mismatch bug. Forcing lookup.");
       submissionQuestionId = null;
     }
 
-    // LOOKUP LOGIC
+    // Lookup αν λείπει το SQ_ID
     if (!submissionQuestionId && submission_id && question_id) {
       const lookup = await db.query(
-        `SELECT submission_question_id 
-                 FROM exam.submission_questions 
-                 WHERE submission_id = $1 AND question_id = $2`,
-        [submission_id, question_id],
+        `SELECT submission_question_id FROM exam.submission_questions 
+         WHERE submission_id = $1 AND question_id = $2`,
+        [submission_id, question_id]
       );
 
       if (lookup.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ error: "Question link not found for this submission" });
+        return res.status(404).json({ error: "Question link not found" });
       }
-
       submissionQuestionId = lookup.rows[0].submission_question_id;
-      console.log("✅ Lookup Success! Real SQ_ID is:", submissionQuestionId);
     }
 
-    if (!submissionQuestionId) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Missing submissionQuestionId or (submission_id + question_id)",
-        });
-    }
-
-    // Execute
-    const result = await CodeExecutionService.executeAndGrade(
-      Number(submissionQuestionId),
-      code,
-      db,
-    );
+    const result = await CodeExecutionService.executeAndGrade(Number(submissionQuestionId), code, db);
 
     res.json({
       success: true,
-      question_grade: result.question_grade, // Frontend looks for 'question_grade'
-      test_results: result.details || [],    // Frontend looks for 'test_results'
+      question_grade: result.question_grade,
+      test_results: result.details || [],
     });
   } catch (error: any) {
     console.error("Code Execution Error:", error);
-    res.status(500).json({
-      error: error.message || "Internal Server Error",
-      details: error.response?.data || "No details available",
-    });
+    res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 };
 
-// 4. GET SUBMISSION (Optional placeholder)
-export const getSubmission = async (req: Request, res: Response) => {
-  res.status(501).json({ error: "Not implemented yet" });
-};
-
-// src/controllers/submissionController.ts
-
+// 4. GET SUBMISSION RESULT (Αποτελέσματα για Μαθητή/Καθηγητή)
 export const getSubmissionResult = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
   try {
-    const { id } = req.params;
-    const user = (req as any).user;
-
-    const db = getDb(req);
-
-    console.log(
-      `[getSubmissionResult] Fetching result for sub: ${id}, user: ${user?.user_id}, role: ${user?.role}`,
-    );
+    const { id } = ereq.params;
+    const user = ereq.user;
+    const db = getDb(ereq);
 
     if (!user || !user.user_id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // 💡 THE FIX: If the user is a teacher, we pass 'null' or a bypass flag 
-    // to the service so it skips the student_id check.
     const studentIdToVerify = user.role === "teacher" ? "TEACHER_BYPASS" : String(user.user_id);
-
-    // Call the service (Note: We might need to slightly update the service next)
-    const result = await SubmissionService.getSubmissionResult(
-      Number(id),
-      studentIdToVerify, 
-      db,
-    );
+    const result = await SubmissionService.getSubmissionResult(Number(id), studentIdToVerify, db);
 
     res.json(result);
   } catch (error: any) {
-    console.error("DETAILED DATABASE ERROR:", error.message);
-    
-    if (error.message.includes("not found")) {
-      return res.status(404).json({ error: "Report not found or access denied." });
-    }
-
-    res.status(500).json({
-      error: "DATABASE_QUERY_FAILED",
-      message: error.message,
-    });
+    res.status(500).json({ error: "DATABASE_QUERY_FAILED", message: error.message });
   }
 };
 
-// 1. Function to update the TOTAL grade (from the yellow panel)
-export const overrideTotalGrade = async (req: any, res: any) => {
-  const { id } = req.params;
-  const { newGrade } = req.body;
+// 5. OVERRIDE TOTAL GRADE (Manual αλλαγή συνολικού βαθμού)
+export const overrideTotalGrade = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
+  const { id } = ereq.params;
+  const { newGrade } = ereq.body;
   
-  // Note: Adjust the db connection logic based on how your app handles the database pool
-  const client = await req.db.connect(); 
+  const db = getDb(ereq);
+  const client = await db.connect(); 
   
   try {
     await client.query(
       "UPDATE exam.submissions SET total_grade = $1, status = 'completed' WHERE submission_id = $2",
       [newGrade, id]
     );
-    
-    console.log(`[OVERRIDE] Total grade manually set to ${newGrade} for submission ${id}`);
     res.json({ message: "Total grade updated successfully", newTotal: newGrade });
   } catch (err) {
-    console.error("Total override error:", err);
     res.status(500).json({ error: "Failed to override total grade" });
   } finally {
     client.release();
   }
 };
 
-// 2. Function to update a SPECIFIC QUESTION'S grade and recalculate the total
-export const overrideQuestionGrade = async (req: any, res: any) => {
-  const { id: submissionId, answerId } = req.params;
-  const { newQuestionGrade } = req.body;
+// 6. OVERRIDE QUESTION GRADE (Manual αλλαγή βαθμού ερώτησης & recalculate total)
+export const overrideQuestionGrade = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
+  const { id: submissionId, answerId } = ereq.params;
+  const { newQuestionGrade } = ereq.body;
   
-  const client = await req.db.connect();
+  const db = getDb(ereq);
+  const client = await db.connect();
   
   try {
     await client.query("BEGIN");
 
-    // A. Update the specific question's grade
     await client.query(
-      "UPDATE exam.student_answers SET question_grade = $1 WHERE answer_id = $2",
+      "UPDATE exam.student_answers SET question_grade = $1, is_manually_graded = true WHERE answer_id = $2",
       [newQuestionGrade, answerId]
     );
 
-    // B. Recalculate the new total score for this submission
-    const totalQuery = `
-      SELECT SUM(question_grade) as total 
-      FROM exam.student_answers sa
-      JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
-      WHERE sq.submission_id = $1
-    `;
-    const { rows } = await client.query(totalQuery, [submissionId]);
+    const { rows } = await client.query(
+      `SELECT SUM(question_grade) as total FROM exam.student_answers sa
+       JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+       WHERE sq.submission_id = $1`, 
+      [submissionId]
+    );
     const newTotal = rows[0].total || 0;
 
-    // C. Update the submissions table with the new total
     await client.query(
       "UPDATE exam.submissions SET total_grade = $1 WHERE submission_id = $2",
       [newTotal, submissionId]
     );
 
     await client.query("COMMIT");
-    console.log(`[OVERRIDE] Question ${answerId} set to ${newQuestionGrade}. New total: ${newTotal}`);
-    
     res.json({ message: "Question grade updated successfully", newTotal });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("Question override error:", err);
     res.status(500).json({ error: "Failed to override question grade" });
   } finally {
     client.release();
   }
+};
+
+// 7. BULK MANUAL GRADES (Μαζική βαθμολόγηση από καθηγητή)
+export const submitBulkManualGrades = async (req: Request, res: Response) => {
+  const ereq = req as ExtendedRequest;
+  const { id: submissionId } = ereq.params;
+  const { grades } = ereq.body; 
+
+  try {
+    const db = getDb(ereq); // Την παίρνουμε σωστά εδώ
+    const result = await SubmissionService.manuallyGradeEntireSubmission(
+      Number(submissionId),
+      grades,
+      db // Την περνάμε καθαρά εδώ
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Placeholder
+export const getSubmission = async (req: Request, res: Response) => {
+  res.status(501).json({ error: "Not implemented yet" });
 };

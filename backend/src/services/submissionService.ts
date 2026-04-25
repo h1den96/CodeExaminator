@@ -10,6 +10,12 @@ import { SecurityAuditService } from "./securityAuditService";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
+interface ManualGradeDto {
+    question_id: number;
+    manual_grade: number;
+    teacher_comments?: string;
+}
+
 export class SubmissionService {
     private static normalizeOutput(val: any): string {
         if (val === null || val === undefined) return "";
@@ -39,6 +45,86 @@ export class SubmissionService {
             .replace(/^\s*using\s+namespace\s+std\s*;/gm, '// removed namespace')
             .trim();
     }
+
+
+    static async manuallyGradeSubmission(submissionId: number, grades: ManualGradeDto[], db: Pool) {
+        const client = await db.connect();
+        try {
+            await client.query("BEGIN");
+            for (const item of grades) {
+                await client.query(
+                    `UPDATE exam.student_answers sa
+                     SET question_grade = $1, teacher_comments = $2, is_manually_graded = true
+                     FROM exam.submission_questions sq
+                     WHERE sa.submission_question_id = sq.submission_question_id
+                       AND sq.submission_id = $3 AND sq.question_id = $4`,
+                    [item.manual_grade, item.teacher_comments || null, submissionId, item.question_id]
+                );
+            }
+            const totalRes = await client.query(
+                `SELECT SUM(sa.question_grade) as total FROM exam.student_answers sa
+                 JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+                 WHERE sq.submission_id = $1`, [submissionId]
+            );
+            const newTotal = Number(totalRes.rows[0].total || 0);
+            await client.query(
+                `UPDATE exam.submissions SET total_grade = $1, status = 'graded', graded_at = NOW() WHERE submission_id = $2`,
+                [newTotal, submissionId]
+            );
+            await client.query("COMMIT");
+            return { success: true, final_score: newTotal };
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally { client.release(); }
+    }
+
+// src/services/submissionService.ts
+
+static async manuallyGradeEntireSubmission(submissionId: number, grades: any[], db: Pool) {
+    const client = await db.connect();
+    try {
+        await client.query("BEGIN");
+        
+        for (const item of grades) {
+            const sqId = parseInt(item.submissionQuestionId);
+            const gVal = parseFloat(String(item.grade).replace(',', '.'));
+            if (isNaN(sqId)) continue;
+
+            // INSERT αν δεν υπάρχει, UPDATE αν υπάρχει (βάσει του UNIQUE constraint στο submission_question_id)
+            await client.query(
+                `INSERT INTO exam.student_answers (submission_question_id, question_grade, teacher_comments, is_manually_graded)
+                 VALUES ($1, $2, $3, true)
+                 ON CONFLICT (submission_question_id) 
+                 DO UPDATE SET 
+                    question_grade = EXCLUDED.question_grade,
+                    teacher_comments = EXCLUDED.teacher_comments,
+                    is_manually_graded = true`,
+                [sqId, gVal, item.comments || null]
+            );
+        }
+
+        const totalRes = await client.query(
+            `SELECT SUM(sa.question_grade) as total_sum 
+             FROM exam.student_answers sa
+             JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+             WHERE sq.submission_id = $1`, [submissionId]
+        );
+
+        const newTotal = Number(totalRes.rows[0]?.total_sum || 0);
+
+        await client.query(
+            `UPDATE exam.submissions SET total_grade = $1, status = 'graded' WHERE submission_id = $2`,
+            [newTotal, submissionId]
+        );
+
+        await client.query("COMMIT");
+        return { success: true, newTotal };
+    } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+    } finally { client.release(); }
+}
 
     // Μέσα στο service σου, εκεί που επεξεργάζεσαι το response του Judge0
 private refineExecutionStatus(result: any, memoryLimitKb: number): string {
@@ -83,7 +169,6 @@ private refineExecutionStatus(result: any, memoryLimitKb: number): string {
     // src/services/submissionService.ts
 
 static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
-    // 1. Έλεγχος για Auto-submit
     const checkQuery = `
         SELECT s.status, s.started_at, t.duration_minutes
         FROM exam.submissions s
@@ -98,20 +183,15 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
         const endTime = startTime + (sub.duration_minutes * 60000);
         const now = Date.now();
 
-        // Αν ο χρόνος έληξε, τρέχουμε τη βαθμολόγηση "on the fly"
         if (now > endTime) {
-            console.log(`[AUTO-SUBMIT] Time expired for sub ${submissionId}. Grading now...`);
             try {
-                // Χρησιμοποιούμε το studentId που ήρθε (είτε ID είτε 'TEACHER_BYPASS')
                 await this.submitAndGrade(submissionId, studentId, db);
             } catch (gradeErr) {
-                console.error("[AUTO-SUBMIT] Error during forced grading:", gradeErr);
-                // Συνεχίζουμε για να φέρουμε ό,τι δεδομένα υπάρχουν
+                console.error("[AUTO-SUBMIT] Error:", gradeErr);
             }
         }
     }
 
-    // 2. Fetch των τελικών δεδομένων (μετά το πιθανό auto-submit)
     const query = `
         SELECT 
             s.submission_id, 
@@ -122,13 +202,16 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
             s.submitted_at,
             (
                 SELECT json_agg(json_build_object(
+                    'submission_question_id', sq.submission_question_id,
+                    'answer_id', sa.answer_id,
                     'question_id', q.question_id,
                     'question_text', q.body,
                     'type', q.question_type,
-                    'points_earned', sa.question_grade,
+                    'points_earned', COALESCE(sa.question_grade, 0),
                     'points_possible', sq.points,
                     'eval_details', sa.eval_result,
-                    'student_code', sa.code_answer
+                    'student_code', sa.code_answer,
+                    'teacher_comments', sa.teacher_comments
                 ))
                 FROM exam.submission_questions sq
                 JOIN exam.questions q ON sq.question_id = q.question_id
@@ -142,11 +225,7 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
     `;
 
     const res = await db.query(query, [submissionId, studentId]);
-    
-    if (res.rows.length === 0) {
-        throw new Error("Submission not found or access denied.");
-    }
-
+    if (res.rows.length === 0) throw new Error("Submission not found.");
     return res.rows[0];
 }
 

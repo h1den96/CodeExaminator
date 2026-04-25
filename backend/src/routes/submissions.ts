@@ -10,6 +10,7 @@ router.use(requireAuth);
 // 1. MUST BE POST (to match examApi.ts)
 // 2. MUST BE singular "save-answer" (to match examApi.ts)
 router.post("/:id/save-answer", submissionController.saveAnswers);
+router.post("/:id/bulk-manual-grade", requireTeacher, submissionController.submitBulkManualGrades);
 
 // Other routes
 router.post("/:id/submit", submissionController.submitSubmission);

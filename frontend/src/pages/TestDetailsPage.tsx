@@ -88,7 +88,7 @@ export default function TestDetailsPage() {
 
   // Calculate Submissions Stats
   const completedSubmissions = submissionsList.filter(
-    (s) => s.status === "submitted" || s.status === "completed"
+    (s) => ["submitted", "completed", "graded"].includes(s.status.toLowerCase())
   );
   const averageGrade =
     completedSubmissions.length > 0
@@ -278,10 +278,9 @@ export default function TestDetailsPage() {
                       timeTaken = `${diffMins} mins`;
                     }
 
-                    const isDone = sub.status === "completed" || sub.status === "submitted";
+                    const isDone = ["completed", "submitted", "graded"].includes(sub.status.toLowerCase());
                     const isStarted = sub.status === "started";
-                    
-                    // 💡 Η αλλαγή είναι εδώ: Ενεργοποιούμε το κουμπί αν είναι Done Ή Started
+
                     const isClickable = isDone || isStarted;
 
                     return (

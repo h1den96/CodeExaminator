@@ -41,10 +41,9 @@ export default function Results() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // States για το Manual Override
-  const [overrideGrade, setOverrideGrade] = useState("");
+  // States για το Manual Grading ανά ερώτηση (Bulk Override)
+  const [manualGrades, setManualGrades] = useState<Record<number, { grade: string; comments: string }>>({});
   const [isUpdating, setIsUpdating] = useState(false);
-  
 
   const checkIsTeacher = () => {
     try {
@@ -62,9 +61,8 @@ export default function Results() {
   const isTeacher = checkIsTeacher();
 
   useEffect(() => {
-    console.log("FETCHING RESULT FOR ID:", id);
-    if (!id || id === "undefined"){
-      console.error("ID IS MISSING OR UNDEFINED!");
+    if (!id || id === "undefined") {
+      console.error("ID IS MISSING!");
       return;
     }
 
@@ -72,7 +70,16 @@ export default function Results() {
       .get(`/submissions/${id}/result`)
       .then((res) => {
         setData(res.data);
-        setOverrideGrade(res.data.total_grade || "0");
+        
+        // Αρχικοποίηση του state για τη χειροκίνητη βαθμολόγηση ανά ερώτηση
+        const initialManual: any = {};
+        res.data.questions.forEach((q: any) => {
+          initialManual[q.submission_question_id] = { // Χρήση sq_id ως κλειδί
+            grade: String(q.points_earned || "0"),
+            comments: q.teacher_comments || ""
+          };
+        });
+        setManualGrades(initialManual);
         setLoading(false);
       })
       .catch((err) => {
@@ -86,28 +93,51 @@ export default function Results() {
           setErrorMsg("Server error while fetching the report.");
         }
       });
-  }, [id, navigate]);
+  }, [id]);
 
-  // Logic για το Manual Override
-  const handleManualOverride = async () => {
-    if (!window.confirm("Are you sure you want to modify the grade manually?")) return;
-    
+  const handleManualGradeChange = (sqId: number, field: "grade" | "comments", value: string) => {
+  setManualGrades(prev => ({
+    ...prev,
+    [sqId]: { ...prev[sqId], [field]: value }
+  }));
+};
+
+  // Logic για το Bulk Manual Override (Συνολική αποθήκευση)
+  const handleBulkOverride = async () => {
+    if (!window.confirm("Save manual grades?")) return;
     setIsUpdating(true);
+
+    // ΔΙΟΡΘΩΣΗ: Χρήση Object.entries για ασφαλές mapping χωρίς crash
+    const payload = Object.entries(manualGrades)
+      .map(([sqId, val]) => {
+        const parsedId = parseInt(sqId);
+        if (isNaN(parsedId)) return null;
+        return {
+          submissionQuestionId: parsedId, // <--- Στέλνουμε submissionQuestionId
+          grade: parseFloat(String(val?.grade || "0").replace(',', '.')),
+          comments: val?.comments || ""
+        };
+      })
+      .filter((item): item is any => item !== null);
+
     try {
-      await api.patch(`/submissions/${id}/override`, { 
-        newGrade: parseFloat(overrideGrade) 
+      const res = await api.post(`/submissions/${id}/bulk-manual-grade`, { grades: payload });
+      
+      const updatedQuestions = data.questions.map((q: any) => {
+          const match = payload.find((p: any) => p.answerId === q.answer_id);
+          return match ? { ...q, points_earned: match.grade, teacher_comments: match.comments } : q;
       });
-      setData({ ...data, total_grade: overrideGrade, status: 'completed' });
-      alert("Grade modified successfully!");
+
+      setData({ ...data, total_grade: res.data.newTotal, status: 'graded', questions: updatedQuestions });
+      alert("Updated successfully!");
     } catch (err) {
       console.error(err);
-      alert("Failed to modify grade");
+      alert("Failed to update.");
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // Διορθωση για το Go Back button
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -119,7 +149,7 @@ export default function Results() {
   if (loading) {
     return (
       <div style={{ padding: "100px", textAlign: "center", color: "#64748b" }}>
-        <p style={{ fontSize: "1.2rem", fontWeight: "bold" }}>Analyzing the answers...</p>
+        <p style={{ fontSize: "1.2rem", fontWeight: "bold" }}>Analyzing the results...</p>
       </div>
     );
   }
@@ -127,7 +157,7 @@ export default function Results() {
   if (errorMsg) {
     return (
       <div style={{ padding: "100px", textAlign: "center", color: "#dc2626" }}>
-        <h2 style={{ marginBottom: "15px" }}>⚠️ Error</h2>
+        <h2 style={{ marginBottom: "15px" }}>Error</h2>
         <p>{errorMsg}</p>
         <button onClick={handleBack} style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}>
           Go Back
@@ -146,7 +176,7 @@ export default function Results() {
   return (
     <div
       style={{
-        maxWidth: "900px",
+        maxWidth: "950px",
         margin: "40px auto",
         padding: "20px",
         fontFamily: "sans-serif",
@@ -181,13 +211,18 @@ export default function Results() {
               borderRadius: "20px",
               fontSize: "0.9rem",
               fontWeight: "bold",
-              background: data.status === "completed" || data.status === "submitted" ? "#dcfce7" : "#fee2e2",
-              color: data.status === "completed" || data.status === "submitted" ? "#166534" : "#991b1b",
+              background: (data.status === "graded" || data.status === "submitted" || data.status === "completed") ? "#dcfce7" : "#fee2e2",
+              color: (data.status === "graded" || data.status === "submitted" || data.status === "completed") ? "#166534" : "#991b1b",
             }}
           >
             Status: {data.status?.toUpperCase()}
           </span>
         </div>
+        {isTeacher && (
+          <p style={{ marginTop: "15px", color: "#64748b", fontWeight: "bold", fontSize: "0.9rem" }}>
+            PEDAGOGICAL REVIEW MODE
+          </p>
+        )}
       </div>
 
       <h2
@@ -229,17 +264,8 @@ export default function Results() {
               >
                 <div style={{ flex: 1, paddingRight: "20px" }}>
                   <h3 style={{ margin: "0 0 8px 0", color: "#1e293b" }}>
-                    {i + 1}. {q.title || `Question ${i + 1}`}
+                    {i + 1}. {q.question_text}
                   </h3>
-                  <div
-                    style={{
-                      fontSize: "0.95rem",
-                      color: "#475569",
-                      lineHeight: "1.5",
-                    }}
-                  >
-                    {q.question_text}
-                  </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div
@@ -254,16 +280,6 @@ export default function Results() {
                     }}
                   >
                     {q.points_earned ?? 0} / {q.points_possible ?? 0}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "#94a3b8",
-                      marginTop: "5px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Points
                   </div>
                 </div>
               </div>
@@ -280,7 +296,7 @@ export default function Results() {
                       <span style={{ fontWeight: "bold", color: detail.passed ? "#16a34a" : (detail.target === 'complexity' ? '#0369a1' : "#dc2626") }}>
                         {detail.target === 'complexity' 
                           ? (detail.actual_value < 5 ? "Simple" : detail.actual_value < 15 ? "Moderate" : "High")
-                          : (detail.passed ? (detail.type === "FORBID" ? "Compliant" : "Passed") : "Violation")}
+                          : (detail.passed ? "Compliant" : "Violation")}
                       </span>
                     </div>
                   ))}
@@ -299,22 +315,10 @@ export default function Results() {
                   }}
                 >
                   <div style={{ marginBottom: "12px" }}>
-                    <span
-                      style={{
-                        color: "#64748b",
-                        fontSize: "0.9rem",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
+                    <span style={{ color: "#64748b", fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
                       Student Answer:
                     </span>
-                    <strong
-                      style={{
-                        fontSize: "1rem",
-                        color: isCorrect ? "#16a34a" : "#dc2626",
-                      }}
-                    >
+                    <strong style={{ fontSize: "1rem", color: isCorrect ? "#16a34a" : "#dc2626" }}>
                       {q.type === "mcq"
                         ? q.student_answer || "No response"
                         : q.tf_student_answer === null
@@ -324,20 +328,8 @@ export default function Results() {
                   </div>
 
                   {!isCorrect && (
-                    <div
-                      style={{
-                        paddingTop: "12px",
-                        borderTop: "1px solid #e2e8f0",
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: "#64748b",
-                          fontSize: "0.9rem",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
+                    <div style={{ paddingTop: "12px", borderTop: "1px solid #e2e8f0" }}>
+                      <span style={{ color: "#64748b", fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
                         Correct Answer:
                       </span>
                       <strong style={{ fontSize: "1rem", color: "#16a34a" }}>
@@ -369,7 +361,7 @@ export default function Results() {
                   {q.student_code && (
                     <div style={{ marginTop: "20px" }}>
                       <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Submitted Code:</p>
-                      <pre style={{ background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px", fontSize: "0.85rem", overflowX: "auto", fontFamily: "'Fira Code', monospace", border: "1px solid #334155" }}>
+                      <pre style={{ background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px", fontSize: "0.85rem", overflowX: "auto", fontFamily: "monospace", border: "1px solid #334155" }}>
                         {q.student_code}
                       </pre>
                     </div>
@@ -377,8 +369,8 @@ export default function Results() {
 
                   {testResults.length > 0 && (
                     <div style={{ marginTop: "20px" }}>
-                      <p style={{ fontWeight: "bold", fontSize: "0.9rem", color: "#475569", marginBottom: "10px" }}>💻 Test Case Breakdown:</p>
-                      <div style={{ overflowX: "auto", background: "#f8fafc", padding: "10px", borderRadius: "8px" }}>
+                      <p style={{ fontWeight: "bold", fontSize: "0.9rem", color: "#475569", marginBottom: "10px" }}>Functional Validation Table:</p>
+                      <div style={{ overflowX: "auto", background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                           <thead>
                             <tr style={{ textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #e2e8f0" }}>
@@ -390,17 +382,10 @@ export default function Results() {
                           <tbody>
                             {testResults.map((test: any, idx: number) => (
                               <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                                <td style={{ padding: "10px", color: "#64748b" }}>
-                                  {test.is_public ? "🌍 Public" : "🔒 Private"}
-                                </td>
-                                <td style={{ padding: "10px", fontFamily: "monospace", color: "#1e293b" }}>
-                                  {test.input}
-                                </td>
+                                <td style={{ padding: "10px" }}>{test.is_public ? "Public" : "Private"}</td>
+                                <td style={{ padding: "10px", fontFamily: "monospace" }}>{test.input}</td>
                                 <td style={{ padding: "10px", fontWeight: "bold", color: test.passed ? "#16a34a" : "#dc2626" }}>
-                                  {test.passed 
-                                    ? "✓ Passed" 
-                                    : (test.status === "Accepted" ? "✗ Wrong Answer" : `✗ ${test.status}`)
-                                  }
+                                  {test.passed ? "Passed" : (test.status === "Accepted" ? "Wrong Answer" : test.status)}
                                 </td>
                               </tr>
                             ))}
@@ -411,59 +396,82 @@ export default function Results() {
                   )}
                 </>
               )}
+
+              {/* --- INSTRUCTOR MANUAL OVERRIDE (Per Question) --- */}
+              {isTeacher && (
+                <div style={{ marginTop: "25px", padding: "20px", background: "#fdfbff", border: "1px dashed #d1d5db", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", gap: "20px" }}>
+                    <div style={{ width: "150px" }}>
+                      <label style={{ display: "block", fontSize: "0.75rem", fontWeight: "bold", color: "#6b7280", marginBottom: "5px" }}>ADJUST GRADE</label>
+                      <input 
+                        type="text"
+                        step="0.1"
+                        max={q.points_possible}
+                        value={manualGrades[q.submission_question_id]?.grade || ""}
+                        onChange={(e) => handleManualGradeChange(q.submission_question_id, "grade", e.target.value)}
+                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "0.75rem", fontWeight: "bold", color: "#6b7280", marginBottom: "5px" }}>TEACHER FEEDBACK</label>
+                      <input 
+                        type="text"
+                        placeholder="Add a pedagogical comment for this question..."
+                        value={manualGrades[q.submission_question_id]?.comments || ""}
+                        onChange={(e) => handleManualGradeChange(q.submission_question_id, "comments", e.target.value)}
+                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- STUDENT VIEW OF COMMENTS --- */}
+              {!isTeacher && q.teacher_comments && (
+                <div style={{ marginTop: "15px", padding: "15px", background: "#f0fdf4", borderLeft: "4px solid #22c55e", borderRadius: "4px" }}>
+                  <p style={{ margin: 0, fontSize: "0.9rem", color: "#166534" }}>
+                    <strong>Instructor Comments:</strong> {q.teacher_comments}
+                  </p>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* --- INSTRUCTOR PANEL: MANUAL OVERRIDE (Μόνο για Καθηγητές) --- */}
+      {/* --- STICKY TEACHER ACTION BAR --- */}
       {isTeacher && (
-        <div style={{ marginTop: "40px", padding: "30px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "16px" }}>
-          <h3 style={{ margin: "0 0 10px 0", color: "#92400e" }}>🛠️ Instructor Control Panel</h3>
-          <p style={{ fontSize: "0.9rem", color: "#b45309", marginBottom: "20px" }}>
-            Εαν ο αυτοματος ελεγχος απετυχε να αναγνωρισει τη σωστη προσεγγιση, μπορειτε να αλλαξετε τον τελικο βαθμο χειροκινητα.
-          </p>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: "0.8rem", marginBottom: "5px", fontWeight: "bold" }}>Final Grade</label>
-              <input 
-                type="number" 
-                value={overrideGrade} 
-                onChange={(e) => setOverrideGrade(e.target.value)}
-                style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #fbbf24" }}
-              />
-            </div>
-            <button 
-              onClick={handleManualOverride}
-              disabled={isUpdating}
-              style={{ marginTop: "22px", padding: "12px 24px", background: "#d97706", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
-            >
-              {isUpdating ? "Updating..." : "Override & Finalize"}
-            </button>
+        <div style={{ position: "sticky", bottom: "25px", marginTop: "40px", padding: "25px", background: "#1e293b", borderRadius: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.4)" }}>
+          <div style={{ color: "white" }}>
+            <p style={{ margin: 0, fontWeight: "bold" }}>Manual Overrides Pending</p>
+            <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Overrides will update the student's total grade automatically.</p>
           </div>
+          <button 
+            onClick={handleBulkOverride}
+            disabled={isUpdating}
+            style={{ padding: "12px 30px", background: "#22c55e", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+          >
+            {isUpdating ? "Saving Changes..." : "Save All Manual Grades"}
+          </button>
         </div>
       )}
 
-      {/* ΚΟΥΜΠΙ ΕΠΙΣΤΡΟΦΗΣ */}
       <button
         onClick={handleBack}
         style={{
-          marginTop: "50px",
+          marginTop: "40px",
           padding: "18px",
           width: "100%",
           borderRadius: "14px",
           border: "none",
-          background: "#1e293b",
-          color: "white",
+          background: "#f1f5f9",
+          color: "#475569",
           cursor: "pointer",
           fontWeight: "bold",
           fontSize: "1.1rem",
-          transition: "all 0.2s",
         }}
-        onMouseOver={(e) => (e.currentTarget.style.background = "#0f172a")}
-        onMouseOut={(e) => (e.currentTarget.style.background = "#1e293b")}
       >
-        &larr; Go Back
+        &larr; Go Back to Dashboard
       </button>
     </div>
   );
