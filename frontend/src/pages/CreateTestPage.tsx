@@ -7,7 +7,7 @@ interface Slot {
   topic_id: number;
   question_type: "true_false" | "multiple_choice" | "programming";
   difficulty: "easy" | "medium" | "hard";
-  category: "SCALAR" | "LINEAR" | "CUSTOM"; // Strict typing: No more "ANY"
+  category: "SCALAR" | "LINEAR" | "GRID" | "LINKED_LIST" | "CUSTOM"; // Strict typing: No more "ANY"
   points: number;
   weight_bb: number; // Black-box (Results)
   weight_wb: number; // White-box (Logic)
@@ -278,6 +278,8 @@ export default function CreateTestPage() {
                   >
                     <option value="SCALAR">Scalar (Simple Function)</option>
                     <option value="LINEAR">Linear (Arrays/Vectors)</option>
+                    <option value="GRID">Grid (2D Arrays/Matrices)</option>       {/* ΝΕΟ */}
+                    <option value="LINKED_LIST">Linked List (Nodes/Pointers)</option> {/* ΝΕΟ */}
                     <option value="CUSTOM">Custom (Full Program)</option>
                   </select>
 

@@ -107,36 +107,36 @@ export default function Results() {
     if (!window.confirm("Save manual grades?")) return;
     setIsUpdating(true);
 
-    // ΔΙΟΡΘΩΣΗ: Χρήση Object.entries για ασφαλές mapping χωρίς crash
-    const payload = Object.entries(manualGrades)
-      .map(([sqId, val]) => {
-        const parsedId = parseInt(sqId);
-        if (isNaN(parsedId)) return null;
-        return {
-          submissionQuestionId: parsedId, // <--- Στέλνουμε submissionQuestionId
-          grade: parseFloat(String(val?.grade || "0").replace(',', '.')),
-          comments: val?.comments || ""
-        };
-      })
-      .filter((item): item is any => item !== null);
-
     try {
-      const res = await api.post(`/submissions/${id}/bulk-manual-grade`, { grades: payload });
-      
-      const updatedQuestions = data.questions.map((q: any) => {
-          const match = payload.find((p: any) => p.answerId === q.answer_id);
-          return match ? { ...q, points_earned: match.grade, teacher_comments: match.comments } : q;
-      });
+        // Ασφαλές mapping με χρήση submissionQuestionId
+        const payload = Object.entries(manualGrades)
+            .map(([sqId, val]) => ({
+                submissionQuestionId: parseInt(sqId),
+                grade: parseFloat(String(val?.grade || "0").replace(',', '.')),
+                comments: val?.comments || ""
+            }))
+            .filter(item => !isNaN(item.submissionQuestionId));
 
-      setData({ ...data, total_grade: res.data.newTotal, status: 'graded', questions: updatedQuestions });
-      alert("Updated successfully!");
+        const res = await api.post(`/submissions/${id}/bulk-manual-grade`, { grades: payload });
+        
+        // Ακαριαία ενημέρωση του UI state με 2 δεκαδικά
+        const updatedQuestions = data.questions.map((q: any) => {
+            const match = payload.find(p => p.submissionQuestionId === q.submission_question_id);
+            return match ? { ...q, points_earned: Number(match.grade).toFixed(2), teacher_comments: match.comments } : q;
+        });
+
+        setData({ 
+            ...data, 
+            total_grade: Number(res.data.newTotal).toFixed(2), 
+            status: 'graded', 
+            questions: updatedQuestions 
+        });
+
+        alert("Updated successfully!");
     } catch (err) {
-      console.error(err);
-      alert("Failed to update.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+        alert("Failed to update.");
+    } finally { setIsUpdating(false); }
+};
 
   const handleBack = () => {
     if (window.history.length > 1) {
