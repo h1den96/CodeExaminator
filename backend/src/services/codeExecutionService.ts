@@ -162,12 +162,11 @@ export class CodeExecutionService {
 import { Pool } from "pg";
 import axios from "axios";
 import dotenv from "dotenv";
-import { StructuralAnalysisService } from "./structuralAnalysisService"; // 🚀 New Import
-
+import { StructuralAnalysisService } from "./structuralAnalysisService";
 dotenv.config();
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
-const structuralService = new StructuralAnalysisService(); // 🚀 Initialize
+const structuralService = new StructuralAnalysisService();
 
 export class CodeExecutionService {
   private static sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
