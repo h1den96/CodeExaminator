@@ -1,77 +1,3 @@
-// src/auth/AuthContext.tsx
-/*import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-
-type User = {
-  id: number;
-  email: string;
-  role: string;
-  full_name: string;
-};
-
-type AuthContextValue = {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  login: (token: string, user: User) => void;
-  logout: () => void;
-};
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  // Re-hydrate from localStorage on refresh
-  useEffect(() => {
-    const storedToken = localStorage.getItem("accessToken");
-    const storedUser = localStorage.getItem("user");
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
-
-  const login = (newToken: string, newUser: User) => {
-    setToken(newToken);
-    setUser(newUser);
-    localStorage.setItem("accessToken", newToken);
-    localStorage.setItem("user", JSON.stringify(newUser));
-  };
-
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("user");
-    // you can also call /api/auth/logout here if you want
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isAuthenticated: !!token,
-        login,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return ctx;
-}
-*/
-
-// src/auth/AuthContext.tsx
 import {
   createContext,
   useContext,
@@ -82,8 +8,9 @@ import {
 
 type AuthContextType = {
   token: string | null;
+  user: any | null;
   isAuthenticated: boolean;
-  login: (token: string) => void;
+  login: (token: string, userData: any) => void;
   logout: () => void;
 };
 
@@ -91,27 +18,56 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<any | null>(null);
 
-  // αν θες, διάβασε token από localStorage για να μένει login μετά από refresh
+  // Συγχρονισμός με το localStorage κατά το load της σελίδας
   useEffect(() => {
-    const saved = localStorage.getItem("access_token");
-    if (saved) {
-      setToken(saved);
+    const savedToken = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+
+    // 1. Έλεγχος Token: Αποφυγή τιμών "null" ή "undefined" ως strings
+    if (savedToken && savedToken !== "undefined" && savedToken !== "null") {
+      setToken(savedToken);
+    }
+
+    // 2. Έλεγχος User: Ασφαλές parsing για αποφυγή SyntaxError
+    if (savedUser && savedUser !== "undefined" && savedUser !== "null") {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error("AuthContext: Failed to parse user data from localStorage", error);
+        // Αν τα δεδομένα είναι κατεστραμμένα, τα καθαρίζουμε
+        localStorage.removeItem("user");
+        setUser(null);
+      }
     }
   }, []);
 
-  const login = (newToken: string) => {
+  const login = (newToken: string, userData: any) => {
+    // Ενημέρωση State
     setToken(newToken);
-    localStorage.setItem("access_token", newToken);
+    setUser(userData);
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(userData));
   };
 
   const logout = () => {
+    // Καθαρισμός State
     setToken(null);
+    setUser(null);
+
+    // Καθαρισμός LocalStorage
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    // Προαιρετικά καθαρίζουμε και παλιά κλειδιά αν υπάρχουν
     localStorage.removeItem("access_token");
+    localStorage.removeItem("accessToken");
   };
 
   const value: AuthContextType = {
     token,
+    user,
     isAuthenticated: !!token,
     login,
     logout,

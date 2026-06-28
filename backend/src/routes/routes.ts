@@ -13,15 +13,19 @@ import {
   createProgrammingQuestion,
   createMCQ,
   createTF,
+  getProgrammingCategories,
 } from "../controllers/questionController";
-// 👇 IMPORT testController functions here
+
 import {
   getAllTests,
   createTest,
   startTest,
   getAvailableTests,
+  getStudentHistory,
+  runSubmissionCode,
+  getTestById, 
+  togglePublishStatus
 } from "../controllers/testController";
-import { runSubmissionCode } from "../controllers/testController";
 
 // Middleware
 import { requireAuth, requireTeacher } from "../middleware/requireAuth";
@@ -38,12 +42,18 @@ router.get("/questions/:id", getQuestion);
 
 // Get available tests (Specific to student logic)
 router.get("/tests/available", requireAuth, getAvailableTests);
+
+router.get("/tests/history", requireAuth, getStudentHistory);
+
 // Start a test
 router.post("/tests/start", requireAuth, startTest);
 
 // --- TEACHER ROUTES ---
 router.get("/topics", requireAuth, requireTeacher, getTopics);
+router.get("/programming-categories", requireAuth, requireTeacher, getProgrammingCategories);
 router.post("/questions", requireAuth, requireTeacher, createQuestion);
+router.get("/tests/:id", requireAuth, getTestById);
+router.put("/tests/:id/publish", requireAuth, requireTeacher, togglePublishStatus);
 
 // Create Specific Questions
 router.post(

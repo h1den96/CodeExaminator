@@ -21,9 +21,11 @@ export default function CreateProgrammingQuestion() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
+  const [category, setCategory] = useState("");
+  const [categoriesList, setCategoriesList] = useState<any[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<number | "">("");
   const [starterCode, setStarterCode] = useState(
-    `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}`,
+    `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}`
   );
 
   // Dynamic Data State
@@ -33,18 +35,23 @@ export default function CreateProgrammingQuestion() {
   ]);
   const [loading, setLoading] = useState(false);
 
-  // Load Topics on mount
+  // Load Topics and Categories on mount
   useEffect(() => {
     api
       .get("/topics")
       .then((res) => setTopics(res.data))
       .catch((err) => console.error("Failed to load topics", err));
+
+    api
+      .get("/programming-categories") 
+      .then((res) => setCategoriesList(res.data))
+      .catch((err) => console.error("Failed to load categories", err));
   }, []);
 
   // Handlers for Dynamic Test Cases
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", expected: "" }]);
-  };
+  }
 
   const removeTestCase = (index: number) => {
     if (testCases.length === 1) return; // Keep at least one
@@ -55,7 +62,7 @@ export default function CreateProgrammingQuestion() {
   const updateTestCase = (
     index: number,
     field: keyof TestCase,
-    value: string,
+    value: string
   ) => {
     const newCases = [...testCases];
     newCases[index][field] = value;
@@ -63,8 +70,9 @@ export default function CreateProgrammingQuestion() {
   };
 
   const handleSubmit = async () => {
-    if (!title || !body || !selectedTopic) {
-      alert("Please fill in all required fields (Title, Body, Topic).");
+    // 1. ADDED category validation
+    if (!title || !body || !selectedTopic || !category) {
+      alert("Please fill in all required fields (Title, Body, Topic, Category).");
       return;
     }
 
@@ -74,12 +82,13 @@ export default function CreateProgrammingQuestion() {
         title,
         body,
         difficulty,
-        topic_ids: [Number(selectedTopic)], // Backend expects array
+        category, // 2. ADDED category to the payload
+        topic_ids: [Number(selectedTopic)], 
         starter_code: starterCode,
         test_cases: testCases,
       });
       alert("Question Created Successfully!");
-      navigate("/teacher/dashboard"); // Or wherever you want to go
+      navigate("/teacher/create-question-hub");
     } catch (err: any) {
       console.error(err);
       alert(err.response?.data?.error || "Failed to create question");
@@ -108,23 +117,44 @@ export default function CreateProgrammingQuestion() {
     color: colors.text,
   };
 
+  const handleBack = () => {
+    navigate("/teacher/create-question-hub");
+  };
+
   return (
-    <div
-      style={{
-        padding: "40px",
-        background: colors.bg,
-        minHeight: "100vh",
-        color: colors.text,
-      }}
-    >
+    <div style={{ 
+      padding: "40px",
+      background: "#f3f4f6",
+      minHeight: "100vh",
+      color: colors.text,
+      fontFamily: "sans-serif" 
+    }}>
+      <button 
+        onClick={handleBack}
+        style={{
+          marginBottom: "20px",
+          background: "transparent",
+          color: colors.text,
+          border: `1px solid ${colors.border}`,
+          padding: "8px 16px",
+          borderRadius: "6px",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}
+      >
+        ← Back to Hub
+      </button>
+
       <div
         style={{
           maxWidth: "800px",
           margin: "0 auto",
           background: colors.card,
-          padding: "30px",
-          borderRadius: "8px",
-          border: `1px solid ${colors.border}`,
+          padding: "40px",
+          borderRadius: "16px",
+          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
         }}
       >
         <h1
@@ -184,6 +214,22 @@ export default function CreateProgrammingQuestion() {
               {topics.map((t) => (
                 <option key={t.topic_id} value={t.topic_id}>
                   {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Category</label>
+            <select
+              style={inputStyle}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="">-- Select Category --</option>
+              {categoriesList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>

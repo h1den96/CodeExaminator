@@ -6,8 +6,15 @@ import { TestService } from "./testService";
 import type { TestTemplateRow, SubmitAnswerDto } from "../types/examTypes";
 import { StructuralAnalysisService } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
+import { SecurityAuditService } from "./securityAuditService";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
+
+interface ManualGradeDto {
+    question_id: number;
+    manual_grade: number;
+    teacher_comments?: string;
+}
 
 export class SubmissionService {
     private static normalizeOutput(val: any): string {
@@ -21,60 +28,211 @@ export class SubmissionService {
                   .join("\n");
     }
 
+    private static cleanStudentCode(code: string): string {
+    if (!code) return "";
+        const forbiddenPattern = /\b(system|exec|fork|popen|unistd|socket|fopen|fstream|ofstream|ifstream|freopen|remove|rename)\s*\(/i;
+    
+        const forbiddenTypes = /\b(FILE|std::fstream|std::ofstream|std::ifstream)\b/;
+
+        if (forbiddenPattern.test(code) || forbiddenTypes.test(code)) {
+            console.error("[SECURITY] Blocked forbidden system/file operation attempt.");
+            throw new Error("SECURITY_ERROR: Access to system or file operations is restricted.");
+        }
+
+        console.log("[CLEANER] Sanitizing student code headers...");
+        return code
+            .replace(/^\s*#include\s*[<|"].*[>|"]/gm, '// removed header')
+            .replace(/^\s*using\s+namespace\s+std\s*;/gm, '// removed namespace')
+            .trim();
+    }
+
+
+    static async manuallyGradeSubmission(submissionId: number, grades: ManualGradeDto[], db: Pool) {
+        const client = await db.connect();
+        try {
+            await client.query("BEGIN");
+            for (const item of grades) {
+                await client.query(
+                    `UPDATE exam.student_answers sa
+                     SET question_grade = $1, teacher_comments = $2, is_manually_graded = true
+                     FROM exam.submission_questions sq
+                     WHERE sa.submission_question_id = sq.submission_question_id
+                       AND sq.submission_id = $3 AND sq.question_id = $4`,
+                    [item.manual_grade, item.teacher_comments || null, submissionId, item.question_id]
+                );
+            }
+            const totalRes = await client.query(
+                `SELECT SUM(sa.question_grade) as total FROM exam.student_answers sa
+                 JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
+                 WHERE sq.submission_id = $1`, [submissionId]
+            );
+            const newTotal = Number(totalRes.rows[0].total || 0);
+            await client.query(
+                `UPDATE exam.submissions SET total_grade = $1, status = 'graded', graded_at = NOW() WHERE submission_id = $2`,
+                [newTotal, submissionId]
+            );
+            await client.query("COMMIT");
+            return { success: true, final_score: newTotal };
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally { client.release(); }
+    }
+
+// src/services/submissionService.ts
+
+static async manuallyGradeEntireSubmission(submissionId: number, grades: any[], db: Pool) {
+    const client = await db.connect();
+    try {
+        await client.query("BEGIN");
+        console.log(`[MANUAL-GRADE] Updating SubID: ${submissionId}. Items: ${grades.length}`);
+
+        for (const item of grades) {
+            const sqId = parseInt(item.submissionQuestionId); // Χρήση SQ_ID (υπάρχει πάντα)
+            const gVal = parseFloat(String(item.grade).replace(',', '.'));
+
+            if (isNaN(sqId)) continue;
+
+            // UPSERT: Δημιουργεί την απάντηση αν ο μαθητής την άφησε κενή
+            await client.query(
+                `INSERT INTO exam.student_answers (submission_question_id, question_grade, teacher_comments, is_manually_graded)
+                 VALUES ($1, $2, $3, true)
+                 ON CONFLICT (submission_question_id) 
+                 DO UPDATE SET question_grade = EXCLUDED.question_grade, teacher_comments = EXCLUDED.teacher_comments, is_manually_graded = true`,
+                [sqId, gVal, item.comments || null]
+            );
+        }
+
+        // Υπολογισμός Normalization στα 10
+        const totalRes = await client.query(
+            `SELECT SUM(sa.question_grade) as earned, SUM(sq.points) as possible
+             FROM exam.submission_questions sq
+             LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+             WHERE sq.submission_id = $1`, 
+            [submissionId]
+        );
+
+        const earned = Number(totalRes.rows[0]?.earned || 0);
+        const possible = Number(totalRes.rows[0]?.possible || 1);
+        const normalizedTotal = Number(((earned / possible) * 10).toFixed(2));
+
+        // ΑΦΑΙΡΕΘΗΚΕ ΤΟ graded_at ΠΟΥ ΠΡΟΚΑΛΟΥΣΕ ΤΟ 500 ERROR
+        await client.query(
+            `UPDATE exam.submissions SET total_grade = $1, status = 'graded' WHERE submission_id = $2`,
+            [normalizedTotal, submissionId]
+        );
+
+        await client.query("COMMIT");
+        return { success: true, newTotal: normalizedTotal };
+    } catch (e) {
+        await client.query("ROLLBACK");
+        console.error("[MANUAL-GRADE] Error:", e);
+        throw e;
+    } finally { client.release(); }
+}
+
+    // Μέσα στο service σου, εκεί που επεξεργάζεσαι το response του Judge0
+private refineExecutionStatus(result: any, memoryLimitKb: number): string {
+    const statusId = result.status?.id;
+    const description = result.status?.description || "Unknown Error";
+    const memoryUsed = result.memory || 0; // Ο Judge0 επιστρέφει KB
+
+    // 1. Έλεγχος για Memory Limit (Τεστ 2)
+    // Αν έχουμε Runtime Error (NZEC) αλλά η μνήμη είναι πάνω από το 90% του ορίου
+    if (statusId === 11 || statusId === 4) { // 11: Internal/NZEC, 4: Runtime Error
+        if (memoryUsed >= memoryLimitKb * 0.9) {
+            return "Memory Limit Exceeded";
+        }
+    }
+
+    // 2. Έλεγχος για Output Limit (Τεστ 5)
+    // Ο Judge0 κανονικά έχει ID 9 για το Output Limit. 
+    // Αν όμως επιστρέφει NZEC, ελέγχουμε αν το stdout είναι πολύ μεγάλο
+    if (statusId === 11 || statusId === 4) {
+        // Αν το stdout πλησιάζει το default όριο (π.χ. 1MB ή 1024KB)
+        if (result.stdout && result.stdout.length > 100000) { 
+            return "Output Limit Exceeded";
+        }
+    }
+
+    // 3. Fallback στο αρχικό description αν δεν βρούμε κάτι "ύποπτο"
+    return description;
+}
+
     static async getAvailableTestsForStudent(userId: number, db: Pool) {
         const query = `
-      SELECT 
-        test_id, 
-        title, 
-        description,
-        available_from,
-        available_until, 
-        duration_minutes
-      FROM exam.tests 
-      WHERE is_published = true 
-        AND (available_until IS NULL OR available_until > NOW())
-      ORDER BY created_at DESC
-    `;
+            SELECT test_id, title, description, available_from, available_until, duration_minutes
+            FROM exam.tests 
+            WHERE is_published = true 
+            AND (available_until IS NULL OR available_until > NOW())
+            ORDER BY created_at DESC
+        `;
         const res = await db.query(query);
         return res.rows;
     }
 
-    static async getSubmissionResult(
-        submissionId: number,
-        studentId: string,
-        db: Pool,
-    ) {
-        const query = `
-      SELECT 
-        s.submission_id,
-        s.test_id,
-        t.title as test_title,
-        s.total_grade,
-        s.status,
-        s.submitted_at,
-        (
-          SELECT json_agg(json_build_object(
-            'question_id', q.question_id,
-            'question_text', q.body,
-            'type', q.question_type,
-            'points_earned', sa.question_grade,
-            'points_possible', sq.points,
-            'eval_details', sa.eval_result,
-            'student_code', sa.code_answer
-          ))
-          FROM exam.submission_questions sq
-          JOIN exam.questions q ON sq.question_id = q.question_id
-          LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-          WHERE sq.submission_id = s.submission_id
-        ) as questions
-      FROM exam.submissions s
-      JOIN exam.tests t ON s.test_id = t.test_id
-      WHERE s.submission_id = $1 AND s.student_id = $2
+    // src/services/submissionService.ts
+
+static async getSubmissionResult(submissionId: number, studentId: string, db: Pool) {
+    const checkQuery = `
+        SELECT s.status, s.started_at, t.duration_minutes
+        FROM exam.submissions s
+        JOIN exam.tests t ON s.test_id = t.test_id
+        WHERE s.submission_id = $1
+    `;
+    const checkRes = await db.query(checkQuery, [submissionId]);
+    const sub = checkRes.rows[0];
+
+    if (sub && sub.status === 'started') {
+        const startTime = new Date(sub.started_at).getTime();
+        const endTime = startTime + (sub.duration_minutes * 60000);
+        const now = Date.now();
+
+        if (now > endTime) {
+            try {
+                await this.submitAndGrade(submissionId, studentId, db);
+            } catch (gradeErr) {
+                console.error("[AUTO-SUBMIT] Error:", gradeErr);
+            }
+        }
+    }
+
+    const query = `
+        SELECT 
+            s.submission_id, 
+            s.test_id, 
+            t.title as test_title, 
+            s.total_grade, 
+            s.status, 
+            s.submitted_at,
+            (
+                SELECT json_agg(json_build_object(
+                    'submission_question_id', sq.submission_question_id,
+                    'answer_id', sa.answer_id,
+                    'question_id', q.question_id,
+                    'question_text', q.body,
+                    'type', q.question_type,
+                    'points_earned', COALESCE(sa.question_grade, 0),
+                    'points_possible', sq.points,
+                    'eval_details', sa.eval_result,
+                    'student_code', sa.code_answer,
+                    'teacher_comments', sa.teacher_comments
+                ))
+                FROM exam.submission_questions sq
+                JOIN exam.questions q ON sq.question_id = q.question_id
+                LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+                WHERE sq.submission_id = s.submission_id
+            ) as questions
+        FROM exam.submissions s
+        JOIN exam.tests t ON s.test_id = t.test_id
+        WHERE s.submission_id = $1 
+          AND (s.student_id::text = $2 OR $2 = 'TEACHER_BYPASS')
     `;
 
-        const res = await db.query(query, [submissionId, studentId]);
-        return res.rows[0];
-    }
+    const res = await db.query(query, [submissionId, studentId]);
+    if (res.rows.length === 0) throw new Error("Submission not found.");
+    return res.rows[0];
+}
 
     private static async runJudge0Assessment(
         studentCode: string,
@@ -84,81 +242,93 @@ export class SubmissionService {
         languageId: number
     ): Promise<{ scoreWeight: number; feedback: string; details: any[] }> {
         
-        // FIX 1: Μετατροπή των test cases από JSONB/String σε Array
         const actualTestCases = typeof testCases === 'string' ? JSON.parse(testCases) : testCases;
-        
-        const finalSource = boilerplate
-            ? boilerplate.replace("// {{STUDENT_CODE}}", studentCode)
-            : studentCode;
-        
+        const marker = "// [[STUDENT_CODE_ZONE]]";
+        let finalSource = "";
 
-        console.log("--- [DEBUG] FINAL CODE SENT TO JUDGE0 ---");
+        const cleanedCode = this.cleanStudentCode(studentCode);
+
+        // --- LOG: ΕΛΕΓΧΟΣ STITCHING ---
+        console.log("--- STITCHING PROCESS START ---");
+        if (boilerplate && boilerplate.includes(marker)) {
+            console.log("[STITCHER] Success: Marker found in boilerplate. Injecting code.");
+            finalSource = boilerplate.replace(marker, cleanedCode);
+        } else if (boilerplate) {
+            console.warn("[STITCHER] Warning: No marker found. Appending code to boilerplate.");
+            finalSource = boilerplate + "\n\n" + cleanedCode;
+        } else {
+            console.error("[STITCHER] Error: Boilerplate is NULL. Using raw student code.");
+            finalSource = cleanedCode;
+        }
+
+        // --- LOG: ΤΕΛΙΚΟΣ ΚΩΔΙΚΑΣ ΠΟΥ ΦΕΥΓΕΙ ΓΙΑ JUDGE0 ---
+        console.log("--- FINAL SOURCE CODE SENT TO JUDGE0 ---");
         console.log(finalSource);
-        console.log("-----------------------------------------");
+        console.log("--- END OF SOURCE CODE ---");
 
         const results: any[] = [];
         let passedCount = 0;
 
-        // FIX 2: Loop πάνω στο actualTestCases (όχι στο testCases)
-        for (const tCase of actualTestCases) {
+        // Χρησιμοποιούμε κλασικό for loop για να έχουμε πρόσβαση στο index 'i'
+    for (let i = 0; i < actualTestCases.length; i++) {
+        const tCase = actualTestCases[i];
+        
+        const inputStr = tCase.input ? String(tCase.input) : "";
+        const expectedStr = tCase.expected_output ? String(tCase.expected_output) : "";
 
-            const inputStr = (tCase.input !== undefined && tCase.input !== null) 
-                ? String(tCase.input) 
-                : "";
-            const expectedStr = (tCase.expected_output !== undefined && tCase.expected_output !== null) 
-                ? String(tCase.expected_output) 
-                : "";
+        const payload = {
+            source_code: Buffer.from(finalSource).toString("base64"),
+            language_id: languageId || 54,
+            stdin: Buffer.from(inputStr).toString("base64"),
+            cpu_time_limit: limits.cpu ? Number(limits.cpu) : 2.0, 
+            memory_limit: limits.memory ? Number(limits.memory) : 128000,
+            base64_encoded: true,
+            wait: true
+        };
 
-            const payload = {
-                source_code: Buffer.from(finalSource).toString("base64"),
-                language_id: languageId || 54,
-                stdin: Buffer.from(inputStr).toString("base64"),
-                cpu_time_limit: null,    // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
-                memory_limit: null,      // ΥΠΟΧΡΕΩΤΙΚΟ ΓΙΑ WSL2
-                base64_encoded: true,
-                wait: true
-            };
+        const res = await axios.post(`${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`, payload);
+        const { status, stdout, stderr, compile_output } = res.data;
+        
+        const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
+        const normalizedActual = this.normalizeOutput(actualOutput);
+        const normalizedExpected = this.normalizeOutput(expectedStr);
 
-            const res = await axios.post(
-                `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`,
-                payload,
-            );
+        const logicMatches = GradingService.smartCompare(normalizedActual, normalizedExpected);
+        const isCorrect = (status.id === 3) && logicMatches;
+        
+        if (isCorrect) passedCount++;
 
-            // --- ΠΡΟΣΘΕΣΕ ΑΥΤΟ ΤΟ LOG ---
-            console.log(`[DEBUG] Judge0 Response (Status ID: ${res.data.status?.id}):`, {
-                stdout: res.data.stdout,
-                stderr: res.data.stderr,
-                compile_output: res.data.compile_output
-            });
-
-            const { status, stdout, stderr, compile_output } = res.data;
-            const actualOutput = stdout ? Buffer.from(stdout, "base64").toString() : "";
-
-            const normalizedActual = this.normalizeOutput(actualOutput);
-            const normalizedExpected = this.normalizeOutput(expectedStr);
-
-            const isCorrect = (status.id === 3) && (normalizedActual === normalizedExpected);
-
-            if (isCorrect) passedCount++;
-
-            results.push({
-                status: status.description,
-                is_public: !!tCase.is_public,
-                input: tCase.is_public ? inputStr : "Hidden",
-                expected: tCase.is_public ? expectedStr : "REDACTED",
-                actual: tCase.is_public ? actualOutput : "REDACTED",
-                passed: isCorrect,
-                error: stderr || compile_output
-                    ? Buffer.from(stderr || compile_output, "base64").toString()
-                    : null,
-            });
+        // --- LOG: ΑΠΟΤΕΛΕΣΜΑ TEST CASE ---
+        // Τώρα το 'i' αναγνωρίζεται κανονικά
+        console.log(`[JUDGE0] Test Case #${i + 1}: ${status.description} | Logic Matches: ${logicMatches}`);
+        
+        if (status.id !== 3 || !logicMatches) {
+            if (stderr) console.error(`[STDERR]: ${Buffer.from(stderr, "base64").toString()}`);
+            if (compile_output) console.error(`[COMPILE_OUT]: ${Buffer.from(compile_output, "base64").toString()}`);
         }
 
-        // FIX 3: Υπολογισμός με βάση το πραγματικό μήκος του Array
+        let errorDetails: string | null = null;
+        if (stderr || compile_output) {
+            const rawError = Buffer.from(stderr || compile_output, "base64").toString();
+            errorDetails = rawError.includes("redefinition of 'int main'") 
+                ? "Constraint Violation: You have included a main() function." 
+                : rawError;
+        }
+
+        results.push({
+            status: status.description,
+            is_public: !!tCase.is_public,
+            input: tCase.is_public ? inputStr : "Hidden",
+            expected: tCase.is_public ? expectedStr : "REDACTED",
+            actual: tCase.is_public ? actualOutput : "REDACTED",
+            passed: isCorrect,
+            error: errorDetails,
+        });
+    }
+
         const total = actualTestCases.length || 1;
         const scoreWeight = passedCount / total;
 
-        
         return {
             scoreWeight,
             feedback: `Passed ${passedCount}/${total} functional tests (${(scoreWeight * 100).toFixed(0)}%).`,
@@ -199,39 +369,61 @@ export class SubmissionService {
             await client.query("BEGIN");
             const sRes = await client.query(
                 `INSERT INTO exam.submissions (student_id, test_id, status, started_at) 
-                 VALUES ($1, $2, 'in_progress', NOW()) 
+                 VALUES ($1, $2, 'started', NOW()) 
                  RETURNING submission_id, started_at`,
                 [studentId, t.test_id],
             );
             const submissionId = sRes.rows[0].submission_id;
 
             const drawQuery = `
-                INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
-                SELECT 
-                  $1 as submission_id,
-                  q_pool.question_id,
-                  ts.slot_order,
-                  ts.points
-                FROM exam.test_slots ts
+            INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
+            WITH RECURSIVE 
+            slots AS (
+                SELECT slot_id, slot_order, topic_id, difficulty, question_type, category, points,
+                        ROW_NUMBER() OVER (ORDER BY slot_order) as rn
+                FROM exam.test_slots
+                WHERE test_id = $2
+            ),
+            picker AS (
+                (
+                    SELECT s.slot_order, s.points, q_pool.question_id, ARRAY[q_pool.question_id] as used_ids, s.rn
+                    FROM slots s
+                    CROSS JOIN LATERAL (
+                        SELECT q.question_id
+                        FROM exam.questions q
+                        JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                        INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                        WHERE q.difficulty = s.difficulty
+                        AND qt.topic_id = s.topic_id
+                        AND q.question_type = s.question_type
+                        AND (s.category = 'ANY' OR pq.category = s.category)
+                        ORDER BY RANDOM()
+                        LIMIT 1
+                    ) q_pool
+                    WHERE s.rn = 1
+                )
+                UNION ALL
+                SELECT s.slot_order, s.points, q_pool.question_id, p.used_ids || q_pool.question_id, s.rn
+                FROM slots s
+                JOIN picker p ON s.rn = p.rn + 1
                 CROSS JOIN LATERAL (
-                  SELECT q.question_id
-                  FROM exam.questions q
-                  JOIN exam.question_topics qt ON q.question_id = qt.question_id
-                  LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-                  WHERE q.difficulty = ts.difficulty
-                  AND qt.topic_id = ts.topic_id
-                  AND q.question_type = ts.question_type
-                  AND (q.question_type != 'programming' OR pq.category = ts.category)
-                  ORDER BY RANDOM()
-                  LIMIT 1
-                ) AS q_pool
-                WHERE ts.test_id = $2
-                ORDER BY ts.slot_order ASC;
+                    SELECT q.question_id
+                    FROM exam.questions q
+                    JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                    INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                    WHERE q.difficulty = s.difficulty
+                        AND qt.topic_id = s.topic_id
+                        AND q.question_type = s.question_type
+                        AND (s.category = 'ANY' OR pq.category = s.category)
+                        AND q.question_id != ALL(p.used_ids)
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) q_pool
+            )
+            SELECT $1, question_id, slot_order, points FROM picker;
             `;
 
-            const drawResult = await client.query(drawQuery, [submissionId, t.test_id]);
-            if (drawResult.rowCount === 0) throw new Error("No matching questions found.");
-
+            await client.query(drawQuery, [submissionId, t.test_id]);
             await client.query("COMMIT");
             const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
             return {
@@ -248,7 +440,9 @@ export class SubmissionService {
 
     static async saveSingleAnswer(submissionId: number, studentId: string, dto: SubmitAnswerDto, db: Pool) {
         const subCheck = await db.query(
-            `SELECT submission_id FROM exam.submissions WHERE submission_id = $1 AND student_id = $2 AND status = 'in_progress'`,
+           `SELECT submission_id FROM exam.submissions 
+            WHERE submission_id = $1 AND student_id = $2 
+            AND status IN ('in_progress', 'started')`,
             [submissionId, studentId],
         );
         if (subCheck.rowCount === 0) throw new Error("Submission not found or closed");
@@ -270,128 +464,183 @@ export class SubmissionService {
         );
     }
 
-    static async submitAndGrade(submissionId: number, studentId: string, db: Pool, codeOverride?: string) {
-        // FIX 4: Προσθήκη pq.language_id στο Query
-        const dataQuery = `
-      SELECT 
-        sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
-        q.question_id, q.question_type, sq.points as question_points,
-        q.structural_rules, q.weight_wb, q.weight_bb,
-        pq.test_cases, 
-        pq.language_id, -- <--- ΚΡΙΣΙΜΟ!
-        pq.category,
-        pq.function_signature,
-        pq.boilerplate_code, 
-        pq.cpu_time_limit, 
-        pq.memory_limit,
-        tf.correct_answer as tf_correct,
-        t.enable_negative_grading,
-        s.started_at,
-        t.duration_minutes,
-        s.status as current_status,
-        (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
-         FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
-      FROM exam.submission_questions sq
-      JOIN exam.submissions s ON sq.submission_id = s.submission_id
-      JOIN exam.tests t ON s.test_id = t.test_id
-      JOIN exam.questions q ON sq.question_id = q.question_id
-      LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
-      LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-      LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
-      WHERE sq.submission_id = $1 AND s.student_id = $2
+    private static validateSecurity(code: string) {
+        const forbiddenPatterns = ["/*", "*/"];
+        for (const pattern of forbiddenPatterns) {
+            if (code.includes(pattern)) {
+                throw new Error(`SECURITY_VIOLATION: Forbidden pattern detected: ${pattern}`);
+            }
+        }
+    }
+
+   static async submitAndGrade(submissionId: number, studentId: string, db: Pool, codeOverride?: string) {
+    console.log(`[GRADER] Starting grading for submission ${submissionId}...`);
+    
+    // ΒΗΜΑ A: Έλεγχος αν υπάρχει όντως το submission στη βάση
+    const checkQuery = `SELECT student_id, status FROM exam.submissions WHERE submission_id = $1`;
+    const checkRes = await db.query(checkQuery, [submissionId]);
+
+    if (checkRes.rows.length === 0) {
+        console.error(`[GRADER] Submission ${submissionId} not found in DB.`);
+        throw new Error("SUBMISSION_NOT_FOUND");
+    }
+
+    const sub = checkRes.rows[0];
+    
+    // Security check: Επιτρέπουμε αν είναι ο ίδιος ο μαθητής, ο καθηγητής ή το CRON
+    const isBypass = studentId === 'TEACHER_BYPASS' || studentId === 'SYSTEM_CRON';
+    if (!isBypass && String(sub.student_id) !== String(studentId)) {
+        throw new Error("ACCESS_DENIED");
+    }
+
+    // ΒΗΜΑ B: Τράβηγμα όλων των απαραίτητων δεδομένων για τη βαθμολόγηση
+    const dataQuery = `
+        SELECT 
+            sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
+            q.question_id, q.question_type, sq.points as question_points,
+            q.structural_rules, q.weight_wb, q.weight_bb,
+            pq.test_cases, pq.language_id, pq.category, pq.function_signature,
+            pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
+            tf.correct_answer as tf_correct, t.enable_negative_grading,
+            (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
+             FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
+        FROM exam.submission_questions sq
+        JOIN exam.questions q ON sq.question_id = q.question_id
+        JOIN exam.tests t ON sq.test_id = t.test_id
+        JOIN exam.submissions s ON sq.submission_id = s.submission_id
+        LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+        LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+        LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
+        WHERE sq.submission_id = $1
     `;
 
-        const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId, studentId]);
-        if (questionsToGrade.length === 0) throw new Error("Submission not found.");
+    const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId]);
+    
+    // Αν δεν υπάρχουν ερωτήσεις, κλείνουμε την υποβολή με 0
+    if (questionsToGrade.length === 0) {
+        await db.query(
+            `UPDATE exam.submissions SET status = 'submitted', total_grade = 0, submitted_at = NOW() WHERE submission_id = $1`,
+            [submissionId]
+        );
+        return { success: true, final_score: 0 };
+    }
 
-        const firstRow = questionsToGrade[0];
-        if (firstRow.current_status !== 'in_progress') throw new Error("SUBMISSION_CLOSED");
+    // ΔΙΟΡΘΩΣΗ TYPESCRIPT: Ορισμός τύπου για το array ώστε να μην βγάζει 'never'
+    const gradingResults: { answerId: number | null, score: number, evalResult: any }[] = [];
+    let rawEarnedPoints = 0;
+    let maxTotalPoints = 0;
 
-        const startTime = new Date(firstRow.started_at).getTime();
-        const durationMs = (Number(firstRow.duration_minutes) || 0) * 60 * 1000;
-        const now = Date.now();
-        const gracePeriod = 2 * 60 * 1000;
+    for (const ans of questionsToGrade) {
+        const points = Number(ans.question_points);
+        maxTotalPoints += points;
+        
+        let earned = 0;
+        let evalResult: any = {};
 
-        if (now > (startTime + durationMs + gracePeriod)) {
-            throw new Error("TIME_EXPIRED");
-        }
-
-        const gradingResults: any[] = [];
-        let totalScore = 0;
-
-        for (const ans of questionsToGrade) {
-            let earnedPoints = 0;
-            let evalResult: any = {};
-            const points = Number(ans.question_points);
-
-            if (ans.answer_id) {
-                if (ans.question_type === 'mcq') {
-                    earnedPoints = GradingService.calculateMCQ(points, ans.mcq_options_data || [], ans.mcq_option_ids || [], firstRow.enable_negative_grading);
-                    evalResult = { type: 'mcq', selected: ans.mcq_option_ids };
-                } else if (ans.question_type === 'true_false') {
-                    earnedPoints = GradingService.calculateTrueFalse(points, ans.tf_answer, ans.tf_correct);
-                    evalResult = { type: 'tf', student_ans: ans.tf_answer, correct_ans: ans.tf_correct };
-                } else if (ans.question_type === 'programming') {
-                    const codeToGrade = codeOverride || ans.code_answer;
-                    if (codeToGrade) {
-                        const finalHarness = (ans.category === 'CUSTOM' && ans.boilerplate_code)
+        // Μόνο αν ο μαθητής έχει δώσει απάντηση (υπάρχει answer_id)
+        if (ans.answer_id) {
+            if (ans.question_type === 'mcq') {
+                earned = GradingService.calculateMCQ(points, ans.mcq_options_data || [], ans.mcq_option_ids || [], ans.enable_negative_grading);
+                evalResult = { type: 'mcq', selected: ans.mcq_option_ids };
+            } 
+            else if (ans.question_type === 'true_false') {
+                earned = GradingService.calculateTrueFalse(points, ans.tf_answer, ans.tf_correct);
+                evalResult = { type: 'tf', student_ans: ans.tf_answer, correct_ans: ans.tf_correct };
+            } 
+            else if (ans.question_type === 'programming') {
+                const rawCode = codeOverride || ans.code_answer;
+                
+                if (rawCode) {
+                    // 1. White-Box (Logic & Security)
+                    const wbResult = await StructuralAnalysisService.analyze(rawCode, ans.structural_rules || []);
+                    const securityViolation = wbResult.details.find((d: any) => d.target === 'security' && !d.passed);
+                    
+                    if (securityViolation) {
+                        earned = 0;
+                        evalResult = { status: 'SECURITY_ERROR', feedback: "Security violation detected.", white_box: { ratio: 0, details: wbResult.details } };
+                    } else {
+                        // 2. Black-Box (Execution)
+                        const finalHarness = (ans.boilerplate_code && ans.boilerplate_code.trim().length > 0)
                             ? ans.boilerplate_code
                             : BoilerplateFactory.createFullHarness(ans.category, ans.function_signature);
 
-                        const wbResult = await StructuralAnalysisService.analyze(codeToGrade, ans.structural_rules || []);
-                        
-                        // FIX 5: Πέρασμα του σωστού language_id από τη βάση
                         const bbResult = await this.runJudge0Assessment(
-                            codeToGrade,
-                            ans.test_cases || [],
-                            finalHarness,
-                            { cpu: Number(ans.cpu_time_limit), memory: Number(ans.memory_limit) },
+                            rawCode, 
+                            ans.test_cases || [], 
+                            finalHarness, 
+                            { cpu: ans.cpu_time_limit, memory: ans.memory_limit }, 
                             ans.language_id || 54
                         );
 
-                        const wWB = Number(ans.weight_wb) || 0.2;
-                        const wBB = Number(ans.weight_bb) || 0.8;
-                        earnedPoints = (points * wWB * wbResult.score) + (points * wBB * bbResult.scoreWeight);
+                        // 3. Hybrid Scoring
+                        const wWB = Number(ans.weight_wb ?? 0.2);
+                        const wBB = Number(ans.weight_bb ?? 0.8);
+                        earned = (points * wWB * wbResult.score) + (points * wBB * bbResult.scoreWeight);
 
                         evalResult = {
-                            summary: { final_score_ratio: (earnedPoints / points).toFixed(4), points_earned: earnedPoints },
                             white_box: { ratio: wbResult.score, details: wbResult.details },
-                            black_box: { ratio: bbResult.scoreWeight, feedback: bbResult.feedback, test_results: bbResult.details }
+                            black_box: { ratio: bbResult.scoreWeight, test_results: bbResult.details }
                         };
                     }
+                } else {
+                    earned = 0;
+                    evalResult = { status: 'NO_ANSWER', feedback: 'No code submitted.' };
                 }
             }
-            gradingResults.push({ answerId: ans.answer_id, score: earnedPoints, evalResult });
-            totalScore += earnedPoints;
         }
 
-        const client = await db.connect();
-        try {
-            await client.query("BEGIN");
-            for (const res of gradingResults) {
-                if (res.answerId) {
-                    await client.query(
-                        `UPDATE exam.student_answers SET question_grade = $1, eval_result = $2, is_submitted = true WHERE answer_id = $3`,
-                        [res.score, res.evalResult, res.answerId]
-                    );
-                }
-            }
-            await client.query(
-                `UPDATE exam.submissions SET status = 'submitted', submitted_at = NOW(), total_grade = $2 WHERE submission_id = $1`,
-                [submissionId, totalScore]
-            );
-            await client.query("COMMIT");
-            return { 
-                submission_id: submissionId, 
-                status: 'submitted', 
-                final_score: totalScore,
-                questions: gradingResults // <--- ΠΡΟΣΘΕΣΕ ΑΥΤΟ
-            };
-        } catch (e) {
-            await client.query("ROLLBACK");
-            throw e;
-        } finally {
-            client.release();
-        }
+        gradingResults.push({ 
+            answerId: ans.answer_id, 
+            score: Number(earned.toFixed(2)), 
+            evalResult 
+        });
+        rawEarnedPoints += earned;
     }
+
+    // NORMALIZATION: Μετατροπή του αθροίσματος σε κλίμακα 0-10
+    const finalNormalizedGrade = maxTotalPoints > 0 
+        ? Number(((rawEarnedPoints / maxTotalPoints) * 10).toFixed(2)) 
+        : 0;
+
+    const client = await db.connect();
+    try {
+        await client.query("BEGIN");
+        
+        // Ενημέρωση των επιμέρους απαντήσεων
+        for (const res of gradingResults) {
+            if (res.answerId) {
+                await client.query(
+                    `UPDATE exam.student_answers 
+                     SET question_grade = $1, eval_result = $2, is_submitted = true 
+                     WHERE answer_id = $3`,
+                    [res.score, res.evalResult, res.answerId]
+                );
+            }
+        }
+
+        // Ενημέρωση της συνολικής υποβολής με τον κανονικοποιημένο βαθμό
+        await client.query(
+            `UPDATE exam.submissions 
+             SET status = 'submitted', submitted_at = NOW(), total_grade = $1 
+             WHERE submission_id = $2`,
+            [finalNormalizedGrade, submissionId]
+        );
+
+        await client.query("COMMIT");
+        console.log(`[GRADER] Success. Final Normalized Grade: ${finalNormalizedGrade}/10`);
+        
+        return { 
+            success: true, 
+            submission_id: submissionId, 
+            final_score: finalNormalizedGrade 
+        };
+    } catch (e: any) {
+        await client.query("ROLLBACK");
+        console.error("[GRADER] Transaction Error:", e.message);
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+    
 }

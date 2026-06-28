@@ -1,6 +1,7 @@
 import axios from "axios";
 import { normalizeOutput } from "../utils/grader";
 import { Judge0Result } from "../types/examTypes";
+import { GradingService } from "./gradingService";
 
 const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 
@@ -23,7 +24,7 @@ export class Judge0Service {
     let passedCount = 0;
 
     for (const tc of testCases) {
-      // 1. Execute the code
+      // 1. Εκτέλεση του κώδικα στο Judge0
       const output: Judge0Result = await this.submitCode(
         langId,
         code,
@@ -32,39 +33,38 @@ export class Judge0Service {
         memLimit,
       );
 
-      // 🚀 FIX: Use 'expected_output' to match your DB column name
       const expectedStr = tc.expected_output || tc.output || "";
 
-      // 2. Normalize both outputs
+      // 2. Normalization (Καθαρισμός κενών/αλλαγών γραμμής)
       const actualNormalized = normalizeOutput(output.stdout);
       const expectedNormalized = normalizeOutput(expectedStr);
 
-      // 3. Logic Comparison
-      // Judge0 status is "Accepted" if it didn't crash/timeout
-      const isAccepted = output.status === "Accepted";
-      const logicMatches = actualNormalized === expectedNormalized;
+      // 3. Logic Comparison με Smart Compare 🚀
+      // Ελέγχουμε αν η εκτέλεση ήταν επιτυχής ΚΑΙ αν το αποτέλεσμα είναι σωστό (με ανοχή Epsilon)
+      const isAcceptedStatus = output.status === "Accepted";
+      const logicMatches = GradingService.smartCompare(actualNormalized, expectedNormalized);
 
-      // 🚀 FIX: We keep the status as an OBJECT so the Controller can read .description
+      // 4. Δημιουργία του Status Object για τον Controller
       const finalStatusObj = {
-        id: isAccepted && logicMatches ? 3 : 4, // 3 = Accepted, 4 = Wrong Answer
+        id: isAcceptedStatus && logicMatches ? 3 : 4, // 3=Accepted, 4=Wrong Answer
         description:
-          isAccepted && logicMatches
+          isAcceptedStatus && logicMatches
             ? "Accepted"
-            : isAccepted
+            : isAcceptedStatus
               ? "Wrong Answer"
-              : output.status,
+              : output.status, // Διατήρηση του αρχικού σφάλματος (π.χ. TLE, Runtime Error)
       };
 
-      if (isAccepted && logicMatches) {
+      if (isAcceptedStatus && logicMatches) {
         passedCount++;
       }
 
-      // 🚀 CRITICAL FIX: Ensure property names match what testController expects
+      // 5. Push των αποτελεσμάτων με τα σωστά property names
       results.push({
         input: tc.input,
         expected_output: expectedStr,
-        stdout: output.stdout, // Controller looks for this!
-        status: finalStatusObj, // Controller looks for .status.description
+        stdout: output.stdout, 
+        status: finalStatusObj, 
         stderr: output.stderr,
         compile_output: output.compile_output,
         time: output.time,

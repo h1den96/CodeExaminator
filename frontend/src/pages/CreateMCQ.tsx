@@ -9,9 +9,16 @@ export default function CreateMCQ() {
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [difficulty, setDifficulty] = useState("medium");
+  const [difficulty, setDifficulty] = useState("");
   const [topic, setTopic] = useState("");
   const [topics, setTopics] = useState<any[]>([]);
+  const [allowMultiple, setAllowMultiple] = useState(false);
+
+  const difficultiesList = [
+    { id: "easy", name: "Easy" },
+    { id: "medium", name: "Medium" },
+    { id: "hard", name: "Hard" }
+  ];
 
   // MCQ State: Options with explicit WEIGHTS
   const [options, setOptions] = useState([
@@ -63,9 +70,10 @@ export default function CreateMCQ() {
         body,
         difficulty,
         topic_ids: [Number(topic)],
-        // Backend expects 0.0 to 1.0, so we divide by 100
+        allow_multiple: allowMultiple,
         options: options.map((o) => ({
           text: o.text,
+          is_correct: o.weight > 0,
           score_weight: o.weight / 100,
         })),
       });
@@ -76,7 +84,36 @@ export default function CreateMCQ() {
     }
   };
 
+  const handleBack = () => {
+    navigate("/teacher/create-question-hub");
+  };
+
   return (
+
+    <div style={{ 
+      padding: "40px",
+      background: "#f3f4f6",
+      minHeight: "100vh",
+      color: colors.text,
+      fontFamily: "sans-serif" }}>
+    <button 
+      onClick={handleBack}
+      style={{
+        marginBottom: "20px",
+        background: "transparent",
+        color: colors.text,
+        border: `1px solid ${colors.border}`,
+        padding: "8px 16px",
+        borderRadius: "6px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px"
+      }}
+    >
+      ← Back to Hub
+    </button>
+
     <div
       style={{
         padding: "40px",
@@ -146,6 +183,30 @@ export default function CreateMCQ() {
             </option>
           ))}
         </select>
+
+
+          <select
+          style={{
+            width: "100%",
+            padding: "10px",
+            marginBottom: "20px",
+            background: colors.inputBg,
+            color: colors.text,
+            border: `1px solid ${colors.border}`,
+          }}
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value)}
+        >
+          <option value="">Select Difficulty</option>
+          {difficultiesList.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+
+
+
 
         {/* Options Section */}
         <h3>Options & Weights</h3>
@@ -277,6 +338,19 @@ export default function CreateMCQ() {
           + Add Option
         </button>
 
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
+          <input
+            type="checkbox"
+            id="allowMultiple"
+            checked={allowMultiple}
+            onChange={(e) => setAllowMultiple(e.target.checked)}
+            style={{ width: "20px", height: "20px", cursor: "pointer" }}
+          />
+          <label htmlFor="allowMultiple" style={{ fontWeight: "bold", cursor: "pointer" }}>
+            Allow Multiple Correct Answers (Checkboxes)
+          </label>
+        </div>
+
         <hr style={{ margin: "20px 0", borderColor: colors.border }} />
 
         <button
@@ -296,5 +370,6 @@ export default function CreateMCQ() {
         </button>
       </div>
     </div>
+  </div>
   );
 }

@@ -3,12 +3,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import api from "../api/axios";
-import { startTest } from "../api/testClient"; // <--- IMPORT THE CLIENT
+import { startTest } from "../api/testClient"; 
 
 // ==========================================
 // 1. EXPORTED TYPES
 // ==========================================
-
 export type SaveStatus = "saved" | "saving" | "error";
 
 export interface Question {
@@ -17,7 +16,8 @@ export interface Question {
   question_type: string;
   points: number;
   starter_code?: string;
-  allowed_multiple?: boolean;
+  boilerplate_code?: string;
+  allow_multiple?: boolean;
   options?: { id: number; text: string }[];
 }
 
@@ -42,19 +42,19 @@ export function useTestSession() {
   const testId = params.get("test_id");
   const { token, logout } = useAuth();
 
-  // State
+  // Basic UI State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [data, setData] = useState<TestData | null>(null);
   const [submissionId, setSubmissionId] = useState<number | null>(null);
 
+  // Interaction State
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, any>>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [submitting, setSubmitting] = useState(false);
 
-  // Execution State
+  // Execution State (Code Grader)
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<{
     grade: number;
@@ -72,12 +72,9 @@ export function useTestSession() {
 
     setLoading(true);
 
-    // CHANGED: Use startTest (POST) instead of api.get (GET)
     startTest(token, Number(testId))
       .then((root) => {
-        // Note: 'root' is the JSON data directly, not an axios response object
-
-        // Safety Check
+        // Safety Check for Data Integrity
         if (!root.test || !Array.isArray(root.test.questions)) {
           console.error("Invalid Structure:", root);
           setError("Invalid test data structure received.");
@@ -86,22 +83,21 @@ export function useTestSession() {
         }
 
         // --- DATA MAPPING ---
-        const mappedQuestions: Question[] = root.test.questions.map(
-          (q: any) => ({
-            question_id: q.question_id,
-            question_text: q.body,
-            question_type: q.question_type,
-            points: Number(q.points) || 0,
-            starter_code: q.starter_code || "",
-            allow_multiple: q.allow_multiple || false,
-            options: q.options
-              ? q.options.map((o: any) => ({
-                  id: o.id || o.option_id,
-                  text: o.text || o.option_text,
-                }))
-              : [],
-          }),
-        );
+        const mappedQuestions: Question[] = root.test.questions.map((q: any) => ({
+          question_id: q.question_id,
+          question_text: q.body,
+          question_type: q.question_type,
+          points: Number(q.points) || 0,
+          starter_code: q.starter_code || "",
+          boilerplate_code: q.boilerplate_code || "",
+          allow_multiple: q.allow_multiple || false,
+          options: q.options
+            ? q.options.map((o: any) => ({
+                id: o.id || o.option_id,
+                text: o.text || o.option_text,
+              }))
+            : [],
+        }));
 
         const mappedData: TestData = {
           test: {
@@ -113,6 +109,7 @@ export function useTestSession() {
           submissionId: root.submission_id,
         };
 
+        // Update State
         setSubmissionId(root.submission_id);
         setData(mappedData);
         setLoading(false);
@@ -122,7 +119,7 @@ export function useTestSession() {
         setError(err.message || "Failed to load test");
         setLoading(false);
       });
-  }, [testId, token, navigate, logout]);
+  }, [testId, token, navigate]);
 
   // Autosave Logic
   const timeoutRef = useRef<any>(null);
@@ -133,76 +130,68 @@ export function useTestSession() {
       setSaveStatus("saving");
 
       let payload: any = { question_id: questionId };
-
-      if (type === "programming") {
-        payload.code_answer = value;
-      } else if (type === "mcq") {
-        payload.mcq_option_ids = Array.isArray(value) ? value : [value];
-      } else if (type === "true_false") {
-        payload.tf_answer = value;
-      }
+      if (type === "programming") payload.code_answer = value;
+      else if (type === "mcq") payload.mcq_option_ids = Array.isArray(value) ? value : [value];
+      else if (type === "true_false") payload.tf_answer = value;
 
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
       timeoutRef.current = setTimeout(() => {
         if (!submissionId || !token) return;
 
-        api
-          .patch(`/submissions/${submissionId}/answers`, payload, {
+        api.patch(`/submissions/${submissionId}/answers`, payload, {
             headers: { Authorization: `Bearer ${token}` },
           })
           .then(() => setSaveStatus("saved"))
           .catch((err) => {
             console.error("Autosave failed", err);
-            if (err.response && err.response.status === 401) {
-              setSaveStatus("error");
-            } else {
-              setSaveStatus("error");
-            }
+            setSaveStatus("error");
           });
       }, 1000);
     },
     [submissionId, token],
   );
 
+  /**
+   * CODE EXECUTION (RUN CODE)
+   * Sends the current student code to the backend for grading.
+   */
   const runCode = async (questionId: number, code: string) => {
-    if (!token || !submissionId) {
-      console.error("Missing token or submissionId");
-      return;
-    }
+    if (isRunning) return;
 
+    console.log("🚀 [runCode] Requesting grade for Q:", questionId);
     setIsRunning(true);
     setRunError(null);
     setRunResult(null);
 
     try {
-      // Note: We use the existing 'api' axios instance for this call
-      const res = await api.post(
-        "/submissions/submit-code",
-        {
-          submission_id: submissionId,
-          question_id: questionId,
-          code: code,
-          language_id: 54, // C++ (GCC 9.2.0)
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = await api.post(`/submissions/${submissionId}/run`, {
+        question_id: questionId,
+        code: code,
+      });
 
-      if (res.data.success) {
+      console.log("✅ [runCode] API Response:", res.data);
+
+      if (res.data) {
+        // Convert to Number to handle strings like "10.00"
+        const finalGrade = Number(res.data.question_grade);
+
         setRunResult({
-          grade: res.data.grade,
-          details: res.data.details,
+          grade: isNaN(finalGrade) ? 0 : finalGrade,
+          details: res.data.test_results || [],
         });
+        
+        console.log("🎯 Frontend State Updated with Grade:", finalGrade);
       } else {
-        setRunError("Execution failed without error details.");
+        console.warn("⚠️ [runCode] Received empty response from server.");
       }
     } catch (err: any) {
-      console.error("Run Code Error:", err.response?.data);
-      setRunError(err.response?.data?.error || "Failed to run code");
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.message || "Execution failed";
+      console.error("❌ [runCode] Error:", errorMsg);
+      setRunError(errorMsg);
     } finally {
       setIsRunning(false);
+      console.log("🏁 [runCode] Execution finished.");
     }
   };
 
@@ -212,15 +201,12 @@ export function useTestSession() {
 
     setSubmitting(true);
     try {
-      await api.post(
-        `/submissions/${submissionId}/submit`,
-        {},
-        {
+      await api.post(`/submissions/${submissionId}/submit`, {}, {
           headers: { Authorization: `Bearer ${token}` },
-        },
+        }
       );
       alert("Exam Submitted Successfully!");
-      navigate("/tests"); // Go back to dashboard
+      navigate("/tests"); 
     } catch (err: any) {
       console.error("Submit Error", err);
       alert("Error submitting exam");
