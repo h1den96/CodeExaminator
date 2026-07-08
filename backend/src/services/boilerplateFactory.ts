@@ -18,7 +18,6 @@ interface ParsedSignature {
 
 export class BoilerplateFactory {
   private static parseSignature(signature: string): ParsedSignature {
-    // Regex που αντέχει περισσότερα κενά και ειδικούς χαρακτήρες
     const regex = /(.+?)\s+(\w+)\s*\((.*)\)/;
     const match = signature.match(regex);
 
@@ -54,7 +53,6 @@ export class BoilerplateFactory {
         return `${baseIncludes}\n\n${marker}\n`;
     }
 
-    // Fallback για κενά signatures από τη βάση
     if (!signature || signature.trim() === "") {
         return `${baseIncludes}\n\n${marker}\n\nint main() { return 0; }`;
     }
@@ -76,7 +74,7 @@ export class BoilerplateFactory {
         }
     } catch (e) {
         console.error("Harness generation failed:", e);
-        return `${baseIncludes}\n\n${marker}\n\n// Error parsing signature: ${signature}\nint main() { return 0; }`;
+        return `${baseIncludes}\n\n${marker}\n\nint main() { return 0; }`;
     }
   }
 
@@ -89,22 +87,17 @@ export class BoilerplateFactory {
   }
 
   private static generateLinearHarness(includes: string, marker: string, sig: ParsedSignature): string {
-    // Υποστήριξη και για vector<T> και για T arr[]
-    const isCArray = sig.params[0]?.type.includes("[]");
     const vectorTypeMatch = sig.params[0]?.type.match(/vector<(.+)>/);
-    
     let innerType = "int";
-    if (vectorTypeMatch) innerType = vectorTypeMatch[1].replace(/const|&/g, "").trim();
-    else if (isCArray) innerType = sig.params[0].type.replace("[]", "").trim();
+    if (vectorTypeMatch) {
+      innerType = vectorTypeMatch[1].replace(/const|&/g, "").trim();
+    }
 
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
     const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
-    
-    // Αν είναι C-array περνάμε το v.data(), αλλιώς το v
-    const firstArg = isCArray ? "v.data()" : "v";
-    const callArgs = [firstArg, ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
+    const callArgs = ["v", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
 
-    return `${includes}\n\n${marker}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<${innerType}> v(n);\n    for(int i = 0; i < n; i++) cin >> v[i];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});\n        for(int i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : " ");\n        cout << endl;` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
+    return `${includes}\n\n${marker}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<${innerType}> v(n);\n    for(int i = 0; i < n; i++) cin >> v[i];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});\n        for(size_t i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : " ");\n        cout << endl;` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
   }
 
   private static generateGridHarness(includes: string, marker: string, sig: ParsedSignature): string {
@@ -118,7 +111,6 @@ export class BoilerplateFactory {
   }
 
   private static generateLinkedListHarness(includes: string, marker: string, sig: ParsedSignature): string {
-    // Αναγνώριση οποιουδήποτε Node structure
     const nodeType = sig.params[0]?.type.replace("*", "").trim() || "ListNode";
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
     const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";

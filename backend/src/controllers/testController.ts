@@ -237,21 +237,24 @@ export async function runSubmissionCode(req: Request, res: Response) {
     if (!qData) return res.status(404).json({ error: "Question metadata not found" });
 
     // 3. Clean and Stitch Code
-    // We use any cast here because cleanStudentCode is private in SubmissionService
     const cleanedCode = (SubmissionService as any).cleanStudentCode(code);
     
-    const finalHarness = (qData.boilerplate_code && qData.boilerplate_code.trim().length > 0)
+    let normalizedHarness = (qData.boilerplate_code && qData.boilerplate_code.trim().length > 0)
         ? qData.boilerplate_code
         : BoilerplateFactory.createFullHarness(qData.category, qData.function_signature);
 
-    const marker = "// [[STUDENT_CODE_ZONE]]";
+    // Turn string literal escapes back into layout structural breaks
+    normalizedHarness = normalizedHarness.replace(/\\n/g, "\n");
+
+    // FIXED: Search for the exact placeholder comment found in your database records
+    const marker = "// {{STUDENT_CODE}}";
     let finalSource = "";
 
-    if (finalHarness.includes(marker)) {
-        finalSource = finalHarness.replace(marker, cleanedCode);
+    if (normalizedHarness.includes(marker)) {
+        finalSource = normalizedHarness.replace(marker, cleanedCode);
     } else {
-        console.warn(`[testController] Marker not found for Q${question_id}. Appending code.`);
-        finalSource = finalHarness + "\n\n" + cleanedCode;
+        console.warn(`[testController] Marker not found for Q${question_id}. Prepending code.`);
+        finalSource = cleanedCode + "\n\n" + normalizedHarness;
     }
 
     // 4. Run Structural Analysis (White Box)

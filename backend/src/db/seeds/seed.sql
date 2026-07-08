@@ -1201,26 +1201,8 @@ INSERT INTO exam.mcq_options VALUES (292, 111, '8 bytes', false, 0.00);
 -- Data for Name: programming_questions; Type: TABLE DATA; Schema: exam; Owner: admin
 --
 
-INSERT INTO exam.programming_questions VALUES (82, '#include <iostream>
-using namespace std;
-
-int main() {
-    // Write your code here
-    return 0;
-}', '[{"input": "", "output": "Hello World"}]', '#include <iostream>
-using namespace std;
-
-// {{STUDENT_CODE}}
-
-int main() {
-    int n;
-    while(cin >> n) {
-        // Change "solution" to the function name for Q82
-        cout << solution(n) << " ";
-    }
-    return 0;
-}', 2, 128000, 'CUSTOM', 'void solution()', 54);
 INSERT INTO exam.programming_questions VALUES (122, NULL, '[{"input": "0", "expected_output": "32"}, {"input": "100", "expected_output": "212"}]', NULL, 2, 128000, 'SCALAR', 'int toFahrenheit(int celsius)', 54);
+INSERT INTO exam.programming_questions VALUES (113, 'int sumVector(vector<int> v) {\n    // Your code here\n}', '[{"input": "4 10 20 30 40", "expected_output": "100"}]', NULL, 2, 128000, 'LINEAR', 'int sumVector(vector<int> v)', 54);
 INSERT INTO exam.programming_questions VALUES (84, 'int fib(int n) {
     // Return the Nth Fibonacci number
     return n;
@@ -1236,6 +1218,8 @@ int main() {
     }
     return 0;
 }', 2, 128000, 'SCALAR', 'int fib(int n)', 54);
+INSERT INTO exam.programming_questions VALUES (114, 'int countVowels(string s) {\n    // Your code here\n}', '[{"input": "codeexaminator", "expected_output": "6"}, {"input": "bcdfgh", "expected_output": "0"}]', NULL, 2, 128000, 'SCALAR', 'int countVowels(string s)', 54);
+INSERT INTO exam.programming_questions VALUES (115, 'int findMax(vector<int> v) {\n    // Your code here\n}', '[{"input": "5 1 9 3 7 5", "expected_output": "9"}]', NULL, 2, 128000, 'LINEAR', 'int findMax(vector<int> v)', 54);
 INSERT INTO exam.programming_questions VALUES (83, 'long long factorial(int n) {
     // Implement your logic here
     return 0;
@@ -1250,21 +1234,46 @@ using namespace std;
 #include <iostream>\nusing namespace std;\n\n// {{STUDENT_CODE}}\n\nint main() {\n    int inputs[] = {5, 3, 0, 10, 12};\n    for(int n : inputs) {\n        cout << factorial(n) << " ";\n    }\n    return 0;\n}', 2, 128000, 'SCALAR', 'long long factorial(int n)', 54);
 INSERT INTO exam.programming_questions VALUES (112, 'long long factorial(int n) {\n  // Your code here\n}', '[{"input": "", "expected_output": "120 6 1 3628800 479001600"}]', '#include <iostream>\nusing namespace std;\n// {{STUDENT_CODE}}\nint main() { cout << factorial(5) << " " << factorial(3) << " " << factorial(0); }', 2, 128000, 'SCALAR', 'long long factorial(int n)', 54);
 INSERT INTO exam.programming_questions VALUES (119, 'int isPrime(int n) {\n    // Your logic here\n}', '[{"input": "7", "expected_output": "1"}, {"input": "10", "expected_output": "0"}, {"input": "13", "expected_output": "1"}]', NULL, 2, 128000, 'SCALAR', 'int isPrime(int n)', 54);
-INSERT INTO exam.programming_questions VALUES (113, 'int sumVector(vector<int> v) {\n    // Your code here\n}', '[{"input": "3 10 20 30", "expected_output": "60"}, {"input": "2 5 5", "expected_output": "10"}]', NULL, 2, 128000, 'LINEAR', 'int sumVector(vector<int> v)', 54);
-INSERT INTO exam.programming_questions VALUES (120, 'int getAverage(vector<int> v) {\n    // Your code here\n}', '[{"input": "3 10 20 30", "expected_output": "20"}, {"input": "4 1 2 3 4", "expected_output": "2"}]', NULL, 2, 128000, 'LINEAR', 'int getAverage(vector<int> v)', 54);
-INSERT INTO exam.programming_questions VALUES (121, 'int countEvens(vector<int> v) {\n    // Your code here\n}', '[{"input": "5 1 2 3 4 6", "expected_output": "3"}, {"input": "3 1 3 5", "expected_output": "0"}]', NULL, 2, 128000, 'LINEAR', 'int countEvens(vector<int> v)', 54);
-INSERT INTO exam.programming_questions VALUES (123, 'void reverseInPlace(vector<int> &v) {\n    // Your code here\n}', '[{"input": "3 1 2 3", "expected_output": "3 2 1"}, {"input": "4 10 20 30 40", "expected_output": "40 30 20 10"}]', NULL, 2, 128000, 'LINEAR', 'void reverseInPlace(vector<int> &v)', 54);
-INSERT INTO exam.programming_questions VALUES (114, 'int countVowels(string s) {\n    // Your code here\n}', '[{"input": "16", "expected_output": "1"}, {"input": "18", "expected_output": "0"}]', NULL, 2, 128000, 'SCALAR', 'int countVowels(string s)', 54);
-INSERT INTO exam.programming_questions VALUES (115, 'int findMax(vector<int> v) {\n    // Your code here\n}', '[{"input": "5 1 9 3 7 5", "expected_output": "9"}]', NULL, 2, 128000, 'LINEAR', 'int findMax(vector<int> v)', 54);
+INSERT INTO exam.programming_questions VALUES (120, 'int getAverage(vector<int> v) {\n    // Your code here\n}', '[{"input": "3 10 20 30", "expected_output": "20"}]', NULL, 2, 128000, 'LINEAR', 'int getAverage(vector<int> v)', 54);
+INSERT INTO exam.programming_questions VALUES (121, 'int countEvens(vector<int> v) {\n    // Your code here\n}', '[{"input": "5 1 2 3 4 6", "expected_output": "3"}]', NULL, 2, 128000, 'LINEAR', 'int countEvens(vector<int> v)', 54);
+INSERT INTO exam.programming_questions VALUES (82, '#include <iostream>
+using namespace std;
+
+int main() {
+    // Write your code here
+    return 0;
+}', '[{"input": "", "expected_output": "Hello World"}]', '#include <iostream>
+using namespace std;
+
+// {{STUDENT_CODE}}
+
+int main() {
+    int n;
+    while(cin >> n) {
+        // Change "solution" to the function name for Q82
+        cout << solution(n) << " ";
+    }
+    return 0;
+}', 2, 128000, 'CUSTOM', 'void solution()', 54);
+INSERT INTO exam.programming_questions VALUES (123, 'void reverseInPlace(vector<int> &v) {\n    // Your code here\n}', '[{"input": "3 1 2 3", "expected_output": "3 2 1"}]', NULL, 2, 128000, 'LINEAR', 'void reverseInPlace(vector<int> &v)', 54);
 INSERT INTO exam.programming_questions VALUES (201, 'int isEven(int n) {\n    // Implement your logic here\n}', '[{"input": "4", "expected_output": "1"}, {"input": "7", "expected_output": "0"}]', NULL, 2, 128000, 'SCALAR', 'int isEven(int n)', 54);
 INSERT INTO exam.programming_questions VALUES (202, '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    cout << "*****" << endl;\n    return 0;\n}', '[{"input": "", "expected_output": "*****"}]', NULL, 2, 128000, 'CUSTOM', 'void solution()', 54);
 INSERT INTO exam.programming_questions VALUES (203, 'int power(int base, int exp) {\n    // Implement your logic here\n}', '[{"input": "2 3", "expected_output": "8"}, {"input": "5 2", "expected_output": "25"}]', NULL, 2, 128000, 'SCALAR', 'int power(int base, int exp)', 54);
 INSERT INTO exam.programming_questions VALUES (205, '#include <iostream>\nusing namespace std;\n\nint main() {\n    int l, w;\n    if (cin >> l >> w) {\n        cout << l * w << endl;\n    }\n    return 0;\n}', '[{"input": "5 10", "expected_output": "50"}]', NULL, 2, 128000, 'CUSTOM', 'void solution()', 54);
 INSERT INTO exam.programming_questions VALUES (206, 'int digitalRoot(int n) {\n    // Implement your logic here\n}', '[{"input": "9875", "expected_output": "2"}, {"input": "123", "expected_output": "6"}]', NULL, 2, 128000, 'SCALAR', 'int digitalRoot(int n)', 54);
+INSERT INTO exam.programming_questions VALUES (124, '#include <iostream>\n#include <string>\nusing namespace std;\n\nint main() {\n    string s;\n    if (cin >> s) {\n        // Write your string compression code here\n    }\n    return 0;\n}', '[{"input": "aaabb", "expected_output": "a3b2"}, {"input": "abc", "expected_output": "a1b1c1"}]', '#include <iostream>
+#include <string>
+using namespace std;
+// {{STUDENT_CODE}}
+int main() { 
+    string s; 
+    while(cin >> s) cout << compress(s) << " "; 
+    return 0; 
+}', 2, 128000, 'CUSTOM', 'void solution()', 54);
 INSERT INTO exam.programming_questions VALUES (95, 'Node* reverseList(Node* head) {
     // Your code here
     return head;
-}', '[{"input": "", "output": "3 2 1"}]', '#include <iostream>
+}', '[{"input": "3 1 2 3", "expected_output": "3 2 1"}]', '#include <iostream>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -1299,16 +1308,7 @@ int main() {
     printList(head);
     return 0;
 }', 2, 128000, 'LINKED_LIST', 'Node* reverseList(Node* head)', 54);
-INSERT INTO exam.programming_questions VALUES (124, '#include <iostream>\n#include <string>\nusing namespace std;\n\nint main() {\n    string s;\n    if (cin >> s) {\n        // Write your string compression code here\n    }\n    return 0;\n}', '[{"input": "aaabb", "expected_output": "a3b2"}, {"input": "abc", "expected_output": "a1b1c1"}]', '#include <iostream>
-#include <string>
-using namespace std;
-// {{STUDENT_CODE}}
-int main() { 
-    string s; 
-    while(cin >> s) cout << compress(s) << " "; 
-    return 0; 
-}', 2, 128000, 'CUSTOM', 'void solution()', 54);
-INSERT INTO exam.programming_questions VALUES (204, 'int containsElement(vector<int> v, int target) {\n    // Your code here\n}', '[{"input": "4 1 3 5 7 5", "expected_output": "1"}, {"input": "3 10 20 30 99", "expected_output": "0"}]', NULL, 2, 128000, 'LINEAR', 'int containsElement(vector<int> v, int target)', 54);
+INSERT INTO exam.programming_questions VALUES (204, 'int containsElement(vector<int> v, int target) {\n    // Your code here\n}', '[{"input": "4 1 3 5 7 5", "expected_output": "1"}]', NULL, 2, 128000, 'LINEAR', 'int containsElement(vector<int> v, int target)', 54);
 
 
 --

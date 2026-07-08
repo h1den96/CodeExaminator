@@ -64,6 +64,26 @@ export class StructuralAnalysisService {
     return node.descendantsOfType(types).length > 0;
   }
 
+  // New AST helper to verify if any executable logic exists inside the code tree
+  private static isBodyEmpty(node: Parser.SyntaxNode): boolean {
+    const functions = node.descendantsOfType("function_definition");
+    if (functions.length === 0) return true;
+
+    for (const fn of functions) {
+      const body = fn.children.find((c) => c.type === "compound_statement");
+      if (body) {
+        // Exclude curly braces { and } from token calculation
+        const meaningfulChildren = body.children.filter(
+          (c) => c.text !== "{" && c.text !== "}"
+        );
+        if (meaningfulChildren.length > 0) {
+          return false; // Found actual internal statement logic
+        }
+      }
+    }
+    return true;
+  }
+
   static async analyze(
     code: string,
     rules: AnalysisRule[],
@@ -72,7 +92,7 @@ export class StructuralAnalysisService {
     const tree = this.parser.parse(code);
     const root = tree.rootNode;
 
-    // 1. Ελεγχος για "θανατηφορα" σφαλματα (Fatal Gates)
+    // 1. Fatal Gates Check
     if (this.hasMainFunction(root)) {
       return { 
         score: 0, 
@@ -93,11 +113,22 @@ export class StructuralAnalysisService {
       };
     }
 
+    // NEW STRUCTURAL GATE: Zero out scores if no executable content is added
+    if (this.isBodyEmpty(root)) {
+      return {
+        score: 0,
+        details: [{
+          passed: false,
+          description: "The function body contains no executable programming statements."
+        }]
+      };
+    }
+
     const details: any[] = [];
     let earnedWeight = 0;
     let totalPossibleWeight = 0;
 
-    // 2. Εσωτερικος Ελεγχος Ασφαλειας (Security Gate)
+    // 2. Security Gate
     const forbiddenFunctions = ["system", "fork", "exec", "fopen", "popen", "socket"];
     let securityPassed = true;
     for (const fnName of forbiddenFunctions) {
@@ -116,17 +147,15 @@ export class StructuralAnalysisService {
       weight: 0
     });
 
-    // Αν αποτύχει η ασφάλεια, μηδενίζουμε το WB score ακαριαία
     if (!securityPassed) return { score: 0, details };
 
-    // 3. Υπολογισμος Κυκλωματικής Πολυπλοκότητας (Ενεργό Score)
+    // 3. Cyclomatic Complexity Evaluation
     const complexityScore = this.calculateCyclomaticComplexity(root);
-    const complexityWeight = 30; // Το βάρος που καταλαμβάνει η πολυπλοκότητα στο WB Score
+    const complexityWeight = 30; 
     const complexityThreshold = 15;
     
     totalPossibleWeight += complexityWeight;
     
-    // Υπολογισμός κέρδους: 10% ποινή για κάθε μονάδα πάνω από το threshold (15)
     let complexityEarned = complexityWeight;
     if (complexityScore > complexityThreshold) {
       const penaltyPercent = (complexityScore - complexityThreshold) * 0.1; 
@@ -145,7 +174,7 @@ export class StructuralAnalysisService {
       actual_value: complexityScore
     });
 
-    // 4. Ελεγχος των κανονων που ορισε ο καθηγητης
+    // 4. Professor Defined Assessment Processing
     for (const rule of rules) {
       let passed = false;
       const weight = rule.weight || 0;
@@ -179,7 +208,6 @@ export class StructuralAnalysisService {
       });
     }
 
-    // Τελικός υπολογισμός αναλογίας (0.0 - 1.0)
     const finalRatio = totalPossibleWeight > 0 ? earnedWeight / totalPossibleWeight : 1;
 
     return { score: finalRatio, details };

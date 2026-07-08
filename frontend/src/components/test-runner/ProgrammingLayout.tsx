@@ -49,18 +49,18 @@ export default function ProgrammingLayout({
   const [leftWidth, setLeftWidth] = useState(40);
   const isDragging = useRef(false);
 
-  // Ref to store code instantly
-  const codeRef = useRef(answer || question.starter_code || "");
+  const cleanStarterCode = question.starter_code ? question.starter_code.replace(/\\n/g, "\n") : "";
+  const codeRef = useRef(answer || cleanStarterCode);
 
   useEffect(() => {
-    // Priority: 1. Existing Answer, 2. Question Starter Code, 3. Empty String
+    const cleanStarter = question.starter_code ? question.starter_code.replace(/\\n/g, "\n") : "";
     const newCode = (answer !== undefined && answer !== null) 
       ? answer 
-      : (question.starter_code || "");
+      : cleanStarter;
     
     codeRef.current = newCode;
     
-    console.log(`📡 Editor synced to Question: ${question.question_id}`);
+    console.log("Editor synced to Question: " + question.question_id);
   }, [question.question_id, answer]);
 
   const handleEditorChange = (value: string | undefined) => {
@@ -73,7 +73,6 @@ export default function ProgrammingLayout({
     onRunCode(question.question_id, codeRef.current);
   };
 
-  // Drag Resizing Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
@@ -125,7 +124,6 @@ export default function ProgrammingLayout({
         zIndex: 9999,
       }}
     >
-      {/* === LEFT PANEL === */}
       <div
         style={{
           width: `${leftWidth}%`,
@@ -163,7 +161,6 @@ export default function ProgrammingLayout({
         >
           <QuestionHeader question={question} idx={currentIdx} />
 
-          {/* === TERMINAL SECTION === */}
           {(isRunning || runResult || runError) && (
             <div
               style={{
@@ -189,7 +186,7 @@ export default function ProgrammingLayout({
                 }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>💻</span> CONSOLE
+                  <span>CONSOLE</span>
                 </span>
                 {isRunning && <span style={{ color: "#38bdf8" }}>Running...</span>}
               </div>
@@ -226,20 +223,17 @@ export default function ProgrammingLayout({
                       GRADE: {runResult.grade ?? 0} / {question.points}
                     </div>
 
-                    {/* RENDER INDIVIDUAL TEST CASES */}
                     {Array.isArray(runResult.details) && runResult.details.length > 0 ? (
                       runResult.details.map((test: any, index: number) => {
-                        
-                        // 1. Logic for passing status
                         const isPassed = 
                           test.passed === true || 
                           test.status === "Accepted" || 
                           test.status?.description === "Accepted" || 
                           test.status?.id === 3;
 
-                        // 2. Define the missing variables for rendering
                         const errorLog = test.error || test.compile_output || test.stderr || ""; 
                         const output = test.stdout || test.actual || "";
+                        const expected = test.expected || "";
 
                         return (
                           <div 
@@ -247,16 +241,15 @@ export default function ProgrammingLayout({
                             style={{ 
                               marginBottom: "14px", 
                               borderLeft: `4px solid ${isPassed ? "#22c55e" : "#ef4444"}`, 
-                              paddingLeft: "12px",
                               background: "rgba(255,255,255,0.02)",
                               padding: "8px 12px"
                             }}
                           >
                             <div style={{ fontWeight: "bold", color: isPassed ? "#4ade80" : "#fca5a5", marginBottom: "4px" }}>
-                              {isPassed ? "✅ PASSED" : "❌ FAILED"}: Test Case #{index + 1}
+                              {isPassed ? "✅ PASSED" : `❌ FAILED (${test.status || "Wrong Answer"})`}: Test Case #{index + 1}
                             </div>
 
-                            {test.is_public && test.input && (
+                            {test.input && (
                               <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
                                 <strong>Input:</strong> {test.input}
                               </div>
@@ -277,9 +270,13 @@ export default function ProgrammingLayout({
                               </div>
                             )}
 
-                            {isPassed && output && (
-                              <div style={{ fontSize: "0.75rem", color: "#f0fdf4", marginTop: "4px" }}>
-                                <strong>Output:</strong> {output}
+                            <div style={{ fontSize: "0.75rem", color: isPassed ? "#f0fdf4" : "#fca5a5", marginTop: "4px" }}>
+                              <strong>Actual Output:</strong> {output || "[EMPTY]"}
+                            </div>
+
+                            {expected && (
+                              <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "2px" }}>
+                                <strong>Expected Output:</strong> {expected}
                               </div>
                             )}
                           </div>
@@ -297,7 +294,6 @@ export default function ProgrammingLayout({
           )}
         </div>
 
-        {/* === BUTTON SECTION === */}
         <div
           style={{
             padding: "20px",
@@ -324,7 +320,7 @@ export default function ProgrammingLayout({
               gap: "10px",
             }}
           >
-            {isRunning ? "Compiling..." : "▶ Run Code"}
+            {isRunning ? "Compiling..." : "Run Code"}
           </button>
           <NavigationButtons
             currentIdx={currentIdx}
@@ -336,7 +332,6 @@ export default function ProgrammingLayout({
         </div>
       </div>
 
-      {/* DRAG HANDLE */}
       <div
         onMouseDown={() => {
           isDragging.current = true;
@@ -345,7 +340,6 @@ export default function ProgrammingLayout({
         style={{ width: "5px", cursor: "col-resize", background: "#334155" }}
       />
 
-      {/* === RIGHT PANEL: EDITOR === */}
       <div
         style={{
           width: `${100 - leftWidth}%`,
@@ -363,20 +357,13 @@ export default function ProgrammingLayout({
 
         <div style={{ flex: 1 }}>
           <Editor
-            // 1. The key forces a total destroy/rebuild of the editor
             key={question.question_id} 
-            
             height="100%"
             width="100%"
             defaultLanguage="cpp"
             theme={theme === "dark" ? "vs-dark" : "light"}
-            
-            // 2. Use defaultValue so Monaco sets the text only on mount
-            defaultValue={answer || question.starter_code || ""}
-            
-            // 3. Keep your change handler to update your ref/state
+            defaultValue={answer || (question.starter_code ? question.starter_code.replace(/\\n/g, "\n") : "")}
             onChange={handleEditorChange}
-            
             options={{
               minimap: { enabled: false },
               fontSize: 14,

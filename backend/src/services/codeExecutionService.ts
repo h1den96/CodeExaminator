@@ -36,7 +36,7 @@ export class CodeExecutionService {
     const HARDCODED_LANG_ID = 54;
 
     try {
-      console.log(`🚨 DEBUG: Starting Hybrid Grading for SQ_ID: ${submissionQuestionId}`);
+      console.log("DEBUG: Starting Hybrid Grading for SQ_ID: " + submissionQuestionId);
 
       const analysis = GradingService.performStaticAnalysis(studentCode);
       if (!analysis.passed) {
@@ -51,7 +51,7 @@ export class CodeExecutionService {
       }
 
       const questionQuery = `
-        SELECT pq.test_cases, pq.category, pq.function_signature, sq.points as max_points, q.question_type
+        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, sq.points as max_points, q.question_type
         FROM exam.submission_questions sq
         JOIN exam.questions q ON sq.question_id = q.question_id
         JOIN exam.programming_questions pq ON sq.question_id = pq.question_id
@@ -64,6 +64,7 @@ export class CodeExecutionService {
       const maxPoints = Number(qRes.rows[0].max_points);
       const category = qRes.rows[0].category as QuestionCategory;
       const signature = qRes.rows[0].function_signature;
+      const dbBoilerplate = qRes.rows[0].boilerplate_code;
 
       const structuralMaxPoints = maxPoints * 0.2;
       const blackBoxMaxPoints = maxPoints - structuralMaxPoints;
@@ -73,15 +74,20 @@ export class CodeExecutionService {
 
       if (hasLoop) {
         structuralPointsAwarded = structuralMaxPoints;
-        console.log(`✅ Structural Check Passed: +${structuralPointsAwarded} pts`);
+        console.log("Structural Check Passed: +" + structuralPointsAwarded + " pts");
       } else {
-        console.log(`❌ Structural Check Failed: No loop detected.`);
+        console.log("Structural Check Failed: No loop detected.");
       }
 
       if (!testCases || testCases.length === 0) throw new Error("No test cases");
 
-      const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
-      const executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
+      let executableCompilationPackage = "";
+      if (dbBoilerplate && dbBoilerplate.trim() !== "") {
+        executableCompilationPackage = dbBoilerplate.replace("// {{STUDENT_CODE}}", studentCode);
+      } else {
+        const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
+        executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
+      }
 
       const submissions = testCases.map((tc: any) => ({
         source_code: this.safeEncode(executableCompilationPackage),
@@ -170,7 +176,7 @@ export class CodeExecutionService {
         finalScore,
       ]);
 
-      console.log("📦 [CodeExecutionService] Final Data Package:", {
+      console.log("[CodeExecutionService] Final Data Package:", {
         grade: finalScore,
         detailsCount: cleanDetails.length
       });
@@ -181,7 +187,7 @@ export class CodeExecutionService {
       };
 
     } catch (err) {
-      console.error("❌ Hybrid Grading Failed:", err);
+      console.error("Hybrid Grading Failed:", err);
       throw err;
     }
   }
