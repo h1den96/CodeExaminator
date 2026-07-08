@@ -44,7 +44,7 @@ async function runFinalTest() {
 
     console.log("\n--- ✅ Submission Successful ---");
     console.log(`Final Grade: ${result.final_score.toFixed(2)}`);
-    console.log(`Status: ${result.status}`);
+    console.log(`Status: ${(result as any).status}`);
 
     const dbCheck = await pool.query(
       `SELECT sa.question_grade, sa.eval_result 

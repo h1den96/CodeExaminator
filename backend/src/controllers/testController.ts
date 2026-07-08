@@ -324,7 +324,7 @@ export async function submitTest(req: Request, res: Response) {
     return res.json({
       message: "Exam submitted successfully",
       grade: result.final_score,
-      status: result.status,
+      status: (result as any).status,
     });
   } catch (err: any) {
     console.error("[Submit Test Error]", err);

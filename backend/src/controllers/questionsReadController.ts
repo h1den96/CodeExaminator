@@ -6,7 +6,7 @@ const service = new QuestionReadService();
 
 export const getQuestion = async (req: Request, res: Response) => {
   try {
-    const data = await service.getById(req.params.id);
+    const data = await service.getById(String(req.params.id));
     if (!data) return res.status(404).json({ error: "Question not found" });
     return res.json(data);
   } catch (err) {
