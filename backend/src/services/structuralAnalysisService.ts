@@ -11,6 +11,7 @@ export interface AnalysisRule {
 }
 
 export class StructuralAnalysisService {
+  
   private static parser: Parser;
 
   private static initParser() {
@@ -236,9 +237,16 @@ export class StructuralAnalysisService {
     });
   }
 
-  public static hasLoop(code: string): boolean {
-    if (!code) return false;
-    const loopRegex = /\b(for|while|do)\b/g;
-    return loopRegex.test(code);
+  private static stripComments(code: string): string {
+    return code.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+  }
+
+  public static hasLoop(studentCode: string): boolean {
+    // 2. Automatically clean the code incoming from the execution engine
+    const cleanedCode = this.stripComments(studentCode);
+
+    // 3. Scan only the executable lines
+    const loopRegex = /\b(for|while|do)\b/;
+    return loopRegex.test(cleanedCode);
   }
 }

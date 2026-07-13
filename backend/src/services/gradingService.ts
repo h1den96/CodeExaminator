@@ -1,4 +1,11 @@
-// src/services/gradingService.ts
+import { StructuralAnalysisService } from "./structuralAnalysisService";
+
+export type QuestionCategory =
+  | "SCALAR"
+  | "LINEAR"
+  | "GRID"
+  | "LINKED_LIST"
+  | "CUSTOM";
 
 export class GradingService {
   /**
@@ -40,38 +47,43 @@ export class GradingService {
   }
 
   /**
-   * 🧠 STATIC ANALYSIS (This was missing!)
-   * Scans code for banned or required keywords.
+   * 🧼 REMOVE COMMENTS FROM CODE STRING
+   */
+  private static stripComments(code: string): string {
+    return code.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+  }
+
+  /**
+   * 🧠 STATIC ANALYSIS
+   * Scans code for banned or required keywords safely outside comments.
    */
   static performStaticAnalysis(
     code: string,
     forbidden: string[] = [],
     required: string[] = []
-): { passed: boolean; error?: string; violationType?: string } {
+  ): { passed: boolean; error?: string; violationType?: string } {
     
     if (!code || code.trim().length === 0) {
         return { passed: false, error: "No code submitted." };
     }
 
-    // 1. Προετοιμασία: Καθαρισμός κώδικα από κενά και tabs
-    // Αυτό εμποδίζει bypasses όπως το "system  (" ή "fork  ()"
-    const normalizedCode = code.replace(/\s+/g, '');
+    // Clean out all multi-line and single-line comment blocks
+    const cleanCode = this.stripComments(code);
 
-    // 2. Εσωτερική Λίστα Ασφαλείας (Hardcoded Security Rules)
-    // Αυτά τα keywords ελέγχονται ΠΑΝΤΑ για την προστασία του server
+    // Normalize spacing to avoid spaces bypass structures like "system   ("
+    const normalizedCode = cleanCode.replace(/\s+/g, '');
+
+    // Hardcoded Security Core Definitions
     const systemSecurityList = [
         "system(", "fork(", "fstream", "ifstream", "ofstream",
         "asm", "__asm__", "syscall", "int0x80", "\\x", "__attribute__"
     ];
 
-    // Συνδυασμός της λίστας του καθηγητή με τη λίστα ασφαλείας
     const finalForbidden = Array.from(new Set([...forbidden, ...systemSecurityList]));
 
-    // 3. Έλεγχος Απαγορευμένων (Forbidden Keywords)
+    // Evaluate Forbidden Statements
     for (const word of finalForbidden) {
-        // Αν το word περιλαμβάνει παρενθέσεις, τις ελέγχουμε στον normalizedCode
-        // Αλλιώς ελέγχουμε στον κανονικό κώδικα (για βιβλιοθήκες π.χ. <fstream>)
-        const targetCode = word.includes('(') ? normalizedCode : code;
+        const targetCode = word.includes('(') ? normalizedCode : cleanCode;
         
         if (targetCode.includes(word)) {
             return {
@@ -82,11 +94,10 @@ export class GradingService {
         }
     }
 
-    // 4. Έλεγχος Απαιτούμενων (Required Keywords)
-    // Εδώ χρησιμοποιούμε τον κανονικό κώδικα για να μην έχουμε θέματα με strings
+    // Evaluate Required Statements
     if (required && required.length > 0) {
         for (const word of required) {
-            if (!code.includes(word)) {
+            if (!cleanCode.includes(word)) {
                 return {
                     passed: false,
                     error: `Static Analysis Failed: Missing required keyword '${word}'.`,
@@ -96,22 +107,25 @@ export class GradingService {
     }
 
     return { passed: true };
-}
+  }
 
+  /**
+   * ⚖️ SMART LOGICAL COMPARISON
+   * Strips out hidden newlines, trailing whitespaces, and normalizes floats.
+   */
   static smartCompare(actual: string, expected: string): boolean {
-    const a = actual.trim();
-    const e = expected.trim();
+    // Drop platform carriage lines \r and drop external terminal whitespace pads
+    const cleanActual = actual.replace(/\r/g, "").trim();
+    const cleanExpected = expected.replace(/\r/g, "").trim();
 
-    // 1. Strict match
-    if (a === e) return true;
+    // 1. Structural matching normalization check
+    if (cleanActual === cleanExpected) return true;
 
-    // 2. Numeric Epsilon Check
-    // We attempt to convert both to numbers to handle rounding differences
-    const numA = parseFloat(a);
-    const numE = parseFloat(e);
+    // 2. Continuous epsilon variance mathematical matching
+    const numA = parseFloat(cleanActual);
+    const numE = parseFloat(cleanExpected);
 
     if (!isNaN(numA) && !isNaN(numE)) {
-      // Use a standard epsilon of 0.0001
       return Math.abs(numA - numE) < 0.0001;
     }
 

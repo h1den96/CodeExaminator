@@ -33,7 +33,7 @@ export class CodeExecutionService {
     studentCode: string,
     db: Pool,
   ) {
-    const HARDCODED_LANG_ID = 54;
+    const HARDCODED_LANG_ID = 75;
 
     try {
       console.log("DEBUG: Starting Hybrid Grading for SQ_ID: " + submissionQuestionId);
@@ -70,7 +70,9 @@ export class CodeExecutionService {
       const blackBoxMaxPoints = maxPoints - structuralMaxPoints;
 
       let structuralPointsAwarded = 0;
-      const hasLoop = StructuralAnalysisService.hasLoop(studentCode);
+
+      const cleanedStudentCode = studentCode.replace(/\/\*[\s\S]*?(?:\*\/|$)|([^\\:]|^)\/\/.*$/gm, '$1');
+      const hasLoop = StructuralAnalysisService.hasLoop(cleanedStudentCode);
 
       if (hasLoop) {
         structuralPointsAwarded = structuralMaxPoints;
@@ -82,11 +84,17 @@ export class CodeExecutionService {
       if (!testCases || testCases.length === 0) throw new Error("No test cases");
 
       let executableCompilationPackage = "";
-      if (dbBoilerplate && dbBoilerplate.trim() !== "") {
-        executableCompilationPackage = dbBoilerplate.replace("// {{STUDENT_CODE}}", studentCode);
-      } else {
+
+      if (process.env.NODE_ENV === "development") {
         const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
         executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
+      } else {
+        if (dbBoilerplate && dbBoilerplate.trim() !== "") {
+          executableCompilationPackage = dbBoilerplate.replace("// {{STUDENT_CODE}}", studentCode);
+        } else {
+          const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
+          executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
+        }
       }
 
       const submissions = testCases.map((tc: any) => ({
@@ -124,22 +132,46 @@ export class CodeExecutionService {
 
       if (!isDone) throw new Error("Grading timed out.");
 
+      // 🎯 ΦΕΡΝΟΥΜΕ ΤΟ ΠΡΑΓΜΑΤΙΚΟ COMPILATION LOG ΑΠΟ ΤΟ JUDGE0
+      const firstCompError = results.find((r: any) => r.status?.id === 6);
+      let globalCompileLog = "";
+      
+      if (firstCompError) {
+        try {
+          const individualRes = await axios.get(
+            `${JUDGE0_URL}/submissions/${firstCompError.token}?base64_encoded=true`
+          );
+          if (individualRes.data?.compile_output) {
+            globalCompileLog = Buffer.from(individualRes.data.compile_output, "base64").toString("utf-8");
+          } else if (individualRes.data?.stderr) {
+            globalCompileLog = Buffer.from(individualRes.data.stderr, "base64").toString("utf-8");
+          }
+        } catch (tokenErr) {
+          console.error("Failed to fetch individual compilation log:", tokenErr);
+        }
+      }
+
       let passedCount = 0;
       const cleanDetails = results.map((r: any, idx: number) => {
         const actualOutput = this.safeDecode(r.stdout);
         const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
 
-        const isPassed = GradingService.smartCompare(actualOutput, expectedOutput);
+        // Αν είναι Compilation Error, είναι εξ ορισμού false
+        const isPassed = r.status?.id === 6 ? false : GradingService.smartCompare(actualOutput, expectedOutput);
         
         if (isPassed) passedCount++;
 
+        const finalCompileOutput = r.status?.id === 6 
+          ? (globalCompileLog || this.safeDecode(r.compile_output))
+          : this.safeDecode(r.compile_output);
+
         return {
-          status: isPassed ? "Accepted" : (r.status?.description || "Wrong Answer"),
+          status: r.status?.id === 6 ? "Compilation Error" : (isPassed ? "Accepted" : (r.status?.description || "Wrong Answer")),
           passed: isPassed,
           stdout: actualOutput,
           expected: expectedOutput,
           stderr: this.safeDecode(r.stderr),
-          compile_output: this.safeDecode(r.compile_output),
+          compile_output: finalCompileOutput, // 👈 Εδώ μπαίνει το αληθινό g++ error!
           input: testCases[idx].input,
           is_public: testCases[idx].is_public ?? true
         };

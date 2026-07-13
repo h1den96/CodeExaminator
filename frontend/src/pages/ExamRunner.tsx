@@ -117,7 +117,6 @@ export default function ExamRunner() {
   const navigate = useNavigate();
   const { colors } = useTheme();
 
-  // --- 1. ALL HOOKS MUST GO HERE AT THE TOP ---
   const [testData, setTestData] = useState<TestData | null>(null);
   const [submissionId, setSubmissionId] = useState<number | null>(null);
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -133,28 +132,44 @@ export default function ExamRunner() {
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🛡️ Safe check for the current question
   const question = testData?.questions?.[currentQIndex];
 
-  // 🚀 MOVED: useMemo is now safely at the top
   const { topPart, bottomPart } = useMemo(() => {
-    if (
-      !question ||
-      question.question_type !== "programming" ||
-      !question.boiler_plate_code
-    ) {
+    console.log("=== FRONTEND useMemo MATCHING ===");
+    console.log("Current Question Object:", question);
+
+    if (!question) {
+      console.warn("❌ useMemo aborted: 'question' is undefined or null.");
       return { topPart: "", bottomPart: "" };
     }
-    const parts = question.boiler_plate_code.split("// {{STUDENT_CODE}}");
+    if (question.question_type !== "programming") {
+      console.log(`ℹ️ useMemo skipped: Question type is '${question.question_type}', not 'programming'.`);
+      return { topPart: "", bottomPart: "" };
+    }
+    if (!question.boiler_plate_code) {
+      console.error("❌ useMemo structural failure: 'question.boiler_plate_code' is missing, empty, or undefined!");
+      return { topPart: "", bottomPart: "" };
+    }
+
+    console.log("Found boiler_plate_code string length:", question.boiler_plate_code.length);
+
+    let parts = question.boiler_plate_code.split("// {{STUDENT_CODE}}");
+    console.log("Attempt 1 (// {{STUDENT_CODE}}): Split count =", parts.length);
+
+    if (parts.length === 1) {
+      parts = question.boiler_plate_code.split("// [[STUDENT_CODE_ZONE]]");
+      console.log("Attempt 2 (// [[STUDENT_CODE_ZONE]]): Split count =", parts.length);
+    }
+
+    console.log("Final Split Portions -> Top length:", parts[0]?.length, "| Bottom length:", parts[1]?.length);
+    console.log("=================================");
+
     return {
       topPart: parts[0] || "",
       bottomPart: parts[1] || "",
     };
   }, [question]);
 
-  // --- 2. EFFECTS ---
-
-  // Prevents accidental tab closing
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -164,7 +179,6 @@ export default function ExamRunner() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
-  // Main Test Initialization
   useEffect(() => {
     if (!state?.test_id) {
       navigate("/tests");
@@ -176,7 +190,6 @@ export default function ExamRunner() {
         const res = await api.post("/tests/start", { test_id: state.test_id });
         const fetchedTest = res.data.test;
 
-        // Ensure no duplicate questions
         const uniqueQuestions = fetchedTest.questions.filter(
           (q: any, index: number, self: any[]) =>
             index === self.findIndex((t) => t.question_id === q.question_id),
@@ -185,7 +198,6 @@ export default function ExamRunner() {
         setTestData({ ...fetchedTest, questions: uniqueQuestions });
         setSubmissionId(res.data.submission_id);
 
-        // Pre-load saved answers if resuming
         const initialAnswers: Record<number, any> = {};
         uniqueQuestions.forEach((q: any) => {
           if (q.student_mcq && q.student_mcq.length > 0) {
@@ -200,22 +212,17 @@ export default function ExamRunner() {
         });
         setAnswers(initialAnswers);
       } catch (err: any) {
-        // 1. Check if the error is a 409 Conflict (Already Submitted)
         if (err.response?.status === 409) {
-          // 2. Grab the ID from the backend's error response
-          // Ensure this matches the key 'submission_id' we just added to the controller
           const sid = err.response.data.submission_id;
 
           if (sid) {
             console.log("Redirecting to valid submission:", sid);
             navigate(`/results/${sid}`);
           } else {
-            // Fallback: If no ID was found, just go to the general tests list
             console.warn("409 Conflict: No submission_id provided by backend.");
             navigate("/tests");
           }
         } else {
-          // 3. For any other error (500, 404, etc.), go back to the list
           console.error("Critical error during startExam:", err);
           navigate("/tests");
         }
@@ -227,7 +234,6 @@ export default function ExamRunner() {
     startExam();
   }, [state, navigate]);
 
-  // --- 3. FUNCTIONS ---
   const saveAnswer = async (qId: number, payload: any) => {
     if (!submissionId) return;
     setSaveStatus("saving");
@@ -255,7 +261,7 @@ export default function ExamRunner() {
     }, 500);
   };
 
- const handleRunCode = async (qId: number, code: string) => {
+  const handleRunCode = async (qId: number, code: string) => {
     setIsRunning(true);
     setRunResult(null);
     setRunError(null);
@@ -272,25 +278,23 @@ export default function ExamRunner() {
       console.log("📡 [ExamRunner] Raw API Response:", res.data);
 
       if (res.data) {
-        // Normalize the test results to ensure 'status' is a string and 'passed' exists
         const rawDetails = res.data.test_results || res.data.details || [];
         
         const normalizedDetails = rawDetails.map((test: any) => ({
           ...test,
-          // Flatten status object to string if needed
           status: typeof test.status === 'object' ? test.status.description : test.status,
-          // Force a boolean for passed
           passed: !!(test.passed || test.status_id === 3 || test.status?.id === 3 || test.status === "Accepted")
         }));
 
         const newResult = {
+          status: res.data.status,
           grade: Number(res.data.question_grade ?? res.data.grade ?? 0),
           details: normalizedDetails
         };
 
         console.log("💾 [ExamRunner] Setting state to:", newResult);
         setRunResult(newResult);
-      } else { // 👈 Added the missing closing brace here
+      } else {
         console.warn("⚠️ [ExamRunner] Response received but data is empty.");
       }
     } catch (err: any) {
@@ -313,7 +317,6 @@ export default function ExamRunner() {
     }
   };
 
-  // --- 4. EARLY RETURNS (SAFE TO DO NOW) ---
   if (loading)
     return (
       <div style={{ padding: 40, color: colors.text }}>Loading Exam...</div>

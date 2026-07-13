@@ -323,6 +323,7 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
             actual: tCase.is_public ? actualOutput : "REDACTED",
             passed: isCorrect,
             error: errorDetails,
+            compile_output: errorDetails,
         });
     }
 
@@ -354,12 +355,33 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
                 throw new Error("Already submitted.");
             }
             const fullTest = await TestService.reconstructTestFromSubmission(existingSubmission.submission_id, db);
+            
+            // 🔍 DIAGNOSTIC LOGS
+            console.log("=== BACKEND EXISTING SESSION RESUME ===");
+            console.log(`Submission ID: ${existingSubmission.submission_id}`);
+            console.log(`Total Questions Formatted: ${fullTest?.questions?.length}`);
+            if (fullTest?.questions) {
+            fullTest.questions.forEach((q: any, idx: number) => {
+                console.log(`[Q #${idx + 1}] ID: ${q.question_id} | Type: ${q.question_type}`);
+                console.log(`-> raw boilerplate from DB exists?: ${q.boilerplate_code !== undefined}`);
+                console.log(`-> boiler_plate_code property exists?: ${q.boiler_plate_code !== undefined}`);
+                if (q.question_type === 'programming') {
+                console.log(`-> Preview: ${String(q.boiler_plate_code || q.boilerplate_code || 'EMPTY').substring(0, 60)}...`);
+                }
+            });
+            }
+            console.log("==============================");
+
+
             return {
                 submissionId: existingSubmission.submission_id,
-                dto: {
-                    ...fullTest,
+                dto: { 
+                    ...fullTest, 
+                    questions: fullTest.questions, // 👈 Explicitly keep the parsed questions!
+                    test_id: t.test_id, 
+                    title: t.title, 
                     started_at: existingSubmission.started_at,
-                    duration_minutes: t.duration_minutes,
+                    duration_minutes: t.duration_minutes 
                 },
             };
         }
@@ -369,66 +391,75 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
             await client.query("BEGIN");
             const sRes = await client.query(
                 `INSERT INTO exam.submissions (student_id, test_id, status, started_at) 
-                 VALUES ($1, $2, 'started', NOW()) 
-                 RETURNING submission_id, started_at`,
+                VALUES ($1, $2, 'in_progress', NOW()) 
+                RETURNING submission_id, started_at`,
                 [studentId, t.test_id],
             );
+
             const submissionId = sRes.rows[0].submission_id;
 
             const drawQuery = `
-            INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points)
-            WITH RECURSIVE 
-            slots AS (
-                SELECT slot_id, slot_order, topic_id, difficulty, question_type, category, points,
-                        ROW_NUMBER() OVER (ORDER BY slot_order) as rn
-                FROM exam.test_slots
-                WHERE test_id = $2
-            ),
-            picker AS (
-                (
-                    SELECT s.slot_order, s.points, q_pool.question_id, ARRAY[q_pool.question_id] as used_ids, s.rn
+                INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points, question_snapshot)
+                WITH RECURSIVE 
+                slots AS (
+                    SELECT slot_id, slot_order, topic_id, difficulty, question_type, category, points,
+                            ROW_NUMBER() OVER (ORDER BY slot_order) as rn
+                    FROM exam.test_slots
+                    WHERE test_id = $2
+                ),
+                picker AS (
+                    (
+                        SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot, ARRAY[q_pool.question_id] as used_ids, s.rn
+                        FROM slots s
+                        CROSS JOIN LATERAL (
+                            SELECT q.question_id, 
+                                to_jsonb(q) || jsonb_build_object('starter_code', pq.starter_code, 'boilerplate_code', pq.boilerplate_code) as snapshot
+                            FROM exam.questions q
+                            JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                            WHERE q.difficulty = s.difficulty
+                            AND qt.topic_id = s.topic_id
+                            AND q.question_type = s.question_type
+                            AND (s.category = 'ANY' OR pq.category = s.category)
+                            ORDER BY RANDOM()
+                            LIMIT 1
+                        ) q_pool
+                        WHERE s.rn = 1
+                    )
+                    UNION ALL
+                    SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot, p.used_ids || q_pool.question_id, s.rn
                     FROM slots s
+                    JOIN picker p ON s.rn = p.rn + 1
                     CROSS JOIN LATERAL (
-                        SELECT q.question_id
-                        FROM exam.questions q
-                        JOIN exam.question_topics qt ON q.question_id = qt.question_id
-                        INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-                        WHERE q.difficulty = s.difficulty
-                        AND qt.topic_id = s.topic_id
-                        AND q.question_type = s.question_type
-                        AND (s.category = 'ANY' OR pq.category = s.category)
+                        SELECT q.question_id,
+                            to_jsonb(q) || jsonb_build_object('starter_code', pq.starter_code, 'boilerplate_code', pq.boilerplate_code) as snapshot
+                            FROM exam.questions q
+                            JOIN exam.question_topics qt ON q.question_id = qt.question_id
+                            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+                            WHERE q.difficulty = s.difficulty
+                            AND qt.topic_id = s.topic_id
+                            AND q.question_type = s.question_type
+                            AND (s.category = 'ANY' OR pq.category = s.category)
+                            AND q.question_id != ALL(p.used_ids)
                         ORDER BY RANDOM()
                         LIMIT 1
                     ) q_pool
-                    WHERE s.rn = 1
                 )
-                UNION ALL
-                SELECT s.slot_order, s.points, q_pool.question_id, p.used_ids || q_pool.question_id, s.rn
-                FROM slots s
-                JOIN picker p ON s.rn = p.rn + 1
-                CROSS JOIN LATERAL (
-                    SELECT q.question_id
-                    FROM exam.questions q
-                    JOIN exam.question_topics qt ON q.question_id = qt.question_id
-                    INNER JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-                    WHERE q.difficulty = s.difficulty
-                        AND qt.topic_id = s.topic_id
-                        AND q.question_type = s.question_type
-                        AND (s.category = 'ANY' OR pq.category = s.category)
-                        AND q.question_id != ALL(p.used_ids)
-                    ORDER BY RANDOM()
-                    LIMIT 1
-                ) q_pool
-            )
-            SELECT $1, question_id, slot_order, points FROM picker;
-            `;
+                SELECT $1, question_id, slot_order, points, snapshot FROM picker;
+                `;
 
             await client.query(drawQuery, [submissionId, t.test_id]);
             await client.query("COMMIT");
             const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
             return {
                 submissionId,
-                dto: { ...freshTest, test_id: t.test_id, title: t.title, started_at: sRes.rows[0].started_at },
+                dto: { 
+                    ...freshTest, 
+                    questions: freshTest.questions, // 👈 Explicitly keep the parsed questions!
+                    test_id: t.test_id, 
+                    title: t.title, 
+                    started_at: sRes.rows[0].started_at 
+                },
             };
         } catch (e) {
             await client.query("ROLLBACK");

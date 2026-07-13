@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
 
 export class TestService {
   static async getTestWithQuestions(testId: number, db: Pool) {
@@ -10,7 +11,13 @@ export class TestService {
 
     const qRes = await db.query(
       `
-      SELECT q.*, tq.points, pq.starter_code 
+      SELECT 
+        q.*, 
+        tq.points, 
+        pq.starter_code,
+        pq.category,
+        pq.function_signature,
+        pq.boilerplate_code as boiler_plate_code
       FROM exam.questions q
       JOIN exam.test_questions tq ON q.question_id = tq.question_id
       LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
@@ -20,7 +27,16 @@ export class TestService {
       [testId],
     );
 
-    test.questions = qRes.rows;
+    // Apply the dynamic factory fallback on load
+    test.questions = qRes.rows.map((q: any) => {
+      if (q.question_type === "programming" && (!q.boiler_plate_code || q.boiler_plate_code.trim() === "")) {
+        q.boiler_plate_code = BoilerplateFactory.createFullHarness(
+          (q.category || "LINEAR") as QuestionCategory, 
+          q.function_signature || ""
+        );
+      }
+      return q;
+    });
 
     for (const q of test.questions) {
       if (q.question_type === "mcq") {
@@ -59,6 +75,9 @@ export class TestService {
         q.question_type,
         sq.points, 
         pq.starter_code,
+        pq.category,
+        pq.function_signature,
+        pq.boilerplate_code as boiler_plate_code,
         sa.code_answer as student_code
       FROM exam.questions q
       JOIN exam.submission_questions sq ON q.question_id = sq.question_id
@@ -69,7 +88,16 @@ export class TestService {
       [submissionId],
     );
 
-    test.questions = qRes.rows;
+    // Apply the dynamic factory fallback on load
+    test.questions = qRes.rows.map((q: any) => {
+      if (q.question_type === "programming" && (!q.boiler_plate_code || q.boiler_plate_code.trim() === "")) {
+        q.boiler_plate_code = BoilerplateFactory.createFullHarness(
+          (q.category || "LINEAR") as QuestionCategory, 
+          q.function_signature || ""
+        );
+      }
+      return q;
+    });
 
     for (const q of test.questions) {
       if (q.question_type === "mcq") {

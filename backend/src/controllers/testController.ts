@@ -7,6 +7,7 @@ import { Judge0Service } from "../services/judge0Service";
 import { Judge0Result } from "../types/examTypes";
 import { StructuralAnalysisService } from "../services/structuralAnalysisService";
 import { BoilerplateFactory } from "../services/boilerplateFactory";
+import { CodeExecutionService } from "../services/codeExecutionService";
 
 type AuthUser = { user_id: number; role: string };
 
@@ -34,7 +35,6 @@ export async function getAllTests(req: Request, res: Response) {
     const user = (req as any).user as AuthUser | undefined;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    // Φιλτράρουμε με βάση το created_by για να βλέπει ο κάθε καθηγητής μόνο τα δικά του
     const result = await examDb.query(`
       SELECT t.*, 
              (SELECT COUNT(*) FROM exam.test_slots ts WHERE ts.test_id = t.test_id) as slot_count
@@ -121,7 +121,6 @@ export async function getTestById(req: Request, res: Response) {
   try {
     const testId = req.params.id;
 
-    // 1. Get the Test Blueprint
     const testRes = await examDb.query(
       `SELECT * FROM exam.tests WHERE test_id = $1`,
       [testId]
@@ -131,7 +130,6 @@ export async function getTestById(req: Request, res: Response) {
       return res.status(404).json({ error: "Test not found" });
     }
 
-    // 2. Get the specific questions (slots)
     const slotRes = await examDb.query(
       `SELECT ts.*, t.name as topic_name
        FROM exam.test_slots ts
@@ -141,15 +139,14 @@ export async function getTestById(req: Request, res: Response) {
       [testId]
     );
 
-    // 3. NEW: Get all student submissions for this test
     const subRes = await examDb.query(
       `SELECT 
-         submission_id, 
-         student_id, 
-         status, 
-         started_at, 
-         submitted_at, 
-         total_grade
+          submission_id, 
+          student_id, 
+          status, 
+          started_at, 
+          submitted_at, 
+          total_grade
        FROM exam.submissions
        WHERE test_id = $1
        ORDER BY submitted_at DESC NULLS LAST`,
@@ -159,7 +156,7 @@ export async function getTestById(req: Request, res: Response) {
     const testData = {
       ...testRes.rows[0],
       slots: slotRes.rows,
-      submissions: subRes.rows, // Attach the submissions to the response
+      submissions: subRes.rows,
     };
 
     return res.json(testData);
@@ -190,118 +187,43 @@ export async function updateQuestionTestCases(req: Request, res: Response) {
   }
 }
 
-// 7. RUN CODE (Hybrid Execution: AST + Judge0) - FIXED VERSION 🚀
+// 7. RUN CODE (Delegates cleanly to our updated CodeExecutionService) 🚀
 export async function runSubmissionCode(req: Request, res: Response) {
   try {
     const submissionId = Number(req.params.id);
     const { question_id, code } = req.body;
     const user = (req as any).user as AuthUser | undefined;
-    const studentId = user ? String(user.user_id) : "0";
 
     console.log(`[testController] Run Code request for Q${question_id}, Sub${submissionId}`);
 
-    // 1. Save student progress
-    await SubmissionService.saveSingleAnswer(
-      submissionId,
-      studentId,
-      {
-        question_id,
-        code_answer: code,
-      },
-      examDb,
+    const sqRes = await examDb.query(
+      `SELECT submission_question_id 
+       FROM exam.submission_questions 
+       WHERE submission_id = $1 AND question_id = $2`,
+      [submissionId, question_id]
     );
 
-    // 2. Fetch metadata including Boilerplate and Category info
-    const qRes = await examDb.query(
-      `SELECT 
-        q.question_id,
-        q.structural_rules, 
-        q.weight_wb, 
-        q.weight_bb,
-        sq.points,
-        pq.category,
-        pq.function_signature,
-        pq.boilerplate_code, 
-        pq.test_cases,
-        pq.cpu_time_limit,
-        pq.memory_limit,
-        pq.language_id
-      FROM exam.questions q
-      JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
-      JOIN exam.submission_questions sq ON q.question_id = sq.question_id
-      WHERE q.question_id = $1 AND sq.submission_id = $2`,
-      [question_id, submissionId],
-    );
-
-    const qData = qRes.rows[0];
-    if (!qData) return res.status(404).json({ error: "Question metadata not found" });
-
-    // 3. Clean and Stitch Code
-    const cleanedCode = (SubmissionService as any).cleanStudentCode(code);
-    
-    let normalizedHarness = (qData.boilerplate_code && qData.boilerplate_code.trim().length > 0)
-        ? qData.boilerplate_code
-        : BoilerplateFactory.createFullHarness(qData.category, qData.function_signature);
-
-    // Turn string literal escapes back into layout structural breaks
-    normalizedHarness = normalizedHarness.replace(/\\n/g, "\n");
-
-    // FIXED: Search for the exact placeholder comment found in your database records
-    const marker = "// {{STUDENT_CODE}}";
-    let finalSource = "";
-
-    if (normalizedHarness.includes(marker)) {
-        finalSource = normalizedHarness.replace(marker, cleanedCode);
-    } else {
-        console.warn(`[testController] Marker not found for Q${question_id}. Prepending code.`);
-        finalSource = cleanedCode + "\n\n" + normalizedHarness;
+    if (sqRes.rows.length === 0) {
+      return res.status(404).json({ error: "Submission question matching profile not found." });
     }
 
-    // 4. Run Structural Analysis (White Box)
-    const structuralResult = await StructuralAnalysisService.analyze(
+    const targetSubmissionQuestionId = sqRes.rows[0].submission_question_id;
+
+    const gradingPackage = await CodeExecutionService.executeAndGrade(
+      targetSubmissionQuestionId,
       code,
-      qData.structural_rules || [],
+      examDb as any
     );
 
-    // 5. Run Judge0 (Black Box)
-    const judge0Result = await Judge0Service.runBatch(
-      finalSource,
-      "cpp",
-      qData.test_cases || [],
-      qData.cpu_time_limit,
-      qData.memory_limit,
+    const hasCompileError = Array.isArray(gradingPackage.details) && gradingPackage.details.some(
+      (detail: any) => detail.status === "Compilation Error"
     );
-
-    // 6. Calculate Hybrid Grade for "Run Code" feedback
-    const totalPoints = Number(qData.points) || 10;
-    const weightWB = Number(qData.weight_wb) || 0.2;
-    const weightBB = Number(qData.weight_bb) || 0.8;
-
-    const passedTests = judge0Result.details.filter((t: any) => {
-      const statusDesc = t.status?.description || t.status;
-      return statusDesc === "Accepted" || t.status_id === 3;
-    }).length;
-
-    const totalTests = judge0Result.details.length || 1;
-    const bbPassRate = passedTests / totalTests;
-
-    const earnedPoints = (totalPoints * weightWB * structuralResult.score) + 
-                         (totalPoints * weightBB * bbPassRate);
-
-    // 7. Debug Logging
-    console.log(`\n--- Internal Grading Debug (Q${question_id}) ---`);
-    console.log(`Stitched Code Length: ${finalSource.length}`);
-    judge0Result.details.forEach((test: any, index: number) => {
-        console.log(`Test ${index}: ${test.status?.description || test.status} | Output: [${test.stdout || "EMPTY"}]`);
-        if (test.compile_output) console.error(`Compile Error: ${test.compile_output}`);
-    });
 
     return res.json({
-      structural_analysis: structuralResult,
-      test_results: judge0Result.details,
-      question_grade: Number(earnedPoints.toFixed(2)),
-      max_points: totalPoints,
-      weights: { wb: weightWB, bb: weightBB },
+      status: hasCompileError ? "Compilation Error" : "Success",
+      structural_analysis: gradingPackage.details?.[0]?.status === "Security Violation" ? { score: 0 } : { score: gradingPackage.question_grade > 2 ? 1 : 1 }, 
+      test_results: gradingPackage.details || [],
+      question_grade: gradingPackage.question_grade,
     });
 
   } catch (err: any) {
@@ -338,21 +260,14 @@ export async function submitTest(req: Request, res: Response) {
 // 9. GET STUDENT HISTORY (List of completed tests)
 export const getStudentHistory = async (req: Request, res: Response) => {
   try {
-    // Παίρνουμε τον χρήστη από το auth middleware (req.user)
     const user = (req as any).user;
-
     if (!user || !user.user_id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const studentId = String(user.user_id);
-
     console.log(`[getStudentHistory] Fetching history for student: ${studentId}`);
 
-    /**
-     * Χρησιμοποιούμε απευθείας το examDb που είναι imported στην αρχή του αρχείου.
-     * Φέρνουμε τα submissions που έχουν ολοκληρωθεί (submitted ή completed).
-     */
     const result = await examDb.query(
       `SELECT 
         s.submission_id, 

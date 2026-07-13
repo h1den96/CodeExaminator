@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireTeacher } from "../../src/middleware/requireAuth";
+import { requireAuth, requireTeacher } from "../middleware/requireAuth";
 import * as submissionController from "../controllers/submissionController";
 
 const router = Router();

@@ -21,7 +21,13 @@ interface Props {
   onSubmit: () => void;
   onRunCode: (id: number, code: string) => void;
   isRunning: boolean;
-  runResult: { grade: number; details?: any } | null;
+  runResult: { 
+    grade: number; 
+    details?: any[]; 
+    status?: string; 
+    compile_output?: string; 
+    error?: string; 
+  } | null;
   runError: string | null;
   topPart: string;
   bottomPart: string;
@@ -59,7 +65,6 @@ export default function ProgrammingLayout({
       : cleanStarter;
     
     codeRef.current = newCode;
-    
     console.log("Editor synced to Question: " + question.question_id);
   }, [question.question_id, answer]);
 
@@ -92,26 +97,34 @@ export default function ProgrammingLayout({
     };
   }, []);
 
-  const decodeOutput = (str: string | null) => {
-    if (!str) return "";
-    try {
-      return atob(str);
-    } catch (e) {
-      return str;
-    }
+  const readOnlyOptions = {
+    readOnly: true,
+    domReadOnly: true,
+    minimap: { enabled: false },
+    lineNumbers: "off" as const,
+    folding: false,
+    glyphMargin: false,
+    lineDecorationsWidth: 0,
+    lineNumbersMinChars: 0,
+    scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
+    scrollBeyondLastLine: false,
+    contextmenu: false,
+    selectionHighlight: false,
+    occurrencesHighlight: "off" as const,
+    hideCursorInOverviewRuler: true,
+    matchBrackets: "never" as const,
+    renderLineHighlight: "none" as const,
+    fontSize: 14,
+    automaticLayout: true,
   };
 
-  const boilerplateStyle: React.CSSProperties = {
-    backgroundColor: "#1e1e1e",
-    color: "#6a9955",
-    padding: "12px 20px",
-    fontFamily: "'Fira Code', 'Courier New', monospace",
-    fontSize: "14px",
-    whiteSpace: "pre",
-    opacity: 0.7,
-    userSelect: "none",
-    overflow: "hidden",
-  };
+  const isCompilationError =
+    runResult?.status === "Compilation Error" ||
+    (Array.isArray(runResult?.details) && runResult.details[0]?.status === "Compilation Error") ||
+    (Array.isArray(runResult?.details) && !!runResult.details[0]?.compile_output?.trim()) ||
+    (Array.isArray(runResult?.details) && !!runResult.details[0]?.error?.trim()) ||
+    (!!(runResult as any)?.compile_output?.trim()) ||
+    (!!(runResult as any)?.error?.trim());
 
   return (
     <div
@@ -124,6 +137,7 @@ export default function ProgrammingLayout({
         zIndex: 9999,
       }}
     >
+      {/* LEFT COLUMN: Panel Info & Console */}
       <div
         style={{
           width: `${leftWidth}%`,
@@ -223,7 +237,31 @@ export default function ProgrammingLayout({
                       GRADE: {runResult.grade ?? 0} / {question.points}
                     </div>
 
-                    {Array.isArray(runResult.details) && runResult.details.length > 0 ? (
+                    {isCompilationError ? (
+                      <div style={{ marginTop: "4px", marginBottom: "4px" }}>
+                        <strong style={{ color: "#ef4444", display: "block", marginBottom: "6px" }}>
+                          Compiler Build Traceback:
+                        </strong>
+                        <pre style={{ 
+                          fontSize: "0.8rem", 
+                          color: "#fca5a5", 
+                          background: "#141414", 
+                          padding: "10px", 
+                          borderRadius: "4px",
+                          overflowX: "auto",
+                          border: "1px solid #3f1d1d",
+                          whiteSpace: "pre-wrap"
+                        }}>
+                          {/* 🎯 Straight from the compiler keys only. No fallback strings. */}
+                          {runResult?.details?.[0]?.compile_output || 
+                          runResult?.details?.[0]?.error || 
+                          runResult?.details?.[0]?.stderr || 
+                          (runResult as any).compile_output || 
+                          (runResult as any).error ||
+                          `No diagnostics text found in payload keys. Raw object: ${JSON.stringify(runResult)}`}
+                        </pre>
+                      </div>
+                    ) : Array.isArray(runResult.details) && runResult.details.length > 0 ? (
                       runResult.details.map((test: any, index: number) => {
                         const isPassed = 
                           test.passed === true || 
@@ -238,7 +276,7 @@ export default function ProgrammingLayout({
                         return (
                           <div 
                             key={index} 
-                            style={{ 
+                            style={{
                               marginBottom: "14px", 
                               borderLeft: `4px solid ${isPassed ? "#22c55e" : "#ef4444"}`, 
                               background: "rgba(255,255,255,0.02)",
@@ -332,6 +370,7 @@ export default function ProgrammingLayout({
         </div>
       </div>
 
+      {/* DRAG SEPARATOR */}
       <div
         onMouseDown={() => {
           isDragging.current = true;
@@ -340,6 +379,7 @@ export default function ProgrammingLayout({
         style={{ width: "5px", cursor: "col-resize", background: "#334155" }}
       />
 
+      {/* RIGHT COLUMN: Code View (3 Stacked Editors) */}
       <div
         style={{
           width: `${100 - leftWidth}%`,
@@ -349,12 +389,20 @@ export default function ProgrammingLayout({
           overflow: "hidden",
         }}
       >
+        {/* Top read-only context block */}
         {topPart && (
-          <div style={{ ...boilerplateStyle, borderBottom: "1px solid #2d2d2d" }}>
-            {topPart.trim()}
+          <div style={{ height: "160px", borderBottom: "1px solid #2d2d2d", opacity: 0.55 }}>
+            <Editor
+              height="100%"
+              defaultLanguage="cpp"
+              theme={theme === "dark" ? "vs-dark" : "light"}
+              value={topPart.trim()}
+              options={readOnlyOptions}
+            />
           </div>
         )}
 
+        {/* Central interactive user code element */}
         <div style={{ flex: 1 }}>
           <Editor
             key={question.question_id} 
@@ -374,9 +422,16 @@ export default function ProgrammingLayout({
           />
         </div>
 
+        {/* Bottom read-only main routine block */}
         {bottomPart && (
-          <div style={{ ...boilerplateStyle, borderTop: "1px solid #2d2d2d" }}>
-            {bottomPart.trim()}
+          <div style={{ height: "240px", borderTop: "1px solid #2d2d2d", opacity: 0.55 }}>
+            <Editor
+              height="100%"
+              defaultLanguage="cpp"
+              theme={theme === "dark" ? "vs-dark" : "light"}
+              value={bottomPart.trim()}
+              options={readOnlyOptions}
+            />
           </div>
         )}
       </div>
