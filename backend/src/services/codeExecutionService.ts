@@ -33,7 +33,7 @@ export class CodeExecutionService {
     studentCode: string,
     db: Pool,
   ) {
-    const HARDCODED_LANG_ID = 75;
+    const HARDCODED_LANG_ID = 54;
 
     try {
       console.log("DEBUG: Starting Hybrid Grading for SQ_ID: " + submissionQuestionId);
@@ -133,14 +133,23 @@ export class CodeExecutionService {
       if (!isDone) throw new Error("Grading timed out.");
 
       // 🎯 ΦΕΡΝΟΥΜΕ ΤΟ ΠΡΑΓΜΑΤΙΚΟ COMPILATION LOG ΑΠΟ ΤΟ JUDGE0
-      const firstCompError = results.find((r: any) => r.status?.id === 6);
-      let globalCompileLog = "";
+      //const firstCompError = results.find((r: any) => r.status?.id === 6);
+      //let globalCompileLog = "";
       
-      if (firstCompError) {
-        try {
-          const individualRes = await axios.get(
-            `${JUDGE0_URL}/submissions/${firstCompError.token}?base64_encoded=true`
-          );
+      if (!isDone) throw new Error("Grading timed out.");
+
+        console.log("RAW BATCH RESULTS:", JSON.stringify(results)); // add this
+
+        const firstCompError = results.find((r: any) => r.status?.id === 6);
+        let globalCompileLog = "";
+
+        if (firstCompError) {
+          try {
+            const individualRes = await axios.get(
+              `${JUDGE0_URL}/submissions/${firstCompError.token}?base64_encoded=true&fields=token,stdout,stderr,status,compile_output,message`
+            );
+            console.log("RAW INDIVIDUAL FETCH:", JSON.stringify(individualRes.data)); // add this
+          
           if (individualRes.data?.compile_output) {
             globalCompileLog = Buffer.from(individualRes.data.compile_output, "base64").toString("utf-8");
           } else if (individualRes.data?.stderr) {

@@ -17,7 +17,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PASSWORD=code_examinator_secure_redis_pass
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    - /sys/fs/cgroup/isolate.slice:/sys/fs/cgroup:rw
     ports:
       - "2358:2358"
     privileged: true
@@ -38,7 +38,7 @@ services:
       - REDIS_PASSWORD=code_examinator_secure_redis_pass
     command: ["./scripts/workers"]
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    - /sys/fs/cgroup/isolate.slice:/sys/fs/cgroup:rw
     privileged: true
     <<: *default-logging
     restart: always
