@@ -537,8 +537,8 @@ static async getSubmissionResult(submissionId: number, studentId: string, db: Po
              FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
         FROM exam.submission_questions sq
         JOIN exam.questions q ON sq.question_id = q.question_id
-        JOIN exam.tests t ON sq.test_id = t.test_id
         JOIN exam.submissions s ON sq.submission_id = s.submission_id
+        JOIN exam.tests t ON s.test_id = t.test_id
         LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
         LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
         LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
