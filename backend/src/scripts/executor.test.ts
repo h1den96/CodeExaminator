@@ -4,10 +4,8 @@ import axios from "axios";
 import { Pool } from "pg";
 
 jest.mock("axios");
-jest.mock("../services/structuralAnalysisService");
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
-const MockedStructuralService = StructuralAnalysisService as jest.Mocked<typeof StructuralAnalysisService>;
 
 describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
   let mockPool: jest.Mocked<Pool>;
@@ -22,7 +20,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
         ],
         category: "SCALAR",
         function_signature: "int add(int a, int b);",
-        boilerplate_code: "// {{STUDENT_CODE}}\n\nint main() { return 0; }",
+        boilerplate_code: "int main() { return 0; }",
         max_points: "10.00",
         question_type: "programming"
       }
@@ -33,7 +31,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
     jest.clearAllMocks();
     
     mockPool = {
-      query: jest.fn().mockImplementation((queryText, values) => {
+      query: jest.fn().mockImplementation((queryText) => {
         if (queryText.includes("SELECT pq.test_cases")) {
           return Promise.resolve(mockQuestionData);
         }
@@ -41,14 +39,12 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
       }),
       connect: jest.fn()
     } as unknown as jest.Mocked<Pool>;
-
-    MockedStructuralService.hasLoop.mockReturnValue(true);
   });
 
   test("Matrix Case 1: Empty student submission logic parsing block", async () => {
     const studentCode = "";
     
-    MockedStructuralService.hasLoop.mockReturnValueOnce(false);
+    const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(false);
 
     const result = await CodeExecutionService.executeAndGrade(
       mockSubmissionQuestionId,
@@ -58,10 +54,14 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
     expect(result.question_grade).toBe(0);
     expect(result.details[0].status).toBe("Security Violation");
+    
+    spy.mockRestore();
   });
 
   test("Matrix Case 2: Security violation block (banned process runtime execution)", async () => {
     const studentCode = "int main() { system(\"rm -rf /\"); }";
+    
+    const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(true);
 
     const result = await CodeExecutionService.executeAndGrade(
       mockSubmissionQuestionId,
@@ -71,10 +71,14 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
     expect(result.question_grade).toBe(0);
     expect(result.details[0].status).toBe("Security Violation");
+    
+    spy.mockRestore();
   });
 
   test("Matrix Case 3: Compilation crash parsing handling within validation check", async () => {
     const studentCode = "int add(int a, int b) { for(;;) {} return a + b error_syntax }";
+
+    const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(true);
 
     mockedAxios.post.mockResolvedValueOnce({
       data: [{ token: "token_compile_error" }]
@@ -105,13 +109,17 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
       mockPool
     );
 
-    expect(result.question_grade).toBe(2); // Structural weight check pass (2.0 pts) + Black Box crash (0.0 pts)
+    expect(result.question_grade).toBe(2); 
     expect(result.details[0].passed).toBe(false);
     expect(result.details[0].status).toBe("Compilation Error");
+    
+    spy.mockRestore();
   });
 
   test("Matrix Case 4: Partial success metric validation parsing tracking rules", async () => {
     const studentCode = "int add(int a, int b) { for(int i=0; i<1; i++) {} return 5; }";
+
+    const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(true);
 
     mockedAxios.post.mockResolvedValueOnce({
       data: [{ token: "t1" }, { token: "t2" }]
@@ -142,15 +150,17 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
       mockPool
     );
 
-    // Structural metric: Loop check detected passes (+2.0 pts)
-    // Black Box verification: 1/2 passing cases checked (+4.0 pts)
     expect(result.question_grade).toBe(6);
     expect(result.details[0].passed).toBe(true);
     expect(result.details[1].passed).toBe(false);
+    
+    spy.mockRestore();
   });
 
   test("Matrix Case 5: 100% full verification compilation matching pass execution", async () => {
     const studentCode = "int add(int a, int b) { for(int i=0; i<1; i++) {} return a + b; }";
+
+    const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(true);
 
     mockedAxios.post.mockResolvedValueOnce({
       data: [{ token: "t1" }, { token: "t2" }]
@@ -184,5 +194,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
     expect(result.question_grade).toBe(10);
     expect(result.details[0].passed).toBe(true);
     expect(result.details[1].passed).toBe(true);
+    
+    spy.mockRestore();
   });
 });

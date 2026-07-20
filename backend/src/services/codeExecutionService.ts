@@ -1,57 +1,21 @@
 import { Pool } from "pg";
-import axios from "axios";
 import dotenv from "dotenv";
-import { StructuralAnalysisService } from "./structuralAnalysisService";
-import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
-import { GradingService } from "./gradingService";
+import { ProgrammingGradingEngine } from "./programmingGradingEngine";
+import { QuestionCategory } from "./boilerplateFactory";
 
 dotenv.config();
 
-const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
-
 export class CodeExecutionService {
-  private static structuralService = new StructuralAnalysisService();
-
-  private static sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  private static safeDecode(str: string | null): string {
-    if (!str) return "";
-    try {
-      return Buffer.from(str, "base64").toString("utf-8");
-    } catch (e) {
-      return str;
-    }
-  }
-
-  private static safeEncode(str: string | null): string {
-    if (!str) return "";
-    return Buffer.from(str).toString("base64");
-  }
-
   static async executeAndGrade(
     submissionQuestionId: number,
     studentCode: string,
     db: Pool,
   ) {
-    const HARDCODED_LANG_ID = 54;
-
     try {
-      console.log("DEBUG: Starting Hybrid Grading for SQ_ID: " + submissionQuestionId);
-
-      const analysis = GradingService.performStaticAnalysis(studentCode);
-      if (!analysis.passed) {
-        return {
-          question_grade: 0,
-          details: [{
-            status: "Security Violation",
-            passed: false,
-            compile_output: analysis.error
-          }]
-        };
-      }
-
       const questionQuery = `
-        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, sq.points as max_points, q.question_type
+        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, 
+               sq.points as max_points, q.question_type, q.structural_rules, pq.language_id,
+               q.weight_wb, q.weight_bb, pq.cpu_time_limit, pq.memory_limit
         FROM exam.submission_questions sq
         JOIN exam.questions q ON sq.question_id = q.question_id
         JOIN exam.programming_questions pq ON sq.question_id = pq.question_id
@@ -65,136 +29,32 @@ export class CodeExecutionService {
       const category = qRes.rows[0].category as QuestionCategory;
       const signature = qRes.rows[0].function_signature;
       const dbBoilerplate = qRes.rows[0].boilerplate_code;
+      const structuralRules = qRes.rows[0].structural_rules || [];
+      const weightWb = qRes.rows[0].weight_wb ? Number(qRes.rows[0].weight_wb) : 0.2;
+      const weightBb = qRes.rows[0].weight_bb ? Number(qRes.rows[0].weight_bb) : 0.8;
+      const cpuLimit = qRes.rows[0].cpu_time_limit ? Number(qRes.rows[0].cpu_time_limit) : 2.0;
+      const memoryLimit = qRes.rows[0].memory_limit ? Number(qRes.rows[0].memory_limit) : 128000;
+      const languageId = qRes.rows[0].language_id ? Number(qRes.rows[0].language_id) : 54;
 
-      const structuralMaxPoints = maxPoints * 0.2;
-      const blackBoxMaxPoints = maxPoints - structuralMaxPoints;
-
-      let structuralPointsAwarded = 0;
-
-      const cleanedStudentCode = studentCode.replace(/\/\*[\s\S]*?(?:\*\/|$)|([^\\:]|^)\/\/.*$/gm, '$1');
-      const hasLoop = StructuralAnalysisService.hasLoop(cleanedStudentCode);
-
-      if (hasLoop) {
-        structuralPointsAwarded = structuralMaxPoints;
-        console.log("Structural Check Passed: +" + structuralPointsAwarded + " pts");
-      } else {
-        console.log("Structural Check Failed: No loop detected.");
-      }
-
-      if (!testCases || testCases.length === 0) throw new Error("No test cases");
-
-      let executableCompilationPackage = "";
-
-      if (process.env.NODE_ENV === "development") {
-        const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
-        executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
-      } else {
-        if (dbBoilerplate && dbBoilerplate.trim() !== "") {
-          executableCompilationPackage = dbBoilerplate.replace("// {{STUDENT_CODE}}", studentCode);
-        } else {
-          const frameTemplate = BoilerplateFactory.createFullHarness(category, signature);
-          executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
-        }
-      }
-
-      const submissions = testCases.map((tc: any) => ({
-        source_code: this.safeEncode(executableCompilationPackage),
-        language_id: HARDCODED_LANG_ID,
-        stdin: this.safeEncode(tc.input || ""),
-        expected_output: this.safeEncode(tc.expected_output || tc.expected || ""),
-        cpu_time_limit: 2.0,
-      }));
-
-      const submitResponse = await axios.post(
-        `${JUDGE0_URL}/submissions/batch?base64_encoded=true&wait=false`,
-        { submissions }
-      );
-
-      let results = submitResponse.data;
-      if (!Array.isArray(results)) results = [results];
-      const tokens = results.map((r: any) => r.token).join(",");
-
-      let attempts = 0;
-      let isDone = false;
-      while (attempts < 10 && !isDone) {
-        const checkResponse = await axios.get(
-          `${JUDGE0_URL}/submissions/batch?tokens=${tokens}&base64_encoded=true&fields=token,stdout,stderr,status,compile_output`
-        );
-        results = checkResponse.data.submissions;
-
-        if (results.every((r: any) => r.status && r.status.id > 2)) {
-          isDone = true;
-        } else {
-          attempts++;
-          await this.sleep(1000 + attempts * 500);
-        }
-      }
-
-      if (!isDone) throw new Error("Grading timed out.");
-
-      // 🎯 ΦΕΡΝΟΥΜΕ ΤΟ ΠΡΑΓΜΑΤΙΚΟ COMPILATION LOG ΑΠΟ ΤΟ JUDGE0
-      //const firstCompError = results.find((r: any) => r.status?.id === 6);
-      //let globalCompileLog = "";
-      
-      if (!isDone) throw new Error("Grading timed out.");
-
-        console.log("RAW BATCH RESULTS:", JSON.stringify(results)); // add this
-
-        const firstCompError = results.find((r: any) => r.status?.id === 6);
-        let globalCompileLog = "";
-
-        if (firstCompError) {
-          try {
-            const individualRes = await axios.get(
-              `${JUDGE0_URL}/submissions/${firstCompError.token}?base64_encoded=true&fields=token,stdout,stderr,status,compile_output,message`
-            );
-            console.log("RAW INDIVIDUAL FETCH:", JSON.stringify(individualRes.data)); // add this
-          
-          if (individualRes.data?.compile_output) {
-            globalCompileLog = Buffer.from(individualRes.data.compile_output, "base64").toString("utf-8");
-          } else if (individualRes.data?.stderr) {
-            globalCompileLog = Buffer.from(individualRes.data.stderr, "base64").toString("utf-8");
-          }
-        } catch (tokenErr) {
-          console.error("Failed to fetch individual compilation log:", tokenErr);
-        }
-      }
-
-      let passedCount = 0;
-      const cleanDetails = results.map((r: any, idx: number) => {
-        const actualOutput = this.safeDecode(r.stdout);
-        const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
-
-        // Αν είναι Compilation Error, είναι εξ ορισμού false
-        const isPassed = r.status?.id === 6 ? false : GradingService.smartCompare(actualOutput, expectedOutput);
-        
-        if (isPassed) passedCount++;
-
-        const finalCompileOutput = r.status?.id === 6 
-          ? (globalCompileLog || this.safeDecode(r.compile_output))
-          : this.safeDecode(r.compile_output);
-
-        return {
-          status: r.status?.id === 6 ? "Compilation Error" : (isPassed ? "Accepted" : (r.status?.description || "Wrong Answer")),
-          passed: isPassed,
-          stdout: actualOutput,
-          expected: expectedOutput,
-          stderr: this.safeDecode(r.stderr),
-          compile_output: finalCompileOutput, // 👈 Εδώ μπαίνει το αληθινό g++ error!
-          input: testCases[idx].input,
-          is_public: testCases[idx].is_public ?? true
-        };
+      const evaluation = await ProgrammingGradingEngine.evaluate({
+        studentCode,
+        testCases,
+        points: maxPoints,
+        category,
+        signature,
+        boilerplateCode: dbBoilerplate,
+        structuralRules,
+        weightWb,
+        weightBb,
+        cpuLimit,
+        memoryLimit,
+        languageId
       });
 
-      const testScore = (passedCount / testCases.length) * blackBoxMaxPoints;
-      const finalScore = parseFloat((testScore + structuralPointsAwarded).toFixed(2));
-
       const finalMeta = {
-        test_results: cleanDetails,
-        structural_analysis: {
-          loop_detected: hasLoop,
-          points_awarded: structuralPointsAwarded,
-        },
+        feedback: evaluation.feedback,
+        test_results: evaluation.details,
+        structural_analysis: evaluation.structuralDetails,
       };
 
       const upsertQuery = `
@@ -214,21 +74,16 @@ export class CodeExecutionService {
         submissionQuestionId,
         studentCode,
         JSON.stringify(finalMeta),
-        finalScore,
+        evaluation.earnedPoints,
       ]);
 
-      console.log("[CodeExecutionService] Final Data Package:", {
-        grade: finalScore,
-        detailsCount: cleanDetails.length
-      });
-
       return {
-        question_grade: finalScore,
-        details: cleanDetails,
+        question_grade: evaluation.earnedPoints,
+        details: evaluation.details,
       };
 
     } catch (err) {
-      console.error("Hybrid Grading Failed:", err);
+      console.error(err);
       throw err;
     }
   }

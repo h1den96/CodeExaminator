@@ -11,7 +11,6 @@ export interface AnalysisRule {
 }
 
 export class StructuralAnalysisService {
-  
   private static parser: Parser;
 
   private static initParser() {
@@ -21,9 +20,33 @@ export class StructuralAnalysisService {
     }
   }
 
+  static calculateSyntacticHealth(code: string): { healthIndex: number; totalNodes: number; errorNodes: number } {
+    this.initParser();
+    const tree = this.parser.parse(code);
+    const root = tree.rootNode;
+
+    let totalNodes = 0;
+    let errorNodes = 0;
+
+    function traverse(node: Parser.SyntaxNode) {
+      totalNodes++;
+      if (node.type === "ERROR" || node.isMissing) {
+        errorNodes++;
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) traverse(child);
+      }
+    }
+
+    traverse(root);
+
+    const healthIndex = totalNodes > 0 ? 1.0 - (errorNodes / totalNodes) : 0.0;
+    return { healthIndex, totalNodes, errorNodes };
+  }
+
   private static calculateCyclomaticComplexity(node: Parser.SyntaxNode): number {
     let complexity = 1;
-
     const branchingTypes = [
       "if_statement",
       "for_statement",
@@ -33,7 +56,6 @@ export class StructuralAnalysisService {
       "catch_clause",
       "conditional_expression"
     ];
-    
     const branches = node.descendantsOfType(branchingTypes);
     complexity += branches.length;
 
@@ -44,7 +66,6 @@ export class StructuralAnalysisService {
         complexity++;
       }
     }
-
     return complexity;
   }
 
@@ -54,7 +75,6 @@ export class StructuralAnalysisService {
       const nameNode = fn
         .descendantsOfType("identifier")
         .find((n) => n.parent?.type === "function_declarator");
-
       if (nameNode && nameNode.text === "main") return true;
     }
     return false;
@@ -65,7 +85,6 @@ export class StructuralAnalysisService {
     return node.descendantsOfType(types).length > 0;
   }
 
-  // New AST helper to verify if any executable logic exists inside the code tree
   private static isBodyEmpty(node: Parser.SyntaxNode): boolean {
     const functions = node.descendantsOfType("function_definition");
     if (functions.length === 0) return true;
@@ -73,12 +92,11 @@ export class StructuralAnalysisService {
     for (const fn of functions) {
       const body = fn.children.find((c) => c.type === "compound_statement");
       if (body) {
-        // Exclude curly braces { and } from token calculation
         const meaningfulChildren = body.children.filter(
           (c) => c.text !== "{" && c.text !== "}"
         );
         if (meaningfulChildren.length > 0) {
-          return false; // Found actual internal statement logic
+          return false;
         }
       }
     }
@@ -93,7 +111,6 @@ export class StructuralAnalysisService {
     const tree = this.parser.parse(code);
     const root = tree.rootNode;
 
-    // 1. Fatal Gates Check
     if (this.hasMainFunction(root)) {
       return { 
         score: 0, 
@@ -114,7 +131,6 @@ export class StructuralAnalysisService {
       };
     }
 
-    // NEW STRUCTURAL GATE: Zero out scores if no executable content is added
     if (this.isBodyEmpty(root)) {
       return {
         score: 0,
@@ -129,7 +145,6 @@ export class StructuralAnalysisService {
     let earnedWeight = 0;
     let totalPossibleWeight = 0;
 
-    // 2. Security Gate
     const forbiddenFunctions = ["system", "fork", "exec", "fopen", "popen", "socket"];
     let securityPassed = true;
     for (const fnName of forbiddenFunctions) {
@@ -150,11 +165,9 @@ export class StructuralAnalysisService {
 
     if (!securityPassed) return { score: 0, details };
 
-    // 3. Cyclomatic Complexity Evaluation
     const complexityScore = this.calculateCyclomaticComplexity(root);
     const complexityWeight = 30; 
     const complexityThreshold = 15;
-    
     totalPossibleWeight += complexityWeight;
     
     let complexityEarned = complexityWeight;
@@ -175,11 +188,9 @@ export class StructuralAnalysisService {
       actual_value: complexityScore
     });
 
-    // 4. Professor Defined Assessment Processing
     for (const rule of rules) {
       let passed = false;
       const weight = rule.weight || 0;
-
       if (weight > 0) totalPossibleWeight += weight;
 
       if (rule.target === "recursion") {
@@ -210,7 +221,6 @@ export class StructuralAnalysisService {
     }
 
     const finalRatio = totalPossibleWeight > 0 ? earnedWeight / totalPossibleWeight : 1;
-
     return { score: finalRatio, details };
   }
 
@@ -220,11 +230,9 @@ export class StructuralAnalysisService {
       const nameNode = fn
         .descendantsOfType("identifier")
         .find((n) => n.parent?.type === "function_declarator");
-
       if (!nameNode) continue;
       const fnName = nameNode.text;
       const body = fn.children.find((c) => c.type === "compound_statement");
-
       if (body && this.findFunctionCall(body, fnName)) return true;
     }
     return false;
@@ -242,10 +250,7 @@ export class StructuralAnalysisService {
   }
 
   public static hasLoop(studentCode: string): boolean {
-    // 2. Automatically clean the code incoming from the execution engine
     const cleanedCode = this.stripComments(studentCode);
-
-    // 3. Scan only the executable lines
     const loopRegex = /\b(for|while|do)\b/;
     return loopRegex.test(cleanedCode);
   }

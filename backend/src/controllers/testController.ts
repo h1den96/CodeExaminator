@@ -219,9 +219,16 @@ export async function runSubmissionCode(req: Request, res: Response) {
       (detail: any) => detail.status === "Compilation Error"
     );
 
+    const securityViolation = Array.isArray(gradingPackage.details) && gradingPackage.details.some(
+      (detail: any) => detail.status === "Security Violation"
+    );
+
     return res.json({
-      status: hasCompileError ? "Compilation Error" : "Success",
-      structural_analysis: gradingPackage.details?.[0]?.status === "Security Violation" ? { score: 0 } : { score: gradingPackage.question_grade > 2 ? 1 : 1 }, 
+      status: securityViolation ? "Security Violation" : (hasCompileError ? "Compilation Error" : "Success"),
+      structural_analysis: {
+        score: securityViolation ? 0 : 1,
+        details: gradingPackage.details?.[0]?.status === "Security Violation" ? [] : (gradingPackage as any).structural_analysis || []
+      },
       test_results: gradingPackage.details || [],
       question_grade: gradingPackage.question_grade,
     });
