@@ -1,5 +1,5 @@
 import axios from "axios";
-import { StructuralAnalysisService } from "./structuralAnalysisService";
+import { StructuralAnalysisService, AnalysisRule } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
 import { GradingService } from "./gradingService";
 
@@ -13,9 +13,12 @@ export interface GradingInput {
   category: QuestionCategory;
   signature: string;
   boilerplateCode: string | null;
-  structuralRules: any;
+  structuralRules: AnalysisRule[];
   weightWb?: number;
   weightBb?: number;
+  graceMode?: "STRICT" | "STANDARD" | "THRESHOLD";
+  graceThreshold?: number;
+  graceCap?: number;
   cpuLimit?: number;
   memoryLimit?: number;
   languageId?: number;
@@ -26,6 +29,11 @@ export interface GradingOutput {
   feedback: string;
   details: any[];
   structuralDetails: any[];
+  astHealth?: {
+    healthIndex: number;
+    totalNodes: number;
+    errorNodes: number;
+  };
 }
 
 export class ProgrammingGradingEngine {
@@ -44,27 +52,26 @@ export class ProgrammingGradingEngine {
   }
 
   private static cleanStudentCode(code: string): string {
-  if (!code) return "";
+    if (!code) return "";
 
-  let sanitized = code
-    .replace(/\/\*[\s\S]*?\*\//g, "") 
-    .replace(/\/\/.*/g, "");         
+    let sanitized = code
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*/g, "");
 
-  const forbiddenPattern = /\b(system|exec|fork|popen|unistd|socket|fopen|fstream|ofstream|ifstream|freopen|remove|rename)\s*\(/i;
-  const forbiddenTypes = /\b(FILE|std::fstream|std::ofstream|std::ifstream)\b/;
+    const forbiddenPattern = /\b(system|exec|fork|popen|unistd|socket|fopen|fstream|ofstream|ifstream|freopen|remove|rename)\s*\(/i;
+    const forbiddenTypes = /\b(FILE|std::fstream|std::ofstream|std::ifstream)\b/;
 
-  if (forbiddenPattern.test(sanitized) || forbiddenTypes.test(sanitized)) {
-    throw new Error("SECURITY_ERROR: Access to system or file operations is restricted.");
+    if (forbiddenPattern.test(sanitized) || forbiddenTypes.test(sanitized)) {
+      throw new Error("SECURITY_ERROR: Access to system or file operations is restricted.");
+    }
+
+    return sanitized
+      .replace(/^\s*#include\s*[<|"].*[>|"]/gm, "")
+      .replace(/^\s*using\s+namespace\s+std\s*;/gm, "")
+      .replace(/;\s*;/g, ";")
+      .replace(/\{\s*\}/g, "")
+      .trim();
   }
-
-  return sanitized
-    .replace(/^\s*#include\s*[<|"].*[>|"]/gm, "")  
-    .replace(/^\s*using\s+namespace\s+std\s*;/gm, "") 
-    .replace(/;\s*;/g, ";")                          
-    // SAFELY eliminate actual empty blocks by checking if braces or semicolons are completely empty
-    .replace(/\{\s*\}/g, "")
-    .trim();
-}
 
   private static sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -78,9 +85,12 @@ export class ProgrammingGradingEngine {
       category,
       signature,
       boilerplateCode,
-      structuralRules = {},
-      weightWb = 0.1,
-      weightBb = 0.9,
+      structuralRules = [],
+      weightWb = 0.2,
+      weightBb = 0.8,
+      graceMode = "STANDARD",
+      graceThreshold = 0.90,
+      graceCap = 0.15,
       cpuLimit = 2.0,
       memoryLimit = 128000,
       languageId = DEFAULT_LANG_ID
@@ -117,15 +127,9 @@ export class ProgrammingGradingEngine {
       };
     }
 
-    // 2. White-Box Track: Dead-Simple Restriction Filter
-    // Only used to catch explicitly forbidden tokens or security flags. No free points.
+    // 2. White-Box Track: Dynamic Structural AST Analysis
     const wbResult = await StructuralAnalysisService.analyze(studentCode, structuralRules);
-    const hasRuleViolation = wbResult.details.some((d: any) => !d.passed);
-    
-    let finalWbRatio = 1.0; 
-    if (hasRuleViolation) {
-      finalWbRatio = 0.0; // Fail the entire 10% gate if they bypass rules/constraints
-    }
+    const S_wb = wbResult.score;
 
     if (!testCases || testCases.length === 0) {
       throw new Error("No test cases specified for verification.");
@@ -208,68 +212,111 @@ export class ProgrammingGradingEngine {
       }
     }
 
-    // 5. Black-Box Track: Direct Execution Analysis
-    let totalTestWeight = 0;
-    let earnedTestWeight = 0;
+    // 5. Calculate Syntactic Health Index (H_ast)
+    const astHealth = StructuralAnalysisService.calculateSyntacticHealth(studentCode);
+    const H_ast = astHealth.healthIndex;
+
+    let S_bb = 0.0;
+    let feedback = "";
+    let cleanDetails: any[] = [];
     const isCompiled = !firstCompError;
 
-    const cleanDetails = results.map((r: any, idx: number) => {
-      const actualOutput = this.safeDecode(r.stdout);
-      const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
-      const caseWeight = Number(testCases[idx].weight ?? 1.0);
-      totalTestWeight += caseWeight;
-
-      const isPassed = r.status?.id === 6 ? false : GradingService.smartCompare(actualOutput, expectedOutput);
-      
-      let isMemorySafetyViolation = false;
-      const stderrLog = this.safeDecode(r.stderr);
-      if (stderrLog.toLowerCase().includes("addresssanitizer") || stderrLog.toLowerCase().includes("leaksanitizer")) {
-        isMemorySafetyViolation = true;
+    if (!isCompiled) {
+      // Compilation Failed Handling (Scenario B & C)
+      if (graceMode === "STRICT") {
+        S_bb = 0.0;
+        feedback = "Compilation failed. Strict Mode active: 0 execution points awarded.";
+      } else {
+        if (H_ast >= graceThreshold) {
+          S_bb = graceCap * H_ast;
+          feedback = `Compilation failed. Syntactic grace awarded (${(H_ast * 100).toFixed(1)}% AST Health).`;
+        } else {
+          S_bb = 0.0;
+          feedback = `Compilation failed. AST Health (${(H_ast * 100).toFixed(1)}%) below required grace threshold (${(graceThreshold * 100).toFixed(1)}%).`;
+        }
       }
 
-      if (isPassed) {
-        earnedTestWeight += isMemorySafetyViolation ? (caseWeight * 0.9) : caseWeight;
-      }
-
-      return {
-        status: r.status?.id === 6 ? "Compilation Error" : (isPassed ? "Accepted" : (r.status?.description || "Wrong Answer")),
-        passed: isPassed,
+      cleanDetails = results.map(() => ({
+        status: "Compilation Error",
+        passed: false,
         stdout: "REDACTED",
         expected: "REDACTED",
-        stderr: isMemorySafetyViolation ? "Memory Safety Violation" : "",
-        compile_output: r.status?.id === 6 ? globalCompileLog : "",
+        stderr: "",
+        compile_output: globalCompileLog,
         input: "REDACTED",
         is_public: false,
-        weight: caseWeight,
-        memory_leak: isMemorySafetyViolation
-      };
-    });
+        weight: 1.0,
+        memory_leak: false
+      }));
 
-    let bbRatio = 0;
-    let feedback = "";
-
-    if (!isCompiled) {
-      bbRatio = 0.0; // Broken syntax = 0% execution points. No exceptions, no exploits.
-      feedback = "Compilation failed. Execution points denied.";
     } else {
-      bbRatio = totalTestWeight > 0 ? earnedTestWeight / totalTestWeight : 0;
-      feedback = `Passed ${(bbRatio * 100).toFixed(0)}% of the functional test suites.`;
+      // Successful Compilation Handling (Scenario A)
+      let totalTestWeight = 0;
+      let earnedTestWeight = 0;
+      let hasAnyMemoryLeak = false;
+
+      cleanDetails = results.map((r: any, idx: number) => {
+        const actualOutput = this.safeDecode(r.stdout);
+        const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
+        
+        // Weight assignment based on category or explicit test weight
+        const tcCategory = testCases[idx].category || "FUNCTIONAL";
+        const caseWeight = Number(testCases[idx].weight ?? (tcCategory === "EDGE" ? 5 : tcCategory === "SANITY" ? 1 : 3));
+        totalTestWeight += caseWeight;
+
+        const isPassed = GradingService.smartCompare(actualOutput, expectedOutput);
+        
+        let isMemorySafetyViolation = false;
+        const stderrLog = this.safeDecode(r.stderr);
+        if (stderrLog.toLowerCase().includes("addresssanitizer") || stderrLog.toLowerCase().includes("leaksanitizer")) {
+          isMemorySafetyViolation = true;
+          hasAnyMemoryLeak = true;
+        }
+
+        if (isPassed) {
+          earnedTestWeight += caseWeight;
+        }
+
+        return {
+          status: isPassed ? "Accepted" : (r.status?.description || "Wrong Answer"),
+          passed: isPassed,
+          stdout: "REDACTED",
+          expected: "REDACTED",
+          stderr: isMemorySafetyViolation ? "Memory Safety Violation" : "",
+          compile_output: "",
+          input: "REDACTED",
+          is_public: false,
+          weight: caseWeight,
+          memory_leak: isMemorySafetyViolation
+        };
+      });
+
+      let S_bb_raw = totalTestWeight > 0 ? earnedTestWeight / totalTestWeight : 0.0;
+
+      // Apply 10% Memory Leak Penalty if Sanitizer Flags Violations
+      if (hasAnyMemoryLeak) {
+        S_bb = S_bb_raw * 0.90;
+        feedback = `Passed test suites, but a 10% memory safety penalty was applied.`;
+      } else {
+        S_bb = S_bb_raw;
+        feedback = `Passed ${(S_bb * 100).toFixed(0)}% of the functional test suites.`;
+      }
     }
 
-    if (hasRuleViolation) {
-      feedback += " Structural compliance constraints or security tokens violated.";
-    }
-
-    // 6. Final Score Combination
-    const structuralPointsAwarded = parseFloat((points * weightWb * finalWbRatio).toFixed(2));
-    const testScore = bbRatio * (points * weightBb);
-    const finalScore = parseFloat((testScore + structuralPointsAwarded).toFixed(2));
+    // 6. Master Equation: Final Earned Score Calculation
+    const totalRatio = (weightWb * S_wb) + (weightBb * S_bb);
+    const finalScore = parseFloat((points * totalRatio).toFixed(2));
 
     return {
       earnedPoints: finalScore,
       feedback,
       details: cleanDetails,
-      structuralDetails: wbResult.details
+      structuralDetails: wbResult.details,
+      astHealth: {
+        healthIndex: H_ast,
+        errorNodes: astHealth.errorNodes,
+        totalNodes: astHealth.totalNodes
+      }
     };
   }
 }

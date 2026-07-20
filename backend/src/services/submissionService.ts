@@ -316,16 +316,18 @@ export class SubmissionService {
             throw new Error("ACCESS_DENIED");
         }
 
+        // Replace lines 212-230 in SubmissionService.ts with:
         const dataQuery = `
             SELECT 
                 sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
                 q.question_id, q.question_type, sq.points as question_points,
                 q.structural_rules, q.weight_wb, q.weight_bb,
+                q.grace_mode, q.grace_threshold, q.grace_cap,
                 pq.test_cases, pq.language_id, pq.category, pq.function_signature,
                 pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
                 tf.correct_answer as tf_correct, t.enable_negative_grading,
                 (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
-                 FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
+                FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
             FROM exam.submission_questions sq
             JOIN exam.questions q ON sq.question_id = q.question_id
             JOIN exam.submissions s ON sq.submission_id = s.submission_id
@@ -380,6 +382,9 @@ export class SubmissionService {
                             structuralRules: ans.structural_rules || [],
                             weightWb: ans.weight_wb ? Number(ans.weight_wb) : 0.2,
                             weightBb: ans.weight_bb ? Number(ans.weight_bb) : 0.8,
+                            graceMode: ans.grace_mode || "STANDARD",
+                            graceThreshold: ans.grace_threshold ? Number(ans.grace_threshold) : 0.90,
+                            graceCap: ans.grace_cap ? Number(ans.grace_cap) : 0.15,
                             cpuLimit: ans.cpu_time_limit ? Number(ans.cpu_time_limit) : 2.0,
                             memoryLimit: ans.memory_limit ? Number(ans.memory_limit) : 128000,
                             languageId: ans.language_id ? Number(ans.language_id) : 54

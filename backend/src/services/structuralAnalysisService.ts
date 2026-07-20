@@ -4,10 +4,10 @@ import Cpp from "tree-sitter-cpp";
 
 export interface AnalysisRule {
   type: "REQUIRE" | "FORBID";
-  target: string;
+  target: "recursion" | "loop" | "function_call" | "logarithmic_complexity" | "smart_pointers" | "raw_pointers";
   description: string;
   weight: number;
-  name?: string; 
+  name?: string;
 }
 
 export class StructuralAnalysisService {
@@ -101,6 +101,43 @@ export class StructuralAnalysisService {
       }
     }
     return true;
+  }
+
+  private static detectLogarithmicComplexity(node: Parser.SyntaxNode): boolean {
+    const updateExpressions = node.descendantsOfType("assignment_expression");
+    for (const expr of updateExpressions) {
+      const op = expr.children[1]?.text;
+      if (op === "/=" || op === ">>=") return true;
+    }
+
+    const binaryExprs = node.descendantsOfType("binary_expression");
+    for (const expr of binaryExprs) {
+      const op = expr.children[1]?.text;
+      if (op === "/" || op === ">>") {
+        const parent = expr.parent;
+        if (parent && (parent.type === "assignment_expression" || parent.type === "init_declarator")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static detectSmartPointers(node: Parser.SyntaxNode): boolean {
+    const templateTypes = node.descendantsOfType("template_type");
+    for (const t of templateTypes) {
+      const text = t.text;
+      if (text.includes("unique_ptr") || text.includes("shared_ptr") || text.includes("make_unique") || text.includes("make_shared")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static detectRawPointers(node: Parser.SyntaxNode): boolean {
+    const newExprs = node.descendantsOfType("new_expression");
+    const deleteExprs = node.descendantsOfType("delete_expression");
+    return newExprs.length > 0 || deleteExprs.length > 0;
   }
 
   static async analyze(
@@ -198,6 +235,15 @@ export class StructuralAnalysisService {
       } 
       else if (rule.target === "loop") {
         passed = this.hasLoop(code);
+      }
+      else if (rule.target === "logarithmic_complexity") {
+        passed = this.detectLogarithmicComplexity(root);
+      }
+      else if (rule.target === "smart_pointers") {
+        passed = this.detectSmartPointers(root);
+      }
+      else if (rule.target === "raw_pointers") {
+        passed = !this.detectRawPointers(root);
       }
       else if (rule.type === "FORBID" && rule.target === "function_call") {
         const forbiddenName = rule.name || "";

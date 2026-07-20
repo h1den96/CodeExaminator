@@ -7,7 +7,7 @@ interface Slot {
   topic_id: number;
   question_type: "true_false" | "multiple_choice" | "programming";
   difficulty: "easy" | "medium" | "hard";
-  category: "SCALAR" | "LINEAR" | "GRID" | "LINKED_LIST" | "CUSTOM"; // Strict typing: No more "ANY"
+  category: "SCALAR" | "LINEAR" | "GRID" | "LINKED_LIST" | "CUSTOM";
   points: number;
   weight_bb: number; // Black-box (Results)
   weight_wb: number; // White-box (Logic)
@@ -27,6 +27,9 @@ export default function CreateTestPage() {
     available_until: "",
     duration_minutes: 60,
     strict_deadline: true,
+    grace_mode: "STANDARD" as "STRICT" | "STANDARD" | "THRESHOLD",
+    grace_threshold: 0.90,
+    grace_cap: 0.15,
     slots: [] as Slot[], 
   });
 
@@ -38,9 +41,9 @@ export default function CreateTestPage() {
     if (topics.length === 0) return;
     const newSlot: Slot = {
       topic_id: topics[0].topic_id,
-      question_type: "programming", // Default to programming to show categories immediately
+      question_type: "programming",
       difficulty: "easy",
-      category: "SCALAR", // Forced default to Scalar
+      category: "SCALAR",
       points: 10,
       weight_bb: 0.8,
       weight_wb: 0.2,
@@ -52,7 +55,6 @@ export default function CreateTestPage() {
     const newSlots = [...formData.slots];
     newSlots[index] = { ...newSlots[index], ...updates };
 
-    // Maintain weight balance (BB + WB = 1.0)
     if (updates.weight_bb !== undefined)
       newSlots[index].weight_wb = Number((1 - updates.weight_bb).toFixed(2));
     if (updates.weight_wb !== undefined)
@@ -85,7 +87,6 @@ export default function CreateTestPage() {
         ? new Date(formData.available_until).toISOString() 
         : null;
 
-      // Submit the full formData including strict slots
       await createTest({
         ...formData,
         available_from: isoAvailableFrom,
@@ -156,7 +157,7 @@ export default function CreateTestPage() {
             gap: "30px",
           }}
         >
-          {/* LEFT: Meta & Scheduling */}
+          {/* LEFT: Meta, Scheduling & Global Grace */}
           <section>
             <div style={cardStyle}>
               <h3 style={{ marginTop: 0 }}>General Settings</h3>
@@ -176,7 +177,7 @@ export default function CreateTestPage() {
             </div>
 
             <div style={cardStyle}>
-              <h3>Timing</h3>
+              <h3 style={{ marginTop: 0 }}>Timing</h3>
               <div style={{ marginBottom: "10px" }}>
                 <label style={{ display: "block", marginBottom: "5px" }}>Opens:</label>
                 <input
@@ -206,6 +207,56 @@ export default function CreateTestPage() {
                 />
               </div>
             </div>
+
+            <div style={cardStyle}>
+              <h3 style={{ marginTop: 0 }}>🛡️ Global Grace Settings</h3>
+              <div style={{ marginBottom: "10px" }}>
+                <label style={{ display: "block", marginBottom: "5px", fontSize: "0.85rem", fontWeight: "bold" }}>
+                  Grace Mode:
+                </label>
+                <select
+                  style={{ ...inputBase, width: "100%" }}
+                  value={formData.grace_mode}
+                  onChange={(e) => setFormData({ ...formData, grace_mode: e.target.value as any })}
+                >
+                  <option value="STANDARD">STANDARD (Partial Credit)</option>
+                  <option value="STRICT">STRICT (Zero Credit on Fail)</option>
+                  <option value="THRESHOLD">THRESHOLD (AST Health Required)</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", marginBottom: "5px", fontSize: "0.8rem" }}>
+                    AST Threshold:
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    style={{ ...inputBase, width: "100%" }}
+                    value={formData.grace_threshold}
+                    onChange={(e) => setFormData({ ...formData, grace_threshold: parseFloat(e.target.value) })}
+                  />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", marginBottom: "5px", fontSize: "0.8rem" }}>
+                    Grace Cap:
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    style={{ ...inputBase, width: "100%" }}
+                    value={formData.grace_cap}
+                    onChange={(e) => setFormData({ ...formData, grace_cap: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* RIGHT: THE SLOT MANAGER */}
@@ -233,7 +284,6 @@ export default function CreateTestPage() {
                     backgroundColor: colors.bg,
                   }}
                 >
-                  {/* Topic selection */}
                   <select
                     style={inputBase}
                     value={slot.topic_id}
@@ -244,7 +294,6 @@ export default function CreateTestPage() {
                     ))}
                   </select>
 
-                  {/* Question Type */}
                   <select
                     style={inputBase}
                     value={slot.question_type}
@@ -255,7 +304,6 @@ export default function CreateTestPage() {
                     <option value="true_false">T/F</option>
                   </select>
 
-                  {/* Difficulty level */}
                   <select
                     style={inputBase}
                     value={slot.difficulty}
@@ -266,7 +314,6 @@ export default function CreateTestPage() {
                     <option value="hard">Hard</option>
                   </select>
 
-                  {/* STRICT CATEGORY SELECTION */}
                   <select
                     style={{
                       ...inputBase,
@@ -278,12 +325,11 @@ export default function CreateTestPage() {
                   >
                     <option value="SCALAR">Scalar (Simple Function)</option>
                     <option value="LINEAR">Linear (Arrays/Vectors)</option>
-                    <option value="GRID">Grid (2D Arrays/Matrices)</option>       {/* ΝΕΟ */}
-                    <option value="LINKED_LIST">Linked List (Nodes/Pointers)</option> {/* ΝΕΟ */}
+                    <option value="GRID">Grid (2D Arrays/Matrices)</option>
+                    <option value="LINKED_LIST">Linked List (Nodes/Pointers)</option>
                     <option value="CUSTOM">Custom (Full Program)</option>
                   </select>
 
-                  {/* Points value */}
                   <input
                     type="number"
                     style={inputBase}
@@ -291,7 +337,6 @@ export default function CreateTestPage() {
                     onChange={(e) => updateSlot(index, { points: Number(e.target.value) })}
                   />
 
-                  {/* Grading Balance */}
                   <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "2px" }}>
                     {slot.question_type === "programming" ? (
                       <>

@@ -10,11 +10,19 @@ export type CreateQuestionDto = {
   teacher_id: number;
   allow_multiple?: boolean;
 
+  // Hybrid Blueprint & Grace Specifics
+  weight_wb?: number;
+  weight_bb?: number;
+  grace_mode?: "STRICT" | "STANDARD" | "THRESHOLD";
+  grace_threshold?: number;
+  grace_cap?: number;
+  structural_rules?: any[];
+
   // Type Specifics
   options?: { text: string; is_correct: boolean; score_weight?: number }[];
   correct_answer?: boolean;
   
-  // Programming Specifics (FIXED: Added missing metadata)
+  // Programming Specifics
   category?: "SCALAR" | "LINEAR" | "CUSTOM";
   function_signature?: string;
   language_id?: number;
@@ -26,7 +34,7 @@ export type SlotDto = {
   topic_id: number;
   question_type: "mcq" | "true_false" | "programming";
   difficulty: "easy" | "medium" | "hard";
-  category: string; // FIXED: Added to DTO
+  category: string;
   points: number;
   weight_bb: number;
   weight_wb: number;
@@ -48,19 +56,40 @@ export type CreateTestDto = {
 export class AdminService {
   /**
    * Universal Create Question Function
-   * FIXED: Now correctly inserts category and technical metadata.
+   * Saves weights, grace settings, structural rules, and technical metadata.
    */
   static async createQuestion(dto: CreateQuestionDto) {
     const client = await examDb.connect();
     try {
       await client.query("BEGIN");
 
+      const weightWb = dto.weight_wb ?? 0.20;
+      const weightBb = dto.weight_bb ?? 0.80;
+      const graceMode = dto.grace_mode || "STANDARD";
+      const graceThreshold = dto.grace_threshold ?? 0.90;
+      const graceCap = dto.grace_cap ?? 0.15;
+      const structuralRules = dto.structural_rules || [];
+
       const qRes = await client.query(
         `INSERT INTO exam.questions 
-         (title, body, question_type, difficulty, created_by, allow_multiple)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         (title, body, question_type, difficulty, created_by, allow_multiple,
+          weight_wb, weight_bb, grace_mode, grace_threshold, grace_cap, structural_rules)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING question_id`,
-        [dto.title, dto.body, dto.question_type, dto.difficulty, dto.teacher_id, dto.allow_multiple || false]
+        [
+          dto.title, 
+          dto.body, 
+          dto.question_type, 
+          dto.difficulty, 
+          dto.teacher_id, 
+          dto.allow_multiple || false,
+          weightWb,
+          weightBb,
+          graceMode,
+          graceThreshold,
+          graceCap,
+          JSON.stringify(structuralRules)
+        ]
       );
       const qId = qRes.rows[0].question_id;
 
@@ -89,7 +118,6 @@ export class AdminService {
           [qId, dto.correct_answer]
         );
       } else if (dto.question_type === "programming") {
-        // FIXED: Now saves category and function signature
         await client.query(
           `INSERT INTO exam.programming_questions 
            (question_id, category, function_signature, language_id, starter_code, test_cases)
@@ -117,7 +145,6 @@ export class AdminService {
 
   /**
    * Create Test Blueprint (Exam)
-   * FIXED: Included 'category' in the slot insertion SQL.
    */
   static async createTest(dto: CreateTestDto) {
     const client = await examDb.connect();
@@ -147,11 +174,7 @@ export class AdminService {
         for (let i = 0; i < dto.slots.length; i++) {
           const s = dto.slots[i];
           
-          // Μετατροπή σε πεζά για να ταιριάζουν με το CHECK constraint της βάσης
-          // (mcq, programming, true_false)
           let dbType = String(s.question_type).toLowerCase();
-          
-          // Διόρθωση τυχόν ασυμφωνίας ονομάτων από το frontend
           if (dbType === "multiple_choice") dbType = "mcq";
           if (dbType === "t/f") dbType = "true_false";
           if (dbType === "code") dbType = "programming";
@@ -160,7 +183,7 @@ export class AdminService {
             testId,
             i + 1,
             s.topic_id,
-            dbType, // Πλέον στέλνει "mcq" και όχι "multiple_choice"
+            dbType,
             s.difficulty.toLowerCase(),
             s.category,
             s.points,
