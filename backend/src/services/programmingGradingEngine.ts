@@ -69,7 +69,6 @@ export class ProgrammingGradingEngine {
       .replace(/^\s*#include\s*[<|"].*[>|"]/gm, "")
       .replace(/^\s*using\s+namespace\s+std\s*;/gm, "")
       .replace(/;\s*;/g, ";")
-      .replace(/\{\s*\}/g, "")
       .trim();
   }
 
@@ -91,8 +90,6 @@ export class ProgrammingGradingEngine {
       graceMode = "STANDARD",
       graceThreshold = 0.90,
       graceCap = 0.15,
-      cpuLimit = 2.0,
-      memoryLimit = 128000,
       languageId = DEFAULT_LANG_ID
     } = input;
 
@@ -158,8 +155,6 @@ export class ProgrammingGradingEngine {
       language_id: languageId,
       stdin: this.safeEncode(tc.input || ""),
       expected_output: this.safeEncode(tc.expected_output || tc.expected || ""),
-      cpu_time_limit: cpuLimit,
-      memory_limit: memoryLimit,
     }));
 
     // 4. Batch Execution in Sandbox
@@ -222,7 +217,7 @@ export class ProgrammingGradingEngine {
     const isCompiled = !firstCompError;
 
     if (!isCompiled) {
-      // Compilation Failed Handling (Scenario B & C)
+      // Compilation Failed Handling
       if (graceMode === "STRICT") {
         S_bb = 0.0;
         feedback = "Compilation failed. Strict Mode active: 0 execution points awarded.";
@@ -236,21 +231,21 @@ export class ProgrammingGradingEngine {
         }
       }
 
-      cleanDetails = results.map(() => ({
+      cleanDetails = results.map((r: any, idx: number) => ({
         status: "Compilation Error",
         passed: false,
-        stdout: "REDACTED",
-        expected: "REDACTED",
-        stderr: "",
+        stdout: this.safeDecode(r.stdout),
+        expected: testCases[idx]?.expected_output || testCases[idx]?.expected || "",
+        stderr: this.safeDecode(r.stderr),
         compile_output: globalCompileLog,
-        input: "REDACTED",
-        is_public: false,
+        input: testCases[idx]?.input || "",
+        is_public: testCases[idx]?.is_public ?? true,
         weight: 1.0,
         memory_leak: false
       }));
 
     } else {
-      // Successful Compilation Handling (Scenario A)
+      // Successful Compilation Handling
       let totalTestWeight = 0;
       let earnedTestWeight = 0;
       let hasAnyMemoryLeak = false;
@@ -259,7 +254,6 @@ export class ProgrammingGradingEngine {
         const actualOutput = this.safeDecode(r.stdout);
         const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
         
-        // Weight assignment based on category or explicit test weight
         const tcCategory = testCases[idx].category || "FUNCTIONAL";
         const caseWeight = Number(testCases[idx].weight ?? (tcCategory === "EDGE" ? 5 : tcCategory === "SANITY" ? 1 : 3));
         totalTestWeight += caseWeight;
@@ -280,12 +274,12 @@ export class ProgrammingGradingEngine {
         return {
           status: isPassed ? "Accepted" : (r.status?.description || "Wrong Answer"),
           passed: isPassed,
-          stdout: "REDACTED",
-          expected: "REDACTED",
-          stderr: isMemorySafetyViolation ? "Memory Safety Violation" : "",
+          stdout: actualOutput,
+          expected: expectedOutput,
+          stderr: stderrLog,
           compile_output: "",
-          input: "REDACTED",
-          is_public: false,
+          input: testCases[idx].input || "",
+          is_public: testCases[idx].is_public ?? true,
           weight: caseWeight,
           memory_leak: isMemorySafetyViolation
         };
@@ -293,7 +287,6 @@ export class ProgrammingGradingEngine {
 
       let S_bb_raw = totalTestWeight > 0 ? earnedTestWeight / totalTestWeight : 0.0;
 
-      // Apply 10% Memory Leak Penalty if Sanitizer Flags Violations
       if (hasAnyMemoryLeak) {
         S_bb = S_bb_raw * 0.90;
         feedback = `Passed test suites, but a 10% memory safety penalty was applied.`;
@@ -304,7 +297,12 @@ export class ProgrammingGradingEngine {
     }
 
     // 6. Master Equation: Final Earned Score Calculation
-    const totalRatio = (weightWb * S_wb) + (weightBb * S_bb);
+    // FIX: Dynamically apply 100% black-box weight if no structural rules exist
+    const hasWbRules = Array.isArray(structuralRules) && structuralRules.length > 0;
+    const effectiveWeightBb = hasWbRules ? weightBb : 1.0;
+    const effectiveWeightWb = hasWbRules ? weightWb : 0.0;
+
+    const totalRatio = (effectiveWeightWb * S_wb) + (effectiveWeightBb * S_bb);
     const finalScore = parseFloat((points * totalRatio).toFixed(2));
 
     return {

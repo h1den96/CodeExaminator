@@ -45,8 +45,44 @@ export class BoilerplateFactory {
     };
   }
 
+  private static getBaseIncludes(): string {
+    return `#include <iostream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <set>
+#include <unordered_set>
+#include <map>
+#include <unordered_map>
+#include <queue>
+#include <stack>
+#include <deque>
+#include <list>
+#include <functional>
+
+using namespace std;
+
+// Universal Stream Cleaner: Sanitizes JSON array syntax ([1,2,3] -> 1 2 3)
+stringstream getCleanInputStream() {
+    string raw, line;
+    while (getline(cin, line)) {
+        raw += line + "\\n";
+    }
+    // Remove brackets and commas for array/grid parsing
+    for (char &c : raw) {
+        if (c == '[' || c == ']' || c == ',') {
+            c = ' ';
+        }
+    }
+    return stringstream(raw);
+}`;
+  }
+
   static createFullHarness(category: QuestionCategory, signature: string): string {
-    const baseIncludes = `#include <iostream>\n#include <vector>\n#include <string>\n#include <algorithm>\n#include <cmath>\n#include <iomanip>\n\nusing namespace std;`;
+    const baseIncludes = this.getBaseIncludes();
     const marker = `// [[STUDENT_CODE_ZONE]]`;
 
     if (category === "CUSTOM") {
@@ -79,11 +115,19 @@ export class BoilerplateFactory {
   }
 
   private static generateScalarHarness(includes: string, marker: string, sig: ParsedSignature): string {
+    const isSingleStringParam = sig.params.length === 1 && sig.params[0].type.includes("string");
+    const isFloatOrDouble = sig.returnType.includes("double") || sig.returnType.includes("float");
+
+    if (isSingleStringParam) {
+      // Handles string parameters cleanly without line-break quote errors
+      return `${includes}\n\n${marker}\n\nint main() {\n    string line, raw;\n    while (getline(cin, line)) {\n        if (!raw.empty()) raw += "\\n";\n        raw += line;\n    }\n    if (raw.length() >= 2 && raw.front() == '\\\"' && raw.back() == '\\\"') {\n        raw = raw.substr(1, raw.length() - 2);\n    }\n    ${sig.returnType === "void" ? `${sig.functionName}(raw);` : `cout << ${sig.functionName}(raw) << endl;`}\n    return 0;\n}`;
+    }
+
     const decls = sig.params.map((p, i) => `${p.type.replace(/[&]/g, "")} p${i};`).join("\n    ");
-    const reads = sig.params.map((_, i) => `p${i}`).join(" >> ");
+    const reads = sig.params.map((_, i) => `ss >> p${i}`).join(" && ");
     const args = sig.params.map((_, i) => `p${i}`).join(", ");
 
-    return `${includes}\n\n${marker}\n\nint main() {\n    ${decls}\n    if (cin >> ${reads}) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${args});` : `auto res = ${sig.functionName}(${args});\n        cout << fixed << setprecision(4) << res << endl;`}\n    }\n    return 0;\n}`;
+    return `${includes}\n\n${marker}\n\nint main() {\n    stringstream ss = getCleanInputStream();\n    ${decls}\n    if (${reads || "true"}) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${args});` : isFloatOrDouble ? `auto res = ${sig.functionName}(${args});\n        cout << fixed << setprecision(1) << res << endl;` : `cout << ${sig.functionName}(${args}) << endl;`}\n    }\n    return 0;\n}`;
   }
 
   private static generateLinearHarness(includes: string, marker: string, sig: ParsedSignature): string {
@@ -93,29 +137,30 @@ export class BoilerplateFactory {
       innerType = vectorTypeMatch[1].replace(/const|&/g, "").trim();
     }
 
+    const hasExtraParams = sig.params.length > 1;
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
-    const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     const callArgs = ["v", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
+    const isReturnVector = sig.returnType.includes("vector");
 
-    return `${includes}\n\n${marker}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<${innerType}> v(n);\n    for(int i = 0; i < n; i++) cin >> v[i];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});\n        for(size_t i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : " ");\n        cout << endl;` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
+    return `${includes}\n\n${marker}\n\nint main() {\n    stringstream ss = getCleanInputStream();\n    vector<${innerType}> allVals;\n    ${innerType} tempVal;\n    while (ss >> tempVal) {\n        allVals.push_back(tempVal);\n    }\n    \n    ${extraDecls}\n    vector<${innerType}> v;\n    ${hasExtraParams ? `if (!allVals.empty()) {\n        p1 = allVals.back();\n        allVals.pop_back();\n        v = allVals;\n    }` : `v = allVals;`}\n    \n    ${isReturnVector ? `auto res = ${sig.functionName}(${callArgs});\n    cout << "[";\n    for(size_t i=0; i<res.size(); i++) cout << res[i] << (i==res.size()-1 ? "" : ", ");\n    cout << "]" << endl;` : sig.returnType === "void" ? `${sig.functionName}(${callArgs});\n    cout << "[";\n    for(size_t i=0; i<v.size(); i++) cout << v[i] << (i==v.size()-1 ? "" : ", ");\n    cout << "]" << endl;` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    return 0;\n}`;
   }
 
   private static generateGridHarness(includes: string, marker: string, sig: ParsedSignature): string {
     const gridTypeMatch = sig.params[0]?.type.match(/vector<vector<(.+)>>/);
     const innerType = gridTypeMatch ? gridTypeMatch[1].replace(/const|&/g, "").trim() : "int";
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
-    const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     const callArgs = ["g", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
 
-    return `${includes}\n\n${marker}\n\nint main() {\n    int r, c;\n    if (!(cin >> r >> c)) return 0;\n    vector<vector<${innerType}>> g(r, vector<${innerType}>(c));\n    for(int i=0; i<r; i++) for(int j=0; j<c; j++) cin >> g[i][j];\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType === "void" ? `${sig.functionName}(${callArgs});` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
+    const isReturnGrid = sig.returnType.includes("vector");
+
+    return `${includes}\n\n${marker}\n\nint main() {\n    stringstream ss = getCleanInputStream();\n    vector<${innerType}> allVals;\n    ${innerType} val;\n    ${extraDecls}\n    \n    while (ss >> val) {\n        allVals.push_back(val);\n    }\n    \n    if (allVals.empty()) return 0;\n    \n    int total = allVals.size();\n    int dim = sqrt(total);\n    if (dim * dim != total) dim = total;\n    int rows = dim, cols = total / dim;\n    \n    vector<vector<${innerType}>> g(rows, vector<${innerType}>(cols));\n    int idx = 0;\n    for(int i=0; i<rows; i++) {\n        for(int j=0; j<cols; j++) {\n            g[i][j] = allVals[idx++];\n        }\n    }\n    \n    ${isReturnGrid ? `auto res = ${sig.functionName}(${callArgs});\n    cout << "[";\n    for(size_t i=0; i<res.size(); i++) {\n        cout << "[";\n        for(size_t j=0; j<res[i].size(); j++) cout << res[i][j] << (j==res[i].size()-1 ? "" : ", ");\n        cout << "]" << (i==res.size()-1 ? "" : ", ");\n    }\n    cout << "]" << endl;` : sig.returnType === "void" ? `${sig.functionName}(${callArgs});` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    return 0;\n}`;
   }
 
   private static generateLinkedListHarness(includes: string, marker: string, sig: ParsedSignature): string {
-    const nodeType = sig.params[0]?.type.replace("*", "").trim() || "ListNode";
+    const nodeType = sig.params[0]?.type.replace("*", "").trim() || "Node";
     const extraDecls = sig.params.slice(1).map((p, i) => `${p.type.replace(/[&]/g, "")} p${i+1};`).join("\n    ");
-    const extraReads = sig.params.length > 1 ? " >> " + sig.params.slice(1).map((_, i) => `p${i+1}`).join(" >> ") : "";
     const callArgs = ["head", ...sig.params.slice(1).map((_, i) => `p${i+1}`)].join(", ");
 
-    return `${includes}\n\nstruct ${nodeType} {\n    int val;\n    ${nodeType} *next;\n    ${nodeType}(int x) : val(x), next(NULL) {}\n};\n\n${marker}\n\n${nodeType}* buildList(const vector<int>& values) {\n    if (values.empty()) return NULL;\n    ${nodeType}* head = new ${nodeType}(values[0]);\n    ${nodeType}* curr = head;\n    for (size_t i = 1; i < values.size(); i++) {\n        curr->next = new ${nodeType}(values[i]);\n        curr = curr->next;\n    }\n    return head;\n}\n\nvoid printList(${nodeType}* head) {\n    while (head) {\n        cout << head->val << (head->next ? " " : "");\n        head = head->next;\n    }\n    cout << endl;\n}\n\nint main() {\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<int> v(n);\n    for(int i=0; i<n; i++) cin >> v[i];\n    ${nodeType}* head = buildList(v);\n    ${extraDecls}\n    if (cin ${extraReads} || true) {\n        ${sig.returnType.includes("*") ? `${nodeType}* result = ${sig.functionName}(${callArgs}); printList(result);` : sig.returnType === "void" ? `${sig.functionName}(${callArgs}); printList(head);` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    }\n    return 0;\n}`;
+    return `${includes}\n\nstruct ${nodeType} {\n    int val;\n    ${nodeType} *next;\n    ${nodeType}(int x) : val(x), next(NULL) {}\n};\n\n${marker}\n\n${nodeType}* buildList(const vector<int>& values) {\n    if (values.empty()) return NULL;\n    ${nodeType}* head = new ${nodeType}(values[0]);\n    ${nodeType}* curr = head;\n    for (size_t i = 1; i < values.size(); i++) {\n        curr->next = new ${nodeType}(values[i]);\n        curr = curr->next;\n    }\n    return head;\n}\n\nvoid printList(${nodeType}* head) {\n    while (head) {\n        cout << head->val << (head->next ? " " : "");\n        head = head->next;\n    }\n    cout << endl;\n}\n\nint main() {\n    stringstream ss = getCleanInputStream();\n    vector<int> v;\n    int val;\n    ${extraDecls}\n    \n    while (ss >> val) {\n        v.push_back(val);\n    }\n    \n    ${nodeType}* head = buildList(v);\n    ${sig.returnType.includes("*") ? `${nodeType}* result = ${sig.functionName}(${callArgs}); printList(result);` : sig.returnType === "void" ? `${sig.functionName}(${callArgs}); printList(head);` : `cout << ${sig.functionName}(${callArgs}) << endl;`}\n    return 0;\n}`;
   }
 }

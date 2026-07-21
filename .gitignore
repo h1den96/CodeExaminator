@@ -19,3 +19,9 @@ yarn-error.log*
 # Production builds
 /frontend/build
 /frontend/dist
+
+# misc files
+/judge0/isolate_job.rb
+/judge0/isolate-cgroup-v2.patch
+/backend/full_validation_output.txt
+/backend/src/db/seeds/
