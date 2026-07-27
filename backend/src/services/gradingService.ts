@@ -114,14 +114,35 @@ export class GradingService {
    * Strips out hidden newlines, trailing whitespaces, and normalizes floats.
    */
   static smartCompare(actual: string, expected: string): boolean {
-    // Drop platform carriage lines \r and drop external terminal whitespace pads
-    const cleanActual = actual.replace(/\r/g, "").trim();
-    const cleanExpected = expected.replace(/\r/g, "").trim();
+    let cleanActual = actual.replace(/\r/g, "").trim();
+    let cleanExpected = expected.replace(/\r/g, "").trim();
 
-    // 1. Structural matching normalization check
     if (cleanActual === cleanExpected) return true;
 
-    // 2. Continuous epsilon variance mathematical matching
+    // Remove surrounding quotes if present
+    if (
+        (cleanExpected.startsWith('"') && cleanExpected.endsWith('"')) ||
+        (cleanExpected.startsWith("'") && cleanExpected.endsWith("'"))
+    ) {
+        cleanExpected = cleanExpected.slice(1, -1);
+    }
+
+    if (
+        (cleanActual.startsWith('"') && cleanActual.endsWith('"')) ||
+        (cleanActual.startsWith("'") && cleanActual.endsWith("'"))
+    ) {
+        cleanActual = cleanActual.slice(1, -1);
+    }
+
+    if (cleanActual === cleanExpected) return true;
+
+    // Normalize spacing inside vectors/arrays/lists by stripping all whitespace 
+    // for structural comparison (e.g., "[1, -1, 0]" vs "[1,-1,0]")
+    const strippedActual = cleanActual.replace(/\s+/g, "");
+    const strippedExpected = cleanExpected.replace(/\s+/g, "");
+
+    if (strippedActual === strippedExpected) return true;
+
     const numA = parseFloat(cleanActual);
     const numE = parseFloat(cleanExpected);
 

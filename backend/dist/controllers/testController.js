@@ -156,9 +156,7 @@ async function runSubmissionCode(req, res) {
         const submissionId = Number(req.params.id);
         const { question_id, code } = req.body;
         const user = req.user;
-        const studentId = user ? String(user.user_id) : "0";
         console.log(`[testController] Run Code request for Q${question_id}, Sub${submissionId}`);
-        // 1. Fetch submission_question metadata ID matching your tables
         const sqRes = await db_1.examDb.query(`SELECT submission_question_id 
        FROM exam.submission_questions 
        WHERE submission_id = $1 AND question_id = $2`, [submissionId, question_id]);
@@ -166,12 +164,16 @@ async function runSubmissionCode(req, res) {
             return res.status(404).json({ error: "Submission question matching profile not found." });
         }
         const targetSubmissionQuestionId = sqRes.rows[0].submission_question_id;
-        // 2. Delegate execution logic completely to our validated service layer
         const gradingPackage = await codeExecutionService_1.CodeExecutionService.executeAndGrade(targetSubmissionQuestionId, code, db_1.examDb);
-        // 3. Return payload structure cleanly structured to retain compatibility with your frontend keys
+        const hasCompileError = Array.isArray(gradingPackage.details) && gradingPackage.details.some((detail) => detail.status === "Compilation Error");
+        const securityViolation = Array.isArray(gradingPackage.details) && gradingPackage.details.some((detail) => detail.status === "Security Violation");
         return res.json({
-            structural_analysis: gradingPackage.details[0]?.status === "Security Violation" ? { score: 0 } : { score: gradingPackage.question_grade > 2 ? 1 : 1 },
-            test_results: gradingPackage.details,
+            status: securityViolation ? "Security Violation" : (hasCompileError ? "Compilation Error" : "Success"),
+            structural_analysis: {
+                score: securityViolation ? 0 : 1,
+                details: gradingPackage.details?.[0]?.status === "Security Violation" ? [] : gradingPackage.structural_analysis || []
+            },
+            test_results: gradingPackage.details || [],
             question_grade: gradingPackage.question_grade,
         });
     }

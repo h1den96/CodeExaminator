@@ -2,6 +2,7 @@ import axios from "axios";
 import { StructuralAnalysisService, AnalysisRule } from "./structuralAnalysisService";
 import { BoilerplateFactory, QuestionCategory } from "./boilerplateFactory";
 import { GradingService } from "./gradingService";
+import fs from "fs";
 
 const RUNTIME_ENGINE_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 const DEFAULT_LANG_ID = 54;
@@ -124,6 +125,11 @@ export class ProgrammingGradingEngine {
       };
     }
 
+    // Sanity check: log if student code lacks function body
+    if (!cleanedCode.includes("{")) {
+      console.warn(`[WARNING] Received code without function body '{' for signature: ${signature}`);
+    }
+
     // 2. White-Box Track: Dynamic Structural AST Analysis
     const wbResult = await StructuralAnalysisService.analyze(studentCode, structuralRules);
     const S_wb = wbResult.score;
@@ -133,22 +139,35 @@ export class ProgrammingGradingEngine {
     }
 
     // 3. Prepare Runtime Harness
-    const defaultHarness = BoilerplateFactory.createFullHarness(category, signature);
-    let finalSourceCode = "";
+    // Pass as single options object to prevent positional parameter mismatch
+    const finalSourceCode = BoilerplateFactory.createFullHarness({
+      studentCode: cleanedCode,
+      signatureStr: signature,
+      customBoilerplate: boilerplateCode,
+      category: category
+    });
 
-    if (boilerplateCode && boilerplateCode.trim().length > 0) {
-      let activeBoilerplate = boilerplateCode;
-      if (activeBoilerplate.includes("// {{STUDENT_CODE}}")) {
-        activeBoilerplate = activeBoilerplate.replace("// {{STUDENT_CODE}}", "// [[STUDENT_CODE_ZONE]]");
-      }
-      if (activeBoilerplate.includes("// [[STUDENT_CODE_ZONE]]")) {
-        finalSourceCode = activeBoilerplate.replace("// [[STUDENT_CODE_ZONE]]", cleanedCode);
-      } else {
-        finalSourceCode = activeBoilerplate + "\n\n" + cleanedCode;
-      }
-    } else {
-      finalSourceCode = defaultHarness.replace("// [[STUDENT_CODE_ZONE]]", cleanedCode);
+    // ==================== DIAGNOSTIC LOGGING ====================
+    try {
+      fs.writeFileSync("/tmp/last_generated_harness.cpp", finalSourceCode);
+    } catch (e) {
+      // Ignore file write errors if /tmp isn't writeable
     }
+
+    console.log("=== [DEBUG] Category ===", category);
+    console.log("=== [DEBUG] Function Signature ===", signature);
+    console.log("=== [DEBUG] Cleaned Student Code ===");
+    console.log(cleanedCode);
+    console.log("=== [DEBUG] Final Generated Source Code (Around main) ===");
+    const lines = finalSourceCode.split("\n");
+    const mainIndex = lines.findIndex(l => l.includes("int main"));
+    if (mainIndex !== -1) {
+      console.log(lines.slice(Math.max(0, mainIndex - 5), mainIndex + 15).join("\n"));
+    } else {
+      console.log(lines.slice(-20).join("\n"));
+    }
+    console.log("=================================================");
+    // ============================================================
 
     const payloads = testCases.map((tc: any) => ({
       source_code: this.safeEncode(finalSourceCode),
@@ -297,7 +316,6 @@ export class ProgrammingGradingEngine {
     }
 
     // 6. Master Equation: Final Earned Score Calculation
-    // FIX: Dynamically apply 100% black-box weight if no structural rules exist
     const hasWbRules = Array.isArray(structuralRules) && structuralRules.length > 0;
     const effectiveWeightBb = hasWbRules ? weightBb : 1.0;
     const effectiveWeightWb = hasWbRules ? weightWb : 0.0;

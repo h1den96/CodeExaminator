@@ -4,46 +4,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeExecutionService = void 0;
-const axios_1 = __importDefault(require("axios"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const structuralAnalysisService_1 = require("./structuralAnalysisService");
-const boilerplateFactory_1 = require("./boilerplateFactory");
-const gradingService_1 = require("./gradingService");
+const programmingGradingEngine_1 = require("./programmingGradingEngine");
 dotenv_1.default.config();
-const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:2358";
 class CodeExecutionService {
-    static safeDecode(str) {
-        if (!str)
-            return "";
-        try {
-            return Buffer.from(str, "base64").toString("utf-8");
-        }
-        catch (e) {
-            return str;
-        }
-    }
-    static safeEncode(str) {
-        if (!str)
-            return "";
-        return Buffer.from(str).toString("base64");
-    }
     static async executeAndGrade(submissionQuestionId, studentCode, db) {
-        const HARDCODED_LANG_ID = 54;
         try {
-            console.log("DEBUG: Starting Hybrid Grading for SQ_ID: " + submissionQuestionId);
-            const analysis = gradingService_1.GradingService.performStaticAnalysis(studentCode);
-            if (!analysis.passed) {
-                return {
-                    question_grade: 0,
-                    details: [{
-                            status: "Security Violation",
-                            passed: false,
-                            compile_output: analysis.error
-                        }]
-                };
-            }
             const questionQuery = `
-        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, sq.points as max_points, q.question_type
+        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, 
+               sq.points as max_points, q.question_type, q.structural_rules, pq.language_id,
+               q.weight_wb, q.weight_bb, pq.cpu_time_limit, pq.memory_limit
         FROM exam.submission_questions sq
         JOIN exam.questions q ON sq.question_id = q.question_id
         JOIN exam.programming_questions pq ON sq.question_id = pq.question_id
@@ -57,82 +27,30 @@ class CodeExecutionService {
             const category = qRes.rows[0].category;
             const signature = qRes.rows[0].function_signature;
             const dbBoilerplate = qRes.rows[0].boilerplate_code;
-            const structuralMaxPoints = maxPoints * 0.2;
-            const blackBoxMaxPoints = maxPoints - structuralMaxPoints;
-            let structuralPointsAwarded = 0;
-            // Clean out block/line comments from code answer before verifying loop metrics
-            const cleanedStudentCode = studentCode.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
-            const hasLoop = structuralAnalysisService_1.StructuralAnalysisService.hasLoop(cleanedStudentCode);
-            if (hasLoop) {
-                structuralPointsAwarded = structuralMaxPoints;
-                console.log("Structural Check Passed: +" + structuralPointsAwarded + " pts");
-            }
-            else {
-                console.log("Structural Check Failed: No loop detected.");
-            }
-            if (!testCases || testCases.length === 0)
-                throw new Error("No test cases");
-            let executableCompilationPackage = "";
-            if (dbBoilerplate && dbBoilerplate.trim() !== "") {
-                executableCompilationPackage = dbBoilerplate.replace("// {{STUDENT_CODE}}", studentCode);
-            }
-            else {
-                const frameTemplate = boilerplateFactory_1.BoilerplateFactory.createFullHarness(category, signature);
-                executableCompilationPackage = frameTemplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
-            }
-            const submissions = testCases.map((tc) => ({
-                source_code: this.safeEncode(executableCompilationPackage),
-                language_id: HARDCODED_LANG_ID,
-                stdin: this.safeEncode(tc.input || ""),
-                expected_output: this.safeEncode(tc.expected_output || tc.expected || ""),
-                cpu_time_limit: 2.0,
-            }));
-            const submitResponse = await axios_1.default.post(`${JUDGE0_URL}/submissions/batch?base64_encoded=true&wait=false`, { submissions });
-            let results = submitResponse.data;
-            if (!Array.isArray(results))
-                results = [results];
-            const tokens = results.map((r) => r.token).join(",");
-            let attempts = 0;
-            let isDone = false;
-            while (attempts < 10 && !isDone) {
-                const checkResponse = await axios_1.default.get(`${JUDGE0_URL}/submissions/batch?tokens=${tokens}&base64_encoded=true&fields=token,stdout,stderr,status,compile_output`);
-                results = checkResponse.data.submissions;
-                if (results.every((r) => r.status && r.status.id > 2)) {
-                    isDone = true;
-                }
-                else {
-                    attempts++;
-                    await this.sleep(1000 + attempts * 500);
-                }
-            }
-            if (!isDone)
-                throw new Error("Grading timed out.");
-            let passedCount = 0;
-            const cleanDetails = results.map((r, idx) => {
-                const actualOutput = this.safeDecode(r.stdout);
-                const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
-                const isPassed = gradingService_1.GradingService.smartCompare(actualOutput, expectedOutput);
-                if (isPassed)
-                    passedCount++;
-                return {
-                    status: isPassed ? "Accepted" : (r.status?.description || "Wrong Answer"),
-                    passed: isPassed,
-                    stdout: actualOutput,
-                    expected: expectedOutput,
-                    stderr: this.safeDecode(r.stderr),
-                    compile_output: this.safeDecode(r.compile_output),
-                    input: testCases[idx].input,
-                    is_public: testCases[idx].is_public ?? true
-                };
+            const structuralRules = qRes.rows[0].structural_rules || [];
+            const weightWb = qRes.rows[0].weight_wb ? Number(qRes.rows[0].weight_wb) : 0.2;
+            const weightBb = qRes.rows[0].weight_bb ? Number(qRes.rows[0].weight_bb) : 0.8;
+            const cpuLimit = qRes.rows[0].cpu_time_limit ? Number(qRes.rows[0].cpu_time_limit) : 2.0;
+            const memoryLimit = qRes.rows[0].memory_limit ? Number(qRes.rows[0].memory_limit) : 128000;
+            const languageId = qRes.rows[0].language_id ? Number(qRes.rows[0].language_id) : 54;
+            const evaluation = await programmingGradingEngine_1.ProgrammingGradingEngine.evaluate({
+                studentCode,
+                testCases,
+                points: maxPoints,
+                category,
+                signature,
+                boilerplateCode: dbBoilerplate,
+                structuralRules,
+                weightWb,
+                weightBb,
+                cpuLimit,
+                memoryLimit,
+                languageId
             });
-            const testScore = (passedCount / testCases.length) * blackBoxMaxPoints;
-            const finalScore = parseFloat((testScore + structuralPointsAwarded).toFixed(2));
             const finalMeta = {
-                test_results: cleanDetails,
-                structural_analysis: {
-                    loop_detected: hasLoop,
-                    points_awarded: structuralPointsAwarded,
-                },
+                feedback: evaluation.feedback,
+                test_results: evaluation.details,
+                structural_analysis: evaluation.structuralDetails,
             };
             const upsertQuery = `
         INSERT INTO exam.student_answers 
@@ -150,23 +68,17 @@ class CodeExecutionService {
                 submissionQuestionId,
                 studentCode,
                 JSON.stringify(finalMeta),
-                finalScore,
+                evaluation.earnedPoints,
             ]);
-            console.log("[CodeExecutionService] Final Data Package:", {
-                grade: finalScore,
-                detailsCount: cleanDetails.length
-            });
             return {
-                question_grade: finalScore,
-                details: cleanDetails,
+                question_grade: evaluation.earnedPoints,
+                details: evaluation.details,
             };
         }
         catch (err) {
-            console.error("Hybrid Grading Failed:", err);
+            console.error(err);
             throw err;
         }
     }
 }
 exports.CodeExecutionService = CodeExecutionService;
-CodeExecutionService.structuralService = new structuralAnalysisService_1.StructuralAnalysisService();
-CodeExecutionService.sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -14,6 +14,27 @@ class StructuralAnalysisService {
             this.parser.setLanguage(tree_sitter_cpp_1.default);
         }
     }
+    static calculateSyntacticHealth(code) {
+        this.initParser();
+        const tree = this.parser.parse(code);
+        const root = tree.rootNode;
+        let totalNodes = 0;
+        let errorNodes = 0;
+        function traverse(node) {
+            totalNodes++;
+            if (node.type === "ERROR" || node.isMissing) {
+                errorNodes++;
+            }
+            for (let i = 0; i < node.childCount; i++) {
+                const child = node.child(i);
+                if (child)
+                    traverse(child);
+            }
+        }
+        traverse(root);
+        const healthIndex = totalNodes > 0 ? 1.0 - (errorNodes / totalNodes) : 0.0;
+        return { healthIndex, totalNodes, errorNodes };
+    }
     static calculateCyclomaticComplexity(node) {
         let complexity = 1;
         const branchingTypes = [
@@ -51,7 +72,6 @@ class StructuralAnalysisService {
         const types = ["preproc_include", "preproc_def", "preproc_function_def"];
         return node.descendantsOfType(types).length > 0;
     }
-    // New AST helper to verify if any executable logic exists inside the code tree
     static isBodyEmpty(node) {
         const functions = node.descendantsOfType("function_definition");
         if (functions.length === 0)
@@ -59,20 +79,52 @@ class StructuralAnalysisService {
         for (const fn of functions) {
             const body = fn.children.find((c) => c.type === "compound_statement");
             if (body) {
-                // Exclude curly braces { and } from token calculation
                 const meaningfulChildren = body.children.filter((c) => c.text !== "{" && c.text !== "}");
                 if (meaningfulChildren.length > 0) {
-                    return false; // Found actual internal statement logic
+                    return false;
                 }
             }
         }
         return true;
     }
+    static detectLogarithmicComplexity(node) {
+        const updateExpressions = node.descendantsOfType("assignment_expression");
+        for (const expr of updateExpressions) {
+            const op = expr.children[1]?.text;
+            if (op === "/=" || op === ">>=")
+                return true;
+        }
+        const binaryExprs = node.descendantsOfType("binary_expression");
+        for (const expr of binaryExprs) {
+            const op = expr.children[1]?.text;
+            if (op === "/" || op === ">>") {
+                const parent = expr.parent;
+                if (parent && (parent.type === "assignment_expression" || parent.type === "init_declarator")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    static detectSmartPointers(node) {
+        const templateTypes = node.descendantsOfType("template_type");
+        for (const t of templateTypes) {
+            const text = t.text;
+            if (text.includes("unique_ptr") || text.includes("shared_ptr") || text.includes("make_unique") || text.includes("make_shared")) {
+                return true;
+            }
+        }
+        return false;
+    }
+    static detectRawPointers(node) {
+        const newExprs = node.descendantsOfType("new_expression");
+        const deleteExprs = node.descendantsOfType("delete_expression");
+        return newExprs.length > 0 || deleteExprs.length > 0;
+    }
     static async analyze(code, rules) {
         this.initParser();
         const tree = this.parser.parse(code);
         const root = tree.rootNode;
-        // 1. Fatal Gates Check
         if (this.hasMainFunction(root)) {
             return {
                 score: 0,
@@ -91,7 +143,6 @@ class StructuralAnalysisService {
                     }]
             };
         }
-        // NEW STRUCTURAL GATE: Zero out scores if no executable content is added
         if (this.isBodyEmpty(root)) {
             return {
                 score: 0,
@@ -104,7 +155,6 @@ class StructuralAnalysisService {
         const details = [];
         let earnedWeight = 0;
         let totalPossibleWeight = 0;
-        // 2. Security Gate
         const forbiddenFunctions = ["system", "fork", "exec", "fopen", "popen", "socket"];
         let securityPassed = true;
         for (const fnName of forbiddenFunctions) {
@@ -123,7 +173,6 @@ class StructuralAnalysisService {
         });
         if (!securityPassed)
             return { score: 0, details };
-        // 3. Cyclomatic Complexity Evaluation
         const complexityScore = this.calculateCyclomaticComplexity(root);
         const complexityWeight = 30;
         const complexityThreshold = 15;
@@ -144,7 +193,6 @@ class StructuralAnalysisService {
             earned: complexityEarned,
             actual_value: complexityScore
         });
-        // 4. Professor Defined Assessment Processing
         for (const rule of rules) {
             let passed = false;
             const weight = rule.weight || 0;
@@ -155,6 +203,15 @@ class StructuralAnalysisService {
             }
             else if (rule.target === "loop") {
                 passed = this.hasLoop(code);
+            }
+            else if (rule.target === "logarithmic_complexity") {
+                passed = this.detectLogarithmicComplexity(root);
+            }
+            else if (rule.target === "smart_pointers") {
+                passed = this.detectSmartPointers(root);
+            }
+            else if (rule.target === "raw_pointers") {
+                passed = !this.detectRawPointers(root);
             }
             else if (rule.type === "FORBID" && rule.target === "function_call") {
                 const forbiddenName = rule.name || "";
@@ -203,9 +260,7 @@ class StructuralAnalysisService {
         return code.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
     }
     static hasLoop(studentCode) {
-        // 2. Automatically clean the code incoming from the execution engine
         const cleanedCode = this.stripComments(studentCode);
-        // 3. Scan only the executable lines
         const loopRegex = /\b(for|while|do)\b/;
         return loopRegex.test(cleanedCode);
     }

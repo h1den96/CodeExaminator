@@ -6,7 +6,6 @@ const jwt = require('jsonwebtoken');
 const API_HOST = process.env.API_HOST || '127.0.0.1';
 const API_PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET;
-
 if (!JWT_SECRET) {
   throw new Error("JWT_ACCESS_SECRET not found in environment — check .env is in this directory");
 }
@@ -99,9 +98,32 @@ async function prepareTestSubmissionContext(client, questionIds) {
 
 async function cleanupTestSubmissionContext(client, testId, submissionId) {
   console.log('Cleaning up temporary harness context...');
+  await client.query(
+    `DELETE FROM exam.student_answers 
+     WHERE submission_question_id IN (
+       SELECT submission_question_id FROM exam.submission_questions WHERE submission_id = $1
+     );`, 
+    [submissionId]
+  );
   await client.query(`DELETE FROM exam.submission_questions WHERE submission_id = $1;`, [submissionId]);
   await client.query(`DELETE FROM exam.submissions WHERE submission_id = $1;`, [submissionId]);
   await client.query(`DELETE FROM exam.tests WHERE test_id = $1;`, [testId]);
+}
+
+async function mapConcurrent(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await fn(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 async function runValidation() {
@@ -134,24 +156,17 @@ async function runValidation() {
     submissionId = context.submissionId;
     const authToken = context.token;
 
-    let passedCount = 0;
-    let failedCount = 0;
-    const failures = [];
+    // Adjust CONCURRENCY via environment variable or default to 4 parallel workers
+    const CONCURRENCY = parseInt(process.env.CONCURRENCY || '4', 10);
 
-    console.log(`\nValidating solutions against backend endpoint (/api/submissions/submit-code)...\n`);
-    console.log('='.repeat(80));
-    console.log(`ID   | Title                                    | Score | Status`);
-    console.log('='.repeat(80));
+    console.log(`\nValidating solutions concurrently (Level: ${CONCURRENCY}) against /api/submissions/submit-code...\n`);
 
-    for (const q of questions) {
+    const results = await mapConcurrent(questions, CONCURRENCY, async (q) => {
       const qId = q.question_id;
       const title = q.title.padEnd(40, ' ').substring(0, 40);
 
       if (!q.reference_solution || q.reference_solution.trim() === '') {
-        console.log(`${String(qId).padEnd(4)} | ${title} | N/A   | MISSING SOLUTION`);
-        failures.push({ id: qId, title: q.title, reason: 'Empty reference solution' });
-        failedCount++;
-        continue;
+        return { isPassed: false, qId, title, grade: 'N/A', reason: 'Empty reference solution' };
       }
 
       try {
@@ -161,31 +176,43 @@ async function runValidation() {
           code: q.reference_solution,
         };
 
-        const res = await postJson(`/api/submissions/submit-code`, payload, authToken);
-        const body = res.body;
-
+        const response = await postJson('/api/submissions/submit-code', payload, authToken);
+        const body = response.body;
         const grade = body && body.question_grade !== undefined ? body.question_grade : 0;
-        const isPassed = res.statusCode === 200 && grade >= 9.9;
+        const isPassed = response.statusCode === 200 && grade >= 9.9;
 
-        if (isPassed) {
-          console.log(`${String(qId).padEnd(4)} | ${title} | ${grade}/10 | PASS`);
-          passedCount++;
-        } else {
-          console.log(`${String(qId).padEnd(4)} | ${title} | ${grade}/10 | FAIL (HTTP ${res.statusCode})`);
-          
-          // Isolate targeted questions (e.g. 91, 116) for complete JSON payload trace printing
-
-            console.log(`\n========== FULL DEBUG PAYLOAD FOR TARGET Q${qId} ==========`);
-            console.dir(body, { depth: null });
-            console.log(`===========================================================\n`);
-          
-
-          failures.push({ id: qId, title: q.title, response: body });
-          failedCount++;
-        }
+        return {
+          isPassed,
+          qId,
+          title,
+          grade,
+          statusCode: response.statusCode,
+          body,
+        };
       } catch (err) {
-        console.log(`${String(qId).padEnd(4)} | ${title} | ERR   | ERROR`);
-        failures.push({ id: qId, title: q.title, error: err.message });
+        return { isPassed: false, qId, title, grade: 'ERR', error: err.message };
+      }
+    });
+
+    let passedCount = 0;
+    let failedCount = 0;
+
+    console.log('='.repeat(80));
+    console.log('ID   | Title                                    | Score | Status');
+    console.log('='.repeat(80));
+
+    for (const res of results) {
+      if (res.isPassed) {
+        console.log(`${String(res.qId).padEnd(4)} | ${res.title} | ${res.grade}/10 | PASS`);
+        passedCount++;
+      } else {
+        console.log(`${String(res.qId).padEnd(4)} | ${res.title} | ${res.grade}/10 | FAIL (HTTP ${res.statusCode || 'ERR'})`);
+        
+        if (res.body || res.reason || res.error) {
+          console.log(`\n--- Diagnostic Error Output for Question ${res.qId} (${res.title.trim()}) ---`);
+          console.dir(res.body || { error: res.error || res.reason }, { depth: null });
+          console.log('---------------------------------------------------\n');
+        }
         failedCount++;
       }
     }
@@ -193,8 +220,8 @@ async function runValidation() {
     console.log('='.repeat(80));
     console.log(`Summary: Passed ${passedCount}/${questions.length}`);
 
-    if (failures.length > 0) {
-      console.log(`\nTotal failures: ${failures.length}`);
+    if (failedCount > 0) {
+      console.log(`Total failures: ${failedCount}`);
     }
   } finally {
     if (testId && submissionId) {

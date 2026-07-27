@@ -5,16 +5,36 @@ const db_1 = require("../db/db");
 class AdminService {
     /**
      * Universal Create Question Function
-     * FIXED: Now correctly inserts category and technical metadata.
+     * Saves weights, grace settings, structural rules, and technical metadata.
      */
     static async createQuestion(dto) {
         const client = await db_1.examDb.connect();
         try {
             await client.query("BEGIN");
+            const weightWb = dto.weight_wb ?? 0.20;
+            const weightBb = dto.weight_bb ?? 0.80;
+            const graceMode = dto.grace_mode || "STANDARD";
+            const graceThreshold = dto.grace_threshold ?? 0.90;
+            const graceCap = dto.grace_cap ?? 0.15;
+            const structuralRules = dto.structural_rules || [];
             const qRes = await client.query(`INSERT INTO exam.questions 
-         (title, body, question_type, difficulty, created_by, allow_multiple)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING question_id`, [dto.title, dto.body, dto.question_type, dto.difficulty, dto.teacher_id, dto.allow_multiple || false]);
+         (title, body, question_type, difficulty, created_by, allow_multiple,
+          weight_wb, weight_bb, grace_mode, grace_threshold, grace_cap, structural_rules)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING question_id`, [
+                dto.title,
+                dto.body,
+                dto.question_type,
+                dto.difficulty,
+                dto.teacher_id,
+                dto.allow_multiple || false,
+                weightWb,
+                weightBb,
+                graceMode,
+                graceThreshold,
+                graceCap,
+                JSON.stringify(structuralRules)
+            ]);
             const qId = qRes.rows[0].question_id;
             if (dto.topic_ids && dto.topic_ids.length > 0) {
                 for (const tId of dto.topic_ids) {
@@ -33,7 +53,6 @@ class AdminService {
            VALUES ($1, $2)`, [qId, dto.correct_answer]);
             }
             else if (dto.question_type === "programming") {
-                // FIXED: Now saves category and function signature
                 await client.query(`INSERT INTO exam.programming_questions 
            (question_id, category, function_signature, language_id, starter_code, test_cases)
            VALUES ($1, $2, $3, $4, $5, $6)`, [
@@ -58,7 +77,6 @@ class AdminService {
     }
     /**
      * Create Test Blueprint (Exam)
-     * FIXED: Included 'category' in the slot insertion SQL.
      */
     static async createTest(dto) {
         const client = await db_1.examDb.connect();
@@ -83,10 +101,7 @@ class AdminService {
         `;
                 for (let i = 0; i < dto.slots.length; i++) {
                     const s = dto.slots[i];
-                    // Μετατροπή σε πεζά για να ταιριάζουν με το CHECK constraint της βάσης
-                    // (mcq, programming, true_false)
                     let dbType = String(s.question_type).toLowerCase();
-                    // Διόρθωση τυχόν ασυμφωνίας ονομάτων από το frontend
                     if (dbType === "multiple_choice")
                         dbType = "mcq";
                     if (dbType === "t/f")
@@ -97,7 +112,7 @@ class AdminService {
                         testId,
                         i + 1,
                         s.topic_id,
-                        dbType, // Πλέον στέλνει "mcq" και όχι "multiple_choice"
+                        dbType,
                         s.difficulty.toLowerCase(),
                         s.category,
                         s.points,

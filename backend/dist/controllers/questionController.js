@@ -25,11 +25,10 @@ const getProgrammingCategories = (req, res) => {
     res.json(categories);
 };
 exports.getProgrammingCategories = getProgrammingCategories;
-// POST /api/questions (Create Question)
+// POST /api/questions (Create Generic Question)
 const createQuestion = async (req, res) => {
     try {
         const user = req.user;
-        // Safety check (even though middleware handles it)
         if (!user || user.role !== "teacher") {
             return res.status(403).json({ error: "Access denied" });
         }
@@ -37,7 +36,6 @@ const createQuestion = async (req, res) => {
             ...req.body,
             teacher_id: user.user_id,
         };
-        // Basic Validation
         if (!payload.difficulty || !payload.topic_ids) {
             return res.status(400).json({ error: "Missing difficulty or topics" });
         }
@@ -50,6 +48,7 @@ const createQuestion = async (req, res) => {
     }
 };
 exports.createQuestion = createQuestion;
+// POST /api/questions/programming (Create Programming Question with Hybrid Blueprint)
 const createProgrammingQuestion = async (req, res) => {
     try {
         const user = req.user;
@@ -57,31 +56,33 @@ const createProgrammingQuestion = async (req, res) => {
         if (!user || user.role !== "teacher") {
             return res.status(403).json({ error: "Access denied" });
         }
-        const { title, body, difficulty, topic_ids, starter_code, test_cases } = req.body;
+        const { title, body, difficulty, topic_ids, starter_code, test_cases, weight_wb, weight_bb, grace_mode, grace_threshold, grace_cap, structural_rules, } = req.body;
         // 2. Validation
         if (!title || !body || !difficulty || !topic_ids) {
             return res.status(400).json({ error: "Missing required basic fields" });
-        }
-        if (!starter_code) {
-            return res.status(400).json({ error: "Starter code is required" });
         }
         if (!test_cases || !Array.isArray(test_cases) || test_cases.length === 0) {
             return res
                 .status(400)
                 .json({ error: "At least one test case is required" });
         }
-        // 3. Prepare Payload for Service
+        // 3. Prepare Payload with fallback defaults for missing parameters
         const payload = {
             teacher_id: user.user_id,
             title,
             body,
             difficulty,
             topic_ids,
-            starter_code,
-            test_cases, // Array of { input: "...", expected: "..." }
+            starter_code: starter_code || "",
+            test_cases,
+            weight_wb: weight_wb ?? 0.20,
+            weight_bb: weight_bb ?? 0.80,
+            grace_mode: grace_mode || "STANDARD",
+            grace_threshold: grace_threshold ?? 0.90,
+            grace_cap: grace_cap ?? 0.15,
+            structural_rules: structural_rules || [],
         };
-        // 4. Call Service
-        // We will create this function in AdminService next
+        // 4. Call Service to persist in PostgreSQL
         const result = await adminService_1.AdminService.createProgrammingQuestion(payload);
         res.status(201).json(result);
     }
@@ -91,6 +92,7 @@ const createProgrammingQuestion = async (req, res) => {
     }
 };
 exports.createProgrammingQuestion = createProgrammingQuestion;
+// POST /api/questions/mcq
 const createMCQ = async (req, res) => {
     try {
         const { title, body, difficulty, topic_ids, options } = req.body;

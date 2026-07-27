@@ -12,7 +12,7 @@ node_cron_1.default.schedule("* * * * *", async () => {
         SELECT s.submission_id 
         FROM exam.submissions s
         JOIN exam.tests t ON s.test_id = t.test_id
-        WHERE s.status = 'started' 
+        WHERE s.status = 'in_progress' 
         AND NOW() > (s.started_at + (t.duration_minutes * interval '1 minute'))
     `;
         const expiredSubmissions = await db_1.examDb.query(query);
