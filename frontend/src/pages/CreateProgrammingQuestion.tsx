@@ -35,8 +35,19 @@ export default function CreateProgrammingQuestion() {
   const [categoriesList, setCategoriesList] = useState<any[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<number | "">("");
   const [starterCode, setStarterCode] = useState(
-    `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}`
-  );
+  `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}`
+);
+  const [helperCode, setHelperCode] = useState("");
+
+  // Harness / Boilerplate Generation State
+  const [functionSignature, setFunctionSignature] = useState("");
+  const [referenceSolution, setReferenceSolution] = useState("");
+  const [boilerplateMode, setBoilerplateMode] = useState<"auto" | "custom">("auto");
+  const [boilerplateCode, setBoilerplateCode] = useState("");
+  const [isValidated, setIsValidated] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validationResults, setValidationResults] = useState<any[] | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Hybrid Blueprint & Grading Configuration State
   const [weightWb, setWeightWb] = useState(0.20);
@@ -69,6 +80,20 @@ export default function CreateProgrammingQuestion() {
       .then((res) => setCategoriesList(res.data))
       .catch((err) => console.error("Failed to load categories", err));
   }, []);
+
+  // CUSTOM harness category cannot be auto-generated — force custom boilerplate mode
+  useEffect(() => {
+    if (category === "CUSTOM" && boilerplateMode === "auto") {
+      setBoilerplateMode("custom");
+    }
+  }, [category, boilerplateMode]);
+
+  // Any edit to fields the harness/tests depend on invalidates the last validation run
+  useEffect(() => {
+    setIsValidated(false);
+    setValidationResults(null);
+    setValidationError(null);
+  }, [functionSignature, referenceSolution, category, boilerplateMode, boilerplateCode, helperCode, testCases]);
 
   // Handlers for Weight Split
   const handleWeightWbChange = (val: number) => {
@@ -126,9 +151,59 @@ export default function CreateProgrammingQuestion() {
     setStructuralRules(newRules);
   };
 
+  // Validate the harness (auto-generated or custom) against the reference solution via Judge0
+  const handleValidateBoilerplate = async () => {
+    if (!functionSignature || !referenceSolution) {
+      alert("Function Signature and Reference Solution are required before validating.");
+      return;
+    }
+    if (category === "CUSTOM" && !boilerplateCode.trim()) {
+      alert("CUSTOM category questions require boilerplate code before validating.");
+      return;
+    }
+
+    setValidating(true);
+    setValidationError(null);
+    try {
+      const res = await api.post("/questions/programming/validate-boilerplate", {
+        function_signature: functionSignature,
+        reference_solution: referenceSolution,
+        category,
+        helper_code: helperCode,
+        boilerplate_code: boilerplateMode === "custom" ? boilerplateCode : null,
+        test_cases: testCases,
+      });
+
+      setValidationResults(res.data.test_results || []);
+      setIsValidated(res.data.all_passed === true);
+
+      if (!res.data.all_passed) {
+        alert("Validation failed — see results below. Fix the reference solution, test cases, or boilerplate code and try again.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setValidationError(err.response?.data?.error || "Validation request failed");
+      setIsValidated(false);
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!title || !body || !selectedTopic || !category) {
       alert("Please fill in all required fields (Title, Body, Topic, Category).");
+      return;
+    }
+    if (!functionSignature || !referenceSolution) {
+      alert("Function Signature and Reference Solution are required.");
+      return;
+    }
+    if (category === "CUSTOM" && !boilerplateCode.trim()) {
+      alert("CUSTOM category questions require boilerplate code — auto-generation is not available for this category.");
+      return;
+    }
+    if (!isValidated) {
+      alert("Please validate the boilerplate against your test cases before saving.");
       return;
     }
 
@@ -141,6 +216,7 @@ export default function CreateProgrammingQuestion() {
         category,
         topic_ids: [Number(selectedTopic)],
         starter_code: starterCode,
+        helper_code: helperCode,
         weight_wb: weightWb,
         weight_bb: weightBb,
         grace_mode: graceMode,
@@ -148,6 +224,9 @@ export default function CreateProgrammingQuestion() {
         grace_cap: graceCap,
         structural_rules: structuralRules,
         test_cases: testCases,
+        function_signature: functionSignature,
+        reference_solution: referenceSolution,
+        boilerplate_code: boilerplateMode === "custom" ? boilerplateCode : null,
       });
       alert("Question Created Successfully!");
       navigate("/teacher/create-question-hub");
@@ -304,6 +383,32 @@ export default function CreateProgrammingQuestion() {
             </select>
           </div>
         </div>
+
+        <label style={labelStyle}>Function Signature (C++)</label>
+        <input
+          style={{ ...inputStyle, fontFamily: "monospace", fontSize: "0.9rem" }}
+          placeholder="e.g. int calculateAverage(vector<int> nums)"
+          value={functionSignature}
+          onChange={(e) => setFunctionSignature(e.target.value)}
+        />
+
+        <label style={labelStyle}>Reference Solution (C++)</label>
+        <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "8px" }}>
+          A correct implementation. This is what gets validated against your test cases —
+          it's never shown to students.
+        </p>
+        <textarea
+          style={{
+            ...inputStyle,
+            minHeight: "160px",
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            whiteSpace: "pre",
+          }}
+          value={referenceSolution}
+          onChange={(e) => setReferenceSolution(e.target.value)}
+        />
+
 
         {/* --- SECTION 2: GRADING & HYBRID WEIGHTS --- */}
         <div style={cardSectionStyle}>
@@ -481,6 +586,119 @@ export default function CreateProgrammingQuestion() {
           />
         </div>
 
+        {/* --- SECTION 5B: BOILERPLATE / HARNESS VALIDATION --- */}
+        <div style={cardSectionStyle}>
+          <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
+            🛠️ Grading Harness
+          </h3>
+          <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "15px" }}>
+            Auto-generate the harness from the function signature, or write your own if the
+            input/output format doesn't fit a standard pattern. Either way, it must pass
+            validation against your Reference Solution and Test Cases before saving.
+          </p>
+
+          <div style={{ display: "flex", gap: "20px", marginBottom: "15px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="radio"
+                checked={boilerplateMode === "auto"}
+                disabled={category === "CUSTOM"}
+                onChange={() => setBoilerplateMode("auto")}
+              />
+              Auto-generate boilerplate
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="radio"
+                checked={boilerplateMode === "custom"}
+                onChange={() => setBoilerplateMode("custom")}
+              />
+              Write custom boilerplate
+            </label>
+          </div>
+
+          {category === "CUSTOM" && (
+            <p style={{ fontSize: "0.85rem", color: "#b45309", marginBottom: "10px" }}>
+              CUSTOM category questions always require custom boilerplate — auto-generation
+              isn't available for this category.
+            </p>
+          )}
+
+          {boilerplateMode === "custom" && (
+            <textarea
+              style={{
+                ...inputStyle,
+                minHeight: "200px",
+                fontFamily: "monospace",
+                fontSize: "0.85rem",
+                whiteSpace: "pre",
+              }}
+              placeholder={`// [[STUDENT_CODE_ZONE]]\nint main() {\n    // parse input, call the student's function, print in the expected format\n    return 0;\n}`}
+              value={boilerplateCode}
+              onChange={(e) => setBoilerplateCode(e.target.value)}
+            />
+          )}
+
+          <button
+            onClick={handleValidateBoilerplate}
+            disabled={validating}
+            style={{
+              marginTop: "10px",
+              padding: "10px 20px",
+              background: validating ? "#9ca3af" : "#059669",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              fontWeight: "bold",
+              cursor: validating ? "not-allowed" : "pointer",
+            }}
+          >
+            {validating ? "Testing against Judge0..." : "Test Boilerplate"}
+          </button>
+
+          {isValidated && (
+            <span style={{ marginLeft: "12px", color: "#059669", fontWeight: "bold" }}>
+              ✓ Validated — all test cases pass
+            </span>
+          )}
+
+          {validationError && (
+            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "6px", background: "#fee2e2", color: "#b91c1c" }}>
+              {validationError}
+            </div>
+          )}
+
+          {validationResults && (
+            <div style={{ marginTop: "15px" }}>
+              {validationResults.map((r: any, i: number) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: "10px",
+                    marginBottom: "8px",
+                    borderRadius: "6px",
+                    background: r.passed ? "#dcfce7" : "#fee2e2",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <div>
+                    <b>{r.passed ? "✓ PASS" : "✗ FAIL"}</b> — input: <code>{r.input}</code>
+                  </div>
+                  <div>Expected: <code>{r.expected}</code> | Got: <code>{r.stdout || "(none)"}</code></div>
+                  {r.stderr && (
+                    <div style={{ color: "#b91c1c", fontFamily: "monospace" }}>stderr: {r.stderr}</div>
+                  )}
+                  {r.compile_output && (
+                    <div style={{ color: "#b91c1c", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                      {r.compile_output}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* --- SECTION 6: UNIT TESTS --- */}
         <div style={cardSectionStyle}>
           <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
@@ -571,20 +789,45 @@ export default function CreateProgrammingQuestion() {
           </button>
         </div>
 
+        {/* --- SECTION: HELPER CODE --- */}
+        <div style={{ marginTop: "20px" }}>
+          <label style={labelStyle}>Helper Code / Support Functions (Optional)</label>
+          <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "8px" }}>
+            Define auxiliary functions (e.g., operation pointers like add/sub) referenced by test cases that students don't need to write.
+          </p>
+          <textarea
+            style={{
+              ...inputStyle,
+              minHeight: "100px",
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+              whiteSpace: "pre",
+            }}
+            placeholder="int add(int a, int b) { return a + b; }"
+            value={helperCode}
+            onChange={(e) => setHelperCode(e.target.value)}
+          />
+        </div>
+
         {/* --- ACTIONS --- */}
         <div style={{ marginTop: "30px", textAlign: "right" }}>
+          {!isValidated && (
+            <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "8px" }}>
+              Test the boilerplate above before saving.
+            </p>
+          )}
           <button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !isValidated}
             style={{
               padding: "12px 24px",
-              background: loading ? "#9ca3af" : "#2563eb",
+              background: loading || !isValidated ? "#9ca3af" : "#2563eb",
               color: "white",
               border: "none",
               borderRadius: "6px",
               fontWeight: "bold",
               fontSize: "1rem",
-              cursor: loading ? "not-allowed" : "pointer",
+              cursor: loading || !isValidated ? "not-allowed" : "pointer",
             }}
           >
             {loading ? "Saving..." : "Save Question"}

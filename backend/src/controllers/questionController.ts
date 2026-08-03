@@ -1,5 +1,17 @@
 import { Request, Response } from "express";
 import { AdminService } from "../services/adminService";
+import { ProgrammingGradingEngine } from "../services/programmingGradingEngine";
+
+// A test case with both blank input and blank expected output will pass
+// trivially (empty stdout matches empty expected) without exercising the
+// student's code at all. Reject these before they reach validation/grading.
+function findVacuousTestCase(testCases: any[]): boolean {
+  return testCases.some(
+    (tc: any) =>
+      !String(tc.input ?? "").trim() &&
+      !String(tc.expected_output ?? tc.expected ?? "").trim()
+  );
+}
 
 // GET /api/topics (For the dropdown in your UI)
 export const getTopics = async (req: Request, res: Response) => {
@@ -75,6 +87,13 @@ export const createProgrammingQuestion = async (
       grace_threshold,
       grace_cap,
       structural_rules,
+      category,
+      function_signature,
+      reference_solution,
+      boilerplate_code,
+      helper_code,
+      cpu_time_limit,
+      memory_limit,
     } = req.body;
 
     // 2. Validation
@@ -85,6 +104,21 @@ export const createProgrammingQuestion = async (
       return res
         .status(400)
         .json({ error: "At least one test case is required" });
+    }
+    if (findVacuousTestCase(test_cases)) {
+      return res.status(400).json({
+        error: "One or more test cases have both empty input and empty expected output — this would pass trivially without exercising your code. Fill in real values.",
+      });
+    }
+    if (!function_signature || !reference_solution) {
+      return res
+        .status(400)
+        .json({ error: "function_signature and reference_solution are required" });
+    }
+    if (category === "CUSTOM" && !boilerplate_code) {
+      return res
+        .status(400)
+        .json({ error: "CUSTOM category questions require boilerplate_code" });
     }
 
     // 3. Prepare Payload with fallback defaults for missing parameters
@@ -102,6 +136,13 @@ export const createProgrammingQuestion = async (
       grace_threshold: grace_threshold ?? 0.90,
       grace_cap: grace_cap ?? 0.15,
       structural_rules: structural_rules || [],
+      category: category || "SCALAR",
+      function_signature,
+      reference_solution,
+      boilerplate_code: boilerplate_code || null,
+      helper_code: helper_code || null,
+      cpu_time_limit: cpu_time_limit ?? 2.0,
+      memory_limit: memory_limit ?? 128000,
     };
 
     // 4. Call Service to persist in PostgreSQL
@@ -159,5 +200,82 @@ export const createTF = async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create TF" });
+  }
+};
+
+// POST /api/questions/programming/validate-boilerplate
+// Stateless: runs reference_solution through the harness (auto-generated or
+// teacher-supplied boilerplate_code) against test_cases via Judge0, with no
+// submission/student context. Used at authoring time to gate publish.
+export const validateProgrammingBoilerplate = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const user = (req as any).user;
+    if (!user || user.role !== "teacher") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const {
+      function_signature,
+      reference_solution,
+      category,
+      helper_code,
+      boilerplate_code,
+      test_cases,
+      cpu_time_limit,
+      memory_limit,
+    } = req.body;
+
+    if (!function_signature || !reference_solution) {
+      return res
+        .status(400)
+        .json({ error: "function_signature and reference_solution are required" });
+    }
+    if (!test_cases || !Array.isArray(test_cases) || test_cases.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "At least one test case is required" });
+    }
+    if (findVacuousTestCase(test_cases)) {
+      return res.status(400).json({
+        error: "One or more test cases have both empty input and empty expected output — this would pass trivially without exercising your code. Fill in real values.",
+      });
+    }
+    if (category === "CUSTOM" && !boilerplate_code) {
+      return res
+        .status(400)
+        .json({ error: "CUSTOM category questions require boilerplate_code" });
+    }
+
+    const evaluation = await ProgrammingGradingEngine.evaluate({
+      studentCode: reference_solution,
+      testCases: test_cases,
+      points: 10,
+      category: category || "SCALAR",
+      signature: function_signature,
+      boilerplateCode: boilerplate_code || null,
+      helperCode: helper_code || null,
+      structuralRules: [], // irrelevant when validating the reference solution itself
+      weightWb: 0,
+      weightBb: 1,
+      cpuLimit: cpu_time_limit ?? 2.0,
+      memoryLimit: memory_limit ?? 128000,
+      languageId: 54,
+    });
+
+    const allPassed = evaluation.details.every((d: any) => d.passed === true);
+
+    return res.json({
+      success: true,
+      all_passed: allPassed,
+      question_grade: evaluation.earnedPoints,
+      test_results: evaluation.details,
+      generated_harness: evaluation.generatedHarness || null,
+    });
+  } catch (err: any) {
+    console.error("[validateProgrammingBoilerplate] error:", err);
+    return res.status(400).json({ error: err.message || "Validation failed" });
   }
 };

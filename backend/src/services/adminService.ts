@@ -27,7 +27,12 @@ export type CreateQuestionDto = {
   function_signature?: string;
   language_id?: number;
   starter_code?: string;
+  helper_code?: string | null;
   test_cases?: any[];
+  reference_solution?: string;
+  boilerplate_code?: string;
+  cpu_time_limit?: number;
+  memory_limit?: number;
 };
 
 export type SlotDto = {
@@ -51,6 +56,7 @@ export type CreateTestDto = {
   is_random: boolean;
   slots: SlotDto[];
   is_published?: boolean;
+  
 };
 
 export class AdminService {
@@ -120,15 +126,21 @@ export class AdminService {
       } else if (dto.question_type === "programming") {
         await client.query(
           `INSERT INTO exam.programming_questions 
-           (question_id, category, function_signature, language_id, starter_code, test_cases)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+           (question_id, category, function_signature, language_id, starter_code, helper_code, 
+            test_cases, reference_solution, boilerplate_code, cpu_time_limit, memory_limit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
-            qId, 
-            dto.category || "SCALAR", 
-            dto.function_signature || "", 
-            dto.language_id || 54, 
-            dto.starter_code || "", 
-            JSON.stringify(dto.test_cases || [])
+            qId,
+            dto.category || "SCALAR",
+            dto.function_signature || "",
+            dto.language_id || 54,
+            dto.starter_code || "",
+            dto.helper_code || null,
+            JSON.stringify(dto.test_cases || []),
+            dto.reference_solution || null,
+            dto.boilerplate_code || null,
+            dto.cpu_time_limit ?? 2.0,
+            dto.memory_limit ?? 128000,
           ]
         );
       }

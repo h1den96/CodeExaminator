@@ -14,6 +14,7 @@ import {
   createMCQ,
   createTF,
   getProgrammingCategories,
+  validateProgrammingBoilerplate,
 } from "../controllers/questionController";
 
 import {
@@ -62,6 +63,14 @@ router.post(
   requireTeacher,
   createProgrammingQuestion,
 );
+
+router.post(
+  "/questions/programming/validate-boilerplate",
+  requireAuth,
+  requireTeacher,
+  validateProgrammingBoilerplate,
+);
+
 router.post("/questions/mcq", requireAuth, requireTeacher, createMCQ);
 router.post("/questions/tf", requireAuth, requireTeacher, createTF);
 router.post("/submissions/:id/run", requireAuth, runSubmissionCode);

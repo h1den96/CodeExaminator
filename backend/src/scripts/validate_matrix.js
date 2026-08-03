@@ -183,6 +183,7 @@ async function runValidation() {
           failures.push({ id: qId, title: q.title, response: body });
           failedCount++;
         }
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (err) {
         console.log(`${String(qId).padEnd(4)} | ${title} | ERR   | ERROR`);
         failures.push({ id: qId, title: q.title, error: err.message });

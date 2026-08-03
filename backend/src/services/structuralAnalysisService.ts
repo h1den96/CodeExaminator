@@ -85,6 +85,15 @@ export class StructuralAnalysisService {
     return node.descendantsOfType(types).length > 0;
   }
 
+  private static hasUsingNamespaceDirective(node: Parser.SyntaxNode): boolean {
+    // tree-sitter-cpp parses `using namespace std;` as a using_declaration node.
+    // Matching on the 'namespace' keyword in the node text (rather than assuming
+    // a specific child structure) so this stays robust across grammar versions —
+    // same pattern already used by detectSmartPointers below.
+    const usingDecls = node.descendantsOfType("using_declaration");
+    return usingDecls.some((u) => /\bnamespace\b/.test(u.text));
+  }
+
   private static isBodyEmpty(node: Parser.SyntaxNode): boolean {
     const functions = node.descendantsOfType("function_definition");
     if (functions.length === 0) return true;
@@ -131,6 +140,17 @@ export class StructuralAnalysisService {
         return true;
       }
     }
+    // `auto p = std::make_unique<T>(...)` never produces a template_type node —
+    // only a template_function call node for `make_unique<T>`. Without this
+    // check, that (arguably more idiomatic) style was silently invisible to
+    // this rule while `std::unique_ptr<T> p = ...` was detected fine.
+    const templateFunctions = node.descendantsOfType("template_function");
+    for (const t of templateFunctions) {
+      const text = t.text;
+      if (text.includes("make_unique") || text.includes("make_shared")) {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -165,6 +185,16 @@ export class StructuralAnalysisService {
           passed: false, 
           description: "Preprocessor directives (#include, #define) are not allowed. Necessary headers are included by the judge." 
         }] 
+      };
+    }
+
+    if (this.hasUsingNamespaceDirective(root)) {
+      return {
+        score: 0,
+        details: [{
+          passed: false,
+          description: "Using-namespace directives (e.g. 'using namespace std;') are not allowed. Use explicit std:: qualification."
+        }]
       };
     }
 
@@ -271,15 +301,47 @@ export class StructuralAnalysisService {
   }
 
   private static detectRecursion(node: Parser.SyntaxNode): boolean {
+    // Direct self-calls (f calls f) are one case; mutual/indirect recursion
+    // (f calls g, g calls f) is another. Build a call graph across every
+    // function defined in the student's code and check reachability back to
+    // the starting function, rather than only checking self-calls.
     const functions = node.descendantsOfType("function_definition");
+    const funcBodies: Record<string, Parser.SyntaxNode> = {};
+    const funcNames: string[] = [];
+
     for (const fn of functions) {
       const nameNode = fn
         .descendantsOfType("identifier")
         .find((n) => n.parent?.type === "function_declarator");
-      if (!nameNode) continue;
-      const fnName = nameNode.text;
       const body = fn.children.find((c) => c.type === "compound_statement");
-      if (body && this.findFunctionCall(body, fnName)) return true;
+      if (nameNode && body) {
+        funcBodies[nameNode.text] = body;
+        funcNames.push(nameNode.text);
+      }
+    }
+
+    const callGraph: Record<string, Set<string>> = {};
+    for (const name of funcNames) {
+      callGraph[name] = new Set();
+      for (const other of funcNames) {
+        if (this.findFunctionCall(funcBodies[name], other)) {
+          callGraph[name].add(other);
+        }
+      }
+    }
+
+    for (const start of funcNames) {
+      const visited = new Set<string>();
+      const stack = [...callGraph[start]];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        if (current === start) return true;
+        if (visited.has(current)) continue;
+        visited.add(current);
+        for (const next of callGraph[current] || []) {
+          stack.push(next);
+        }
+      }
     }
     return false;
   }

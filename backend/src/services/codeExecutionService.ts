@@ -13,7 +13,7 @@ export class CodeExecutionService {
   ) {
     try {
       const questionQuery = `
-        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, 
+        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, pq.helper_code, 
                sq.points as max_points, q.question_type, q.structural_rules, pq.language_id,
                q.weight_wb, q.weight_bb, pq.cpu_time_limit, pq.memory_limit
         FROM exam.submission_questions sq
@@ -29,6 +29,7 @@ export class CodeExecutionService {
       const category = qRes.rows[0].category as QuestionCategory;
       const signature = qRes.rows[0].function_signature;
       const dbBoilerplate = qRes.rows[0].boilerplate_code;
+      const dBHelperCode = qRes.rows[0].helper_code;
       const structuralRules = qRes.rows[0].structural_rules || [];
       const weightWb = qRes.rows[0].weight_wb ? Number(qRes.rows[0].weight_wb) : 0.2;
       const weightBb = qRes.rows[0].weight_bb ? Number(qRes.rows[0].weight_bb) : 0.8;
@@ -43,6 +44,7 @@ export class CodeExecutionService {
         category,
         signature,
         boilerplateCode: dbBoilerplate,
+        helperCode: dBHelperCode,
         structuralRules,
         weightWb,
         weightBb,

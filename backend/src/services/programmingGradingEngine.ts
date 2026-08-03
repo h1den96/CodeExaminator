@@ -14,6 +14,7 @@ export interface GradingInput {
   category: QuestionCategory;
   signature: string;
   boilerplateCode: string | null;
+  helperCode?: string | null;
   structuralRules: AnalysisRule[];
   weightWb?: number;
   weightBb?: number;
@@ -30,6 +31,7 @@ export interface GradingOutput {
   feedback: string;
   details: any[];
   structuralDetails: any[];
+  generatedHarness?: string;
   astHealth?: {
     healthIndex: number;
     totalNodes: number;
@@ -61,9 +63,14 @@ export class ProgrammingGradingEngine {
 
     const forbiddenPattern = /\b(system|exec|fork|popen|unistd|socket|fopen|fstream|ofstream|ifstream|freopen|remove|rename)\s*\(/i;
     const forbiddenTypes = /\b(FILE|std::fstream|std::ofstream|std::ifstream)\b/;
+    const forbiddenMain = /\bint\s+main\s*\(/;
 
     if (forbiddenPattern.test(sanitized) || forbiddenTypes.test(sanitized)) {
       throw new Error("SECURITY_ERROR: Access to system or file operations is restricted.");
+    }
+
+    if (forbiddenMain.test(sanitized)) {
+      throw new Error("SECURITY_ERROR: Defining main() is not permitted; the grading harness supplies its own entry point.");
     }
 
     return sanitized
@@ -85,6 +92,7 @@ export class ProgrammingGradingEngine {
       category,
       signature,
       boilerplateCode,
+      helperCode,
       structuralRules = [],
       weightWb = 0.2,
       weightBb = 0.8,
@@ -144,7 +152,8 @@ export class ProgrammingGradingEngine {
       studentCode: cleanedCode,
       signatureStr: signature,
       customBoilerplate: boilerplateCode,
-      category: category
+      category: category,
+      helperCode: helperCode
     });
 
     // ==================== DIAGNOSTIC LOGGING ====================
@@ -154,18 +163,13 @@ export class ProgrammingGradingEngine {
       // Ignore file write errors if /tmp isn't writeable
     }
 
-    console.log("=== [DEBUG] Category ===", category);
-    console.log("=== [DEBUG] Function Signature ===", signature);
-    console.log("=== [DEBUG] Cleaned Student Code ===");
+    console.log("=== [BOILERPLATE] Category ===", category);
+    console.log("=== [BOILERPLATE] Function Signature ===", signature);
+    console.log("=== [BOILERPLATE] Mode ===", boilerplateCode ? "CUSTOM (teacher-supplied)" : "AUTO-GENERATED");
+    console.log("=== [BOILERPLATE] Cleaned Student/Reference Code ===");
     console.log(cleanedCode);
-    console.log("=== [DEBUG] Final Generated Source Code (Around main) ===");
-    const lines = finalSourceCode.split("\n");
-    const mainIndex = lines.findIndex(l => l.includes("int main"));
-    if (mainIndex !== -1) {
-      console.log(lines.slice(Math.max(0, mainIndex - 5), mainIndex + 15).join("\n"));
-    } else {
-      console.log(lines.slice(-20).join("\n"));
-    }
+    console.log("=== [BOILERPLATE] Full Generated Harness ===");
+    console.log(finalSourceCode);
     console.log("=================================================");
     // ============================================================
 
@@ -175,6 +179,14 @@ export class ProgrammingGradingEngine {
       stdin: this.safeEncode(tc.input || ""),
       expected_output: this.safeEncode(tc.expected_output || tc.expected || ""),
     }));
+
+    // ==================== JUDGE0 REQUEST LOGGING ====================
+    console.log("=== [JUDGE0] Submitting batch ===");
+    console.log(`  test count: ${testCases.length}`);
+    testCases.forEach((tc: any, i: number) => {
+      console.log(`  [${i}] input=${JSON.stringify(tc.input || "")} expected=${JSON.stringify(tc.expected_output || tc.expected || "")}`);
+    });
+    // ===================================================================
 
     // 4. Batch Execution in Sandbox
     const batchResponse = await axios.post(
@@ -187,6 +199,7 @@ export class ProgrammingGradingEngine {
       results = [results];
     }
     const tokens = results.map((r: any) => r.token).join(",");
+    console.log(`=== [JUDGE0] Batch submitted, tokens: ${tokens} ===`);
 
     let attempts = 0;
     let isDone = false;
@@ -205,8 +218,21 @@ export class ProgrammingGradingEngine {
     }
 
     if (!isDone) {
+      console.error("=== [JUDGE0] TIMEOUT after", attempts, "polling attempts ===");
       throw new Error("Grading timeout from sandbox execution.");
     }
+
+    // ==================== JUDGE0 RAW RESPONSE LOGGING ====================
+    console.log("=== [JUDGE0] Raw results (decoded) ===");
+    results.forEach((r: any, i: number) => {
+      console.log(`  [${i}] status=${r.status?.description} (id=${r.status?.id})`);
+      console.log(`      stdout=${JSON.stringify(this.safeDecode(r.stdout))}`);
+      console.log(`      stderr=${JSON.stringify(this.safeDecode(r.stderr))}`);
+      if (r.compile_output) {
+        console.log(`      compile_output=${JSON.stringify(this.safeDecode(r.compile_output))}`);
+      }
+    });
+    console.log("========================================================");
 
     const firstCompError = results.find((r: any) => r.status?.id === 6);
     let globalCompileLog = "";
@@ -328,6 +354,7 @@ export class ProgrammingGradingEngine {
       feedback,
       details: cleanDetails,
       structuralDetails: wbResult.details,
+      generatedHarness: finalSourceCode,
       astHealth: {
         healthIndex: H_ast,
         errorNodes: astHealth.errorNodes,

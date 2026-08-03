@@ -324,7 +324,7 @@ export class SubmissionService {
                 q.structural_rules, q.weight_wb, q.weight_bb,
                 q.grace_mode, q.grace_threshold, q.grace_cap,
                 pq.test_cases, pq.language_id, pq.category, pq.function_signature,
-                pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit,
+                pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit, pq.helper_code,
                 tf.correct_answer as tf_correct, t.enable_negative_grading,
                 (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
                 FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
@@ -379,6 +379,7 @@ export class SubmissionService {
                             category: ans.category as QuestionCategory,
                             signature: ans.function_signature,
                             boilerplateCode: ans.boilerplate_code,
+                            helperCode: ans.helper_code,
                             structuralRules: ans.structural_rules || [],
                             weightWb: ans.weight_wb ? Number(ans.weight_wb) : 0.2,
                             weightBb: ans.weight_bb ? Number(ans.weight_bb) : 0.8,

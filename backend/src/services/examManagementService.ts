@@ -12,6 +12,7 @@ export type CreateQuestionDto = {
   correct_answer?: boolean;
   starter_code?: string;
   boilerplate_code?: string;
+  helper_code?: string | null;
   cpu_time_limit?: number;
   memory_limit?: number;
   test_cases?: any[];

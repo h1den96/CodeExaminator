@@ -25,3 +25,6 @@ yarn-error.log*
 /judge0/isolate-cgroup-v2.patch
 /backend/full_validation_output.txt
 /backend/src/db/seeds/
+
+
+cookies.txt
