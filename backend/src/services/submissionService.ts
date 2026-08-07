@@ -130,26 +130,29 @@ export class SubmissionService {
                 s.submission_id, 
                 s.test_id, 
                 t.title as test_title, 
-                s.total_grade, 
+                COALESCE(s.total_grade, 0) as total_grade, 
                 s.status, 
                 s.submitted_at,
-                (
-                    SELECT json_agg(json_build_object(
-                        'submission_question_id', sq.submission_question_id,
-                        'answer_id', sa.answer_id,
-                        'question_id', q.question_id,
-                        'question_text', q.body,
-                        'type', q.question_type,
-                        'points_earned', COALESCE(sa.question_grade, 0),
-                        'points_possible', sq.points,
-                        'eval_details', sa.eval_result,
-                        'student_code', sa.code_answer,
-                        'teacher_comments', sa.teacher_comments
-                    ))
-                    FROM exam.submission_questions sq
-                    JOIN exam.questions q ON sq.question_id = q.question_id
-                    LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-                    WHERE sq.submission_id = s.submission_id
+                COALESCE(
+                    (
+                        SELECT json_agg(json_build_object(
+                            'submission_question_id', sq.submission_question_id,
+                            'answer_id', sa.answer_id,
+                            'question_id', q.question_id,
+                            'question_text', COALESCE(q.body, ''),
+                            'type', COALESCE(q.question_type, ''),
+                            'points_earned', COALESCE(sa.question_grade, 0),
+                            'points_possible', COALESCE(sq.points, 0),
+                            'eval_details', COALESCE(sa.eval_result, '{}'::jsonb),
+                            'student_code', COALESCE(sa.code_answer, ''),
+                            'teacher_comments', ''
+                        ))
+                        FROM exam.submission_questions sq
+                        JOIN exam.questions q ON sq.question_id = q.question_id
+                        LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
+                        WHERE sq.submission_id = s.submission_id
+                    ), 
+                    '[]'::json
                 ) as questions
             FROM exam.submissions s
             JOIN exam.tests t ON s.test_id = t.test_id

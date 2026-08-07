@@ -13,6 +13,14 @@ export interface AnalysisRule {
 export class StructuralAnalysisService {
   private static parser: Parser;
 
+  // Cyclomatic complexity of 1 means zero branching (if/for/while/case/&&/||)
+  // at all — pure straight-line code. A one-line constant-return stub like
+  // `return 0;` scores exactly 1 here, which is <= the penalty threshold, so
+  // without this floor it silently earned FULL complexity credit, identical
+  // to a correct, well-structured solution. Requiring at least this much
+  // complexity means "avoids the penalty" is no longer the same as "did work".
+  private static readonly MIN_COMPLEXITY_FOR_CREDIT = 2;
+
   private static initParser() {
     if (!this.parser) {
       this.parser = new Parser();
@@ -94,6 +102,19 @@ export class StructuralAnalysisService {
     return usingDecls.some((u) => /\bnamespace\b/.test(u.text));
   }
 
+  // A body containing only a single "return <literal>;" statement (e.g.
+  // `return 0;`, `return false;`, `return nullptr;`) is treated the same as
+  // an empty body: it is definitionally a constant-return stub and cannot
+  // constitute a real solution to any non-trivial problem. This is checked
+  // separately from complexity so that a genuinely correct one-line
+  // expression-based solution (e.g. `return n * 2;`, which is NOT a bare
+  // literal) is not caught by this rule.
+  private static isTrivialLiteralReturn(stmt: Parser.SyntaxNode): boolean {
+    if (stmt.type !== "return_statement") return false;
+    const text = stmt.text.trim();
+    return /^return\s+(-?\d+(\.\d+)?|true|false|nullptr|""|'.')\s*;?$/.test(text);
+  }
+
   private static isBodyEmpty(node: Parser.SyntaxNode): boolean {
     const functions = node.descendantsOfType("function_definition");
     if (functions.length === 0) return true;
@@ -104,11 +125,25 @@ export class StructuralAnalysisService {
         const meaningfulChildren = body.children.filter(
           (c) => c.text !== "{" && c.text !== "}"
         );
-        if (meaningfulChildren.length > 0) {
+
+        if (meaningfulChildren.length === 0) {
+          // Truly empty body for this function — keep checking others.
+          continue;
+        }
+
+        const isSingleTrivialReturn =
+          meaningfulChildren.length === 1 &&
+          this.isTrivialLiteralReturn(meaningfulChildren[0]);
+
+        if (!isSingleTrivialReturn) {
+          // This function has real content — the submission as a whole is
+          // not considered empty.
           return false;
         }
       }
     }
+    // Every function found is either truly empty or a single constant-literal
+    // return — i.e. a stub.
     return true;
   }
 
@@ -203,7 +238,7 @@ export class StructuralAnalysisService {
         score: 0,
         details: [{
           passed: false,
-          description: "The function body contains no executable programming statements."
+          description: "The function body contains no executable programming statements beyond a constant/stub return."
         }]
       };
     }
@@ -236,11 +271,19 @@ export class StructuralAnalysisService {
     const complexityWeight = 30; 
     const complexityThreshold = 15;
     totalPossibleWeight += complexityWeight;
-    
-    let complexityEarned = complexityWeight;
-    if (complexityScore > complexityThreshold) {
-      const penaltyPercent = (complexityScore - complexityThreshold) * 0.1; 
-      complexityEarned = Math.max(0, complexityWeight * (1 - penaltyPercent));
+
+    // Complexity credit now requires a minimum floor of actual branching
+    // logic. Previously this term only ever penalized *exceeding* the
+    // threshold and otherwise defaulted to full credit — meaning a stub with
+    // zero branches (complexity == 1) scored identically to a correct,
+    // well-structured solution on this metric.
+    let complexityEarned = 0;
+    if (complexityScore >= this.MIN_COMPLEXITY_FOR_CREDIT) {
+      complexityEarned = complexityWeight;
+      if (complexityScore > complexityThreshold) {
+        const penaltyPercent = (complexityScore - complexityThreshold) * 0.1;
+        complexityEarned = Math.max(0, complexityWeight * (1 - penaltyPercent));
+      }
     }
     earnedWeight += complexityEarned;
 
@@ -248,8 +291,10 @@ export class StructuralAnalysisService {
       type: "SCORE",
       target: "complexity",
       name: "Cyclomatic Complexity",
-      description: `Complexity is ${complexityScore}. Penalty applied if > ${complexityThreshold}.`,
-      passed: complexityScore <= complexityThreshold,
+      description: complexityScore < this.MIN_COMPLEXITY_FOR_CREDIT
+        ? "No branching logic detected — complexity credit requires at least minimal control flow."
+        : `Complexity is ${complexityScore}. Penalty applied if > ${complexityThreshold}.`,
+      passed: complexityScore >= this.MIN_COMPLEXITY_FOR_CREDIT && complexityScore <= complexityThreshold,
       weight: complexityWeight,
       earned: complexityEarned,
       actual_value: complexityScore

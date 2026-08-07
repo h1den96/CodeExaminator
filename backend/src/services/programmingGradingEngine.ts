@@ -40,6 +40,15 @@ export interface GradingOutput {
 }
 
 export class ProgrammingGradingEngine {
+  // Structural (white-box) credit is only meaningful if the submission
+  // demonstrates some baseline of functional correctness. Without this gate,
+  // a stub that "doesn't violate any FORBID rule" (because it does nothing)
+  // can earn full white-box credit while contributing zero real logic.
+  // Tuned as a floor rather than requiring S_bb === 0, so a student who has
+  // clearly attempted real logic and earned a small amount of genuine partial
+  // credit isn't punished the same as someone who submitted an unmodified stub.
+  private static readonly MIN_FUNCTIONAL_FLOOR = 0.15;
+
   private static safeDecode(str: string | null): string {
     if (!str) return "";
     try {
@@ -294,17 +303,31 @@ export class ProgrammingGradingEngine {
       let totalTestWeight = 0;
       let earnedTestWeight = 0;
       let hasAnyMemoryLeak = false;
+      let canaryCount = 0;
+      let canaryPassedCount = 0;
 
       cleanDetails = results.map((r: any, idx: number) => {
         const actualOutput = this.safeDecode(r.stdout);
         const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
-        
+
         const tcCategory = testCases[idx].category || "FUNCTIONAL";
-        const caseWeight = Number(testCases[idx].weight ?? (tcCategory === "EDGE" ? 5 : tcCategory === "SANITY" ? 1 : 3));
+        // NOTE: previously EDGE cases defaulted to weight 5 (higher than
+        // normal FUNCTIONAL cases at 3), which meant an easy-to-hit boundary
+        // case (e.g. n=1 -> 0, satisfiable by a constant-return stub) could
+        // outweigh the tests that actually prove the logic works. Lowered to
+        // 2 as a safer default. Test authors should still set explicit
+        // per-case weights in the DB rather than relying on this fallback.
+        const caseWeight = Number(testCases[idx].weight ?? (tcCategory === "EDGE" ? 2 : tcCategory === "SANITY" ? 1 : 3));
         totalTestWeight += caseWeight;
 
         const isPassed = GradingService.smartCompare(actualOutput, expectedOutput);
-        
+        const isCanary = !!testCases[idx].is_canary;
+
+        if (isCanary) {
+          canaryCount++;
+          if (isPassed) canaryPassedCount++;
+        }
+
         let isMemorySafetyViolation = false;
         const stderrLog = this.safeDecode(r.stderr);
         if (stderrLog.toLowerCase().includes("addresssanitizer") || stderrLog.toLowerCase().includes("leaksanitizer")) {
@@ -325,6 +348,7 @@ export class ProgrammingGradingEngine {
           compile_output: "",
           input: testCases[idx].input || "",
           is_public: testCases[idx].is_public ?? true,
+          is_canary: isCanary,
           weight: caseWeight,
           memory_leak: isMemorySafetyViolation
         };
@@ -332,13 +356,26 @@ export class ProgrammingGradingEngine {
 
       let S_bb_raw = totalTestWeight > 0 ? earnedTestWeight / totalTestWeight : 0.0;
 
-      if (hasAnyMemoryLeak) {
-        S_bb = S_bb_raw * 0.90;
+      // Canary gate: if this question defines one or more canary tests
+      // (test cases specifically designed so no constant/no-op return can
+      // satisfy them) and NONE of them passed, zero out black-box credit —
+      // regardless of how many other tests coincidentally passed. This is
+      // the direct fix for a stub passing a lucky boundary case like
+      // n=1 -> 0 while failing every test that requires real logic.
+      if (canaryCount > 0 && canaryPassedCount === 0) {
+        S_bb_raw = 0.0;
+      }
+
+      if (canaryCount > 0 && canaryPassedCount === 0) {
+        feedback = "Failed all canary tests — no partial credit awarded for coincidental matches.";
+      } else if (hasAnyMemoryLeak) {
+        S_bb_raw = S_bb_raw * 0.90;
         feedback = `Passed test suites, but a 10% memory safety penalty was applied.`;
       } else {
-        S_bb = S_bb_raw;
-        feedback = `Passed ${(S_bb * 100).toFixed(0)}% of the functional test suites.`;
+        feedback = `Passed ${(S_bb_raw * 100).toFixed(0)}% of the functional test suites.`;
       }
+
+      S_bb = S_bb_raw;
     }
 
     // 6. Master Equation: Final Earned Score Calculation
@@ -346,7 +383,12 @@ export class ProgrammingGradingEngine {
     const effectiveWeightBb = hasWbRules ? weightBb : 1.0;
     const effectiveWeightWb = hasWbRules ? weightWb : 0.0;
 
-    const totalRatio = (effectiveWeightWb * S_wb) + (effectiveWeightBb * S_bb);
+    // Structural credit is gated on a minimum floor of functional correctness.
+    // A stub that avoids forbidden constructs (by doing nothing) should not
+    // earn white-box credit just for not violating rules it never engaged with.
+    const effectiveS_wb = S_bb >= this.MIN_FUNCTIONAL_FLOOR ? S_wb : 0;
+
+    const totalRatio = (effectiveWeightWb * effectiveS_wb) + (effectiveWeightBb * S_bb);
     const finalScore = parseFloat((points * totalRatio).toFixed(2));
 
     return {

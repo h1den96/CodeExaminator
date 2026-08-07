@@ -137,6 +137,7 @@ export const getSubmissionResult = async (req: Request, res: Response) => {
 
     res.json(result);
   } catch (error: any) {
+    console.error("❌ [getSubmissionResult Error Stack]:", error);
     res.status(500).json({ error: "DATABASE_QUERY_FAILED", message: error.message });
   }
 };
