@@ -211,16 +211,16 @@ export default function ExamRunner() {
           }
         });
         setAnswers(initialAnswers);
-      } catch (err: any) {
+     } catch (err: any) {
         if (err.response?.status === 409) {
           const sid = err.response.data.submission_id;
-
+        
           if (sid) {
             console.log("Redirecting to valid submission:", sid);
-            navigate(`/results/${sid}`);
+            navigate(`/results/${sid}`, { replace: true }); // 👈 add replace: true
           } else {
             console.warn("409 Conflict: No submission_id provided by backend.");
-            navigate("/tests");
+            navigate("/tests", { replace: true });
           }
         } else {
           console.error("Critical error during startExam:", err);

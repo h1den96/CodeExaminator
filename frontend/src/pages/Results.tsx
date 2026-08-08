@@ -139,11 +139,7 @@ export default function Results() {
 };
 
   const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate(isTeacher ? "/teacher/dashboard" : "/student/dashboard");
-    }
+    navigate(isTeacher ? "/teacher/dashboard" : "/tests");
   };
 
   if (loading) {
