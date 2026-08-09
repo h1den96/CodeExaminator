@@ -87,7 +87,7 @@ export default function TeacherDashboard() {
           style={{
             marginBottom: "30px",
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "1fr 1fr 1fr", // Changed to 3 columns to fit the new grading panel
             gap: "20px",
           }}
         >
@@ -166,6 +166,45 @@ export default function TeacherDashboard() {
             </span>
             <span style={{ color: colors.successText, fontSize: "0.9rem" }}>
               Choose: MCQ, True/False, or Code
+            </span>
+          </button>
+
+          {/* Button C: Review & Grade Submissions */}
+          <button
+            onClick={() => navigate("/teacher/grading")}
+            style={{
+              padding: "25px",
+              backgroundColor: colors.card,
+              border: `2px dashed ${colors.border}`,
+              borderRadius: "12px",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              transition: "transform 0.2s, box-shadow 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.08)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <span
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                color: colors.text,
+              }}
+            >
+              📊 Review Submissions
+            </span>
+            <span style={{ color: colors.textSec, fontSize: "0.9rem" }}>
+              Grade student code & provide feedback
             </span>
           </button>
         </div>

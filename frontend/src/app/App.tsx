@@ -23,6 +23,7 @@ import CreateProgrammingQuestion from "../pages/CreateProgrammingQuestion";
 import CreateMCQ from "../pages/CreateMCQ";
 import CreateTF from "../pages/CreateTF";
 import Results from "../pages/Results";
+import TeacherGradingDashboard from '../pages/TeacherGradingDashboard';
 
 export default function App() {
   return (
@@ -45,11 +46,12 @@ export default function App() {
             {/* 🎯 ΤΟ ΜΟΝΑΔΙΚΟ ROUTE ΓΙΑ ΑΠΟΤΕΛΕΣΜΑΤΑ - Προσβάσιμο από όλους τους Auth χρήστες */}
             <Route path="/results/:id" element={<RequireAuth><Results /></RequireAuth>} />
 
-            {/* Teacher Routes */}
+           {/* Teacher Routes */}
             <Route path="/teacher/dashboard" element={<RequireAuth allowedRoles={["teacher"]}><TeacherDashboard /></RequireAuth>} />
             <Route path="/teacher/create-test" element={<RequireAuth allowedRoles={["teacher"]}><CreateTestPage /></RequireAuth>} />
             <Route path="/teacher/test/:testId" element={<RequireAuth allowedRoles={["teacher"]}><TestDetailsPage /></RequireAuth>} />
-            
+            <Route path="/teacher/grading" element={<RequireAuth allowedRoles={["teacher"]}><TeacherGradingDashboard /></RequireAuth>} />
+
             {/* Question Creation Hub */}
             <Route path="/teacher/create-question-hub" element={<RequireAuth allowedRoles={["teacher"]}><QuestionTypeSelection /></RequireAuth>} />
             <Route path="/teacher/create-programming" element={<RequireAuth allowedRoles={["teacher"]}><CreateProgrammingQuestion /></RequireAuth>} />

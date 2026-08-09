@@ -12,6 +12,8 @@ import routes from "./routes/routes";
 import testRouter from "./routes/testStart";
 import submissionRouter from "./routes/submissions";
 import "./jobs/autoSubmitJob";
+import teacherReviewRouter from "./routes/teacherReviewRoute";
+import { requireAuth, requireTeacher } from "./middleware/requireAuth";
 
 const app = express();
 const PgStore = connectPg(session);
@@ -78,6 +80,16 @@ app.use(
   submissionRouter,
 );
 
+app.use(
+  "/api/teacher",
+  requireAuth,
+  requireTeacher,
+  (req, _res, next) => {
+    (req as any).db = examDb;
+    next();
+  },
+  teacherReviewRouter
+);
 // ---------- OTHER EXAM ROUTES ----------
 app.use(
   "/api",
