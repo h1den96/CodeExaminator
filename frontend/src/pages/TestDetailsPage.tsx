@@ -4,7 +4,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import api from "../api/axios";
 
-// 1. Submissions Interface
 interface Submission {
   submission_id: number;
   student_id: string;
@@ -14,32 +13,30 @@ interface Submission {
   total_grade: string | null;
 }
 
-// 2. Question Interface
 interface Question {
   question_id: number;
   question_type: "mcq" | "true_false" | "programming";
   text: string;
   points: number;
   correct_answer?: string | boolean;
-  options?: { text: string; is_correct: boolean }[]; 
-  test_cases?: any[]; 
+  options?: { text: string; is_correct: boolean }[];
+  test_cases?: any[];
 }
 
-// 3. Test Detail Interface
 interface TestDetail {
   test_id: number;
   title: string;
   description: string;
   is_published: boolean;
   questions?: Question[];
-  slots?: Question[]; 
+  slots?: Question[];
   submissions?: Submission[];
 }
 
 export default function TestDetailsPage() {
   const { testId } = useParams();
   const navigate = useNavigate();
-  const { colors } = useTheme();
+  const { colors, fontMono, subtleBackground } = useTheme();
 
   const [test, setTest] = useState<TestDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,29 +70,29 @@ export default function TestDetailsPage() {
 
   if (loading)
     return (
-      <div style={{ padding: "40px", color: colors.text }}>
-        Loading Test Details...
+      <div style={{ padding: "40px", color: colors.text, ...subtleBackground, minHeight: "100vh" }}>
+        Loading test details...
       </div>
     );
   if (!test)
     return (
-      <div style={{ padding: "40px", color: colors.text }}>Test not found.</div>
+      <div style={{ padding: "40px", color: colors.text, ...subtleBackground, minHeight: "100vh" }}>
+        Test not found.
+      </div>
     );
 
-  // Safe fallbacks for arrays
   const questionsList = test.questions || test.slots || [];
   const submissionsList = test.submissions || [];
 
-  // Calculate Submissions Stats
-  const completedSubmissions = submissionsList.filter(
-    (s) => ["submitted", "completed", "graded"].includes(s.status.toLowerCase())
+  const completedSubmissions = submissionsList.filter((s) =>
+    ["submitted", "completed", "graded"].includes(s.status.toLowerCase()),
   );
   const averageGrade =
     completedSubmissions.length > 0
       ? (
           completedSubmissions.reduce(
             (acc, curr) => acc + Number(curr.total_grade || 0),
-            0
+            0,
           ) / completedSubmissions.length
         ).toFixed(2)
       : "N/A";
@@ -106,8 +103,9 @@ export default function TestDetailsPage() {
         padding: "40px 20px",
         maxWidth: "1200px",
         margin: "0 auto",
-        backgroundColor: colors.bg,
+        ...subtleBackground,
         minHeight: "100vh",
+        color: colors.text,
       }}
     >
       {/* HEADER: Back Button, Title, Controls */}
@@ -127,9 +125,10 @@ export default function TestDetailsPage() {
             color: colors.textSec,
             cursor: "pointer",
             fontSize: "0.9rem",
+            padding: 0,
           }}
         >
-          &larr; Back to Dashboard
+          &larr; Back to dashboard
         </button>
 
         <div
@@ -151,15 +150,17 @@ export default function TestDetailsPage() {
             <div style={{ marginTop: "10px" }}>
               <span
                 style={{
-                  fontSize: "0.8rem",
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  backgroundColor: test.is_published ? "#dcfce7" : "#f3f4f6",
-                  color: test.is_published ? "#166534" : "#4b5563",
-                  fontWeight: "bold",
+                  fontSize: "0.75rem",
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  backgroundColor: test.is_published ? colors.successBg : colors.neutralBg,
+                  color: test.is_published ? colors.successText : colors.neutralText,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
                 }}
               >
-                STATUS: {test.is_published ? "PUBLISHED" : "DRAFT"}
+                Status: {test.is_published ? "Published" : "Draft"}
               </span>
             </div>
           </div>
@@ -168,31 +169,31 @@ export default function TestDetailsPage() {
             <button
               onClick={() => setShowAnswers(!showAnswers)}
               style={{
-                padding: "10px 15px",
-                backgroundColor: showAnswers ? "#e0f2fe" : "transparent",
-                color: showAnswers ? "#0284c7" : colors.text,
-                border: `1px solid ${showAnswers ? "#0284c7" : colors.border}`,
-                borderRadius: "6px",
+                padding: "10px 16px",
+                backgroundColor: showAnswers ? colors.accentSubtle : "transparent",
+                color: showAnswers ? colors.accentText : colors.text,
+                border: `1px solid ${showAnswers ? colors.accent : colors.border}`,
+                borderRadius: "8px",
                 cursor: "pointer",
-                fontWeight: "500",
+                fontWeight: 600,
               }}
             >
-              {showAnswers ? "Hide Answers" : "Show Answers"}
+              {showAnswers ? "Hide answers" : "Show answers"}
             </button>
 
             <button
               onClick={handlePublishToggle}
               style={{
                 padding: "10px 20px",
-                backgroundColor: test.is_published ? "#dcfce7" : "#2563eb",
-                color: test.is_published ? "#166534" : "white",
-                border: test.is_published ? "1px solid #86efac" : "none",
-                borderRadius: "6px",
+                backgroundColor: test.is_published ? colors.successBg : colors.accent,
+                color: test.is_published ? colors.successText : "white",
+                border: test.is_published ? `1px solid ${colors.successBorder}` : "none",
+                borderRadius: "8px",
                 cursor: "pointer",
-                fontWeight: "bold",
+                fontWeight: 700,
               }}
             >
-              {test.is_published ? "Unpublish" : "Publish Now"}
+              {test.is_published ? "Unpublish" : "Publish now"}
             </button>
           </div>
         </div>
@@ -203,8 +204,9 @@ export default function TestDetailsPage() {
         <div
           style={{
             display: "flex",
-            gap: "30px",
+            gap: "20px",
             marginBottom: "20px",
+            flexWrap: "wrap",
           }}
         >
           <div
@@ -212,15 +214,16 @@ export default function TestDetailsPage() {
               padding: "20px",
               backgroundColor: colors.card,
               border: `1px solid ${colors.border}`,
-              borderRadius: "8px",
+              borderRadius: "10px",
               flex: 1,
+              minWidth: "160px",
             }}
           >
-            <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#2563eb" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 700, color: colors.accent }}>
               {submissionsList.length}
             </div>
-            <div style={{ fontSize: "0.85rem", color: colors.textSec, textTransform: "uppercase" }}>
-              Total Students
+            <div style={{ fontSize: "0.8rem", color: colors.textSec, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              Total students
             </div>
           </div>
           <div
@@ -228,15 +231,16 @@ export default function TestDetailsPage() {
               padding: "20px",
               backgroundColor: colors.card,
               border: `1px solid ${colors.border}`,
-              borderRadius: "8px",
+              borderRadius: "10px",
               flex: 1,
+              minWidth: "160px",
             }}
           >
-            <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#16a34a" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 700, color: colors.successText }}>
               {averageGrade}
             </div>
-            <div style={{ fontSize: "0.85rem", color: colors.textSec, textTransform: "uppercase" }}>
-              Avg Score
+            <div style={{ fontSize: "0.8rem", color: colors.textSec, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              Avg score
             </div>
           </div>
         </div>
@@ -252,13 +256,13 @@ export default function TestDetailsPage() {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
               <thead>
-                <tr style={{ backgroundColor: "#f8fafc", borderBottom: `2px solid ${colors.border}` }}>
-                  <th style={{ padding: "16px", color: "#475569" }}>Student ID</th>
-                  <th style={{ padding: "16px", color: "#475569" }}>Status</th>
-                  <th style={{ padding: "16px", color: "#475569" }}>Started At</th>
-                  <th style={{ padding: "16px", color: "#475569" }}>Time Taken</th>
-                  <th style={{ padding: "16px", color: "#475569" }}>Grade</th>
-                  <th style={{ padding: "16px", color: "#475569", textAlign: "right" }}>Actions</th>
+                <tr style={{ backgroundColor: colors.neutralBg, borderBottom: `2px solid ${colors.border}` }}>
+                  <th style={{ padding: "16px", color: colors.textSec }}>Student ID</th>
+                  <th style={{ padding: "16px", color: colors.textSec }}>Status</th>
+                  <th style={{ padding: "16px", color: colors.textSec }}>Started at</th>
+                  <th style={{ padding: "16px", color: colors.textSec }}>Time taken</th>
+                  <th style={{ padding: "16px", color: colors.textSec }}>Grade</th>
+                  <th style={{ padding: "16px", color: colors.textSec, textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -280,24 +284,24 @@ export default function TestDetailsPage() {
 
                     const isDone = ["completed", "submitted", "graded"].includes(sub.status.toLowerCase());
                     const isStarted = sub.status === "started";
-
                     const isClickable = isDone || isStarted;
 
                     return (
                       <tr key={sub.submission_id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: "16px", fontWeight: "bold", color: colors.text }}>
+                        <td style={{ padding: "16px", fontWeight: 700, color: colors.text }}>
                           User #{sub.student_id}
                         </td>
                         <td style={{ padding: "16px" }}>
                           <span
                             style={{
-                              backgroundColor: isDone ? "#dcfce7" : "#fef3c7",
-                              color: isDone ? "#166534" : "#92400e",
-                              padding: "4px 8px",
-                              borderRadius: "4px",
-                              fontSize: "0.75rem",
-                              fontWeight: "bold",
+                              backgroundColor: isDone ? colors.successBg : colors.warningBg,
+                              color: isDone ? colors.successText : colors.warningText,
+                              padding: "4px 10px",
+                              borderRadius: "999px",
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
                               textTransform: "uppercase",
+                              letterSpacing: "0.03em",
                             }}
                           >
                             {sub.status}
@@ -313,8 +317,8 @@ export default function TestDetailsPage() {
                         <td
                           style={{
                             padding: "16px",
-                            fontWeight: "bold",
-                            color: isDone ? "#2563eb" : colors.textSec,
+                            fontWeight: 700,
+                            color: isDone ? colors.accent : colors.textSec,
                           }}
                         >
                           {sub.total_grade !== null ? `${sub.total_grade}` : "-"}
@@ -325,15 +329,15 @@ export default function TestDetailsPage() {
                             disabled={!isClickable}
                             style={{
                               padding: "8px 16px",
-                              backgroundColor: isClickable ? "transparent" : "#f1f5f9",
-                              color: isClickable ? "#2563eb" : "#94a3b8",
-                              border: isClickable ? `1px solid #2563eb` : "none",
-                              borderRadius: "6px",
+                              backgroundColor: "transparent",
+                              color: isClickable ? colors.accent : colors.textMuted,
+                              border: `1px solid ${isClickable ? colors.accent : colors.border}`,
+                              borderRadius: "8px",
                               cursor: isClickable ? "pointer" : "not-allowed",
-                              fontWeight: "bold",
+                              fontWeight: 700,
                             }}
                           >
-                            View Report
+                            View report
                           </button>
                         </td>
                       </tr>
@@ -347,17 +351,16 @@ export default function TestDetailsPage() {
       </div>
 
       {/* --- QUESTIONS LIST --- */}
-      <h2 style={{ color: colors.text, marginBottom: "20px" }}>Test Questions</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <h2 style={{ color: colors.text, marginBottom: "20px" }}>Test questions</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {questionsList.map((q, index) => (
           <div
             key={q.question_id || index}
             style={{
               backgroundColor: colors.card,
               border: `1px solid ${colors.border}`,
-              borderRadius: "8px",
+              borderRadius: "10px",
               padding: "20px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
             }}
           >
             <div
@@ -365,34 +368,37 @@ export default function TestDetailsPage() {
                 display: "flex",
                 justifyContent: "space-between",
                 marginBottom: "10px",
+                flexWrap: "wrap",
+                gap: "8px",
               }}
             >
               <span
                 style={{
-                  fontWeight: "bold",
-                  color: "#64748b",
+                  fontWeight: 700,
+                  color: colors.textSec,
                   textTransform: "uppercase",
-                  fontSize: "0.85rem",
+                  fontSize: "0.8rem",
+                  letterSpacing: "0.03em",
                 }}
               >
                 Q{index + 1} &mdash; {q.question_type.replace("_", " ")}
               </span>
               <span
                 style={{
-                  fontSize: "0.9rem",
+                  fontSize: "0.85rem",
                   color: colors.textSec,
-                  backgroundColor: colors.bg,
-                  padding: "2px 8px",
-                  borderRadius: "4px",
+                  backgroundColor: colors.neutralBg,
+                  padding: "2px 10px",
+                  borderRadius: "999px",
                 }}
               >
-                {q.points} Points
+                {q.points} points
               </span>
             </div>
 
             <div
               style={{
-                fontSize: "1.05rem",
+                fontSize: "1rem",
                 marginBottom: "15px",
                 color: colors.text,
                 whiteSpace: "pre-wrap",
@@ -407,23 +413,23 @@ export default function TestDetailsPage() {
                 style={{
                   marginTop: "15px",
                   padding: "15px",
-                  backgroundColor: "#f0fdf4",
-                  borderLeft: "4px solid #22c55e",
+                  backgroundColor: colors.successBg,
+                  borderLeft: `4px solid ${colors.successText}`,
                   borderRadius: "4px",
-                  fontSize: "0.95rem",
+                  fontSize: "0.9rem",
                 }}
               >
                 <strong
                   style={{
-                    color: "#15803d",
+                    color: colors.successText,
                     display: "block",
                     marginBottom: "5px",
                   }}
                 >
-                  Correct Answer:
+                  Correct answer:
                 </strong>
 
-                <div style={{ color: "#166534" }}>
+                <div style={{ color: colors.successText }}>
                   {q.question_type === "true_false" && (
                     <span>{String(q.correct_answer).toUpperCase()}</span>
                   )}
@@ -434,8 +440,7 @@ export default function TestDetailsPage() {
                         <li
                           key={`mcq-opt-${i}`}
                           style={{
-                            fontWeight: opt.is_correct ? "bold" : "normal",
-                            color: opt.is_correct ? "#15803d" : "#166534",
+                            fontWeight: opt.is_correct ? 700 : 400,
                           }}
                         >
                           {opt.text} {opt.is_correct && "(Correct)"}
@@ -446,17 +451,19 @@ export default function TestDetailsPage() {
 
                   {q.question_type === "programming" && (
                     <div>
-                      <p style={{ margin: "0 0 5px 0", fontSize: "0.9rem" }}>
-                        Test Cases:
+                      <p style={{ margin: "0 0 5px 0", fontSize: "0.85rem" }}>
+                        Test cases:
                       </p>
                       <pre
                         style={{
-                          backgroundColor: "rgba(255,255,255,0.7)",
+                          backgroundColor: colors.card,
                           padding: "10px",
-                          borderRadius: "4px",
+                          borderRadius: "6px",
                           overflowX: "auto",
-                          border: "1px solid #bbf7d0",
+                          border: `1px solid ${colors.successBorder}`,
                           margin: 0,
+                          fontFamily: fontMono,
+                          color: colors.text,
                         }}
                       >
                         {JSON.stringify(q.test_cases, null, 2)}

@@ -1,35 +1,32 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { useTheme } from "../context/ThemeContext";
 
 // --- Helper function για Pedagogical Feedback ---
+// Maps a judge status to a semantic theme role (warning vs danger) plus the message.
 const getStatusFeedback = (status: string) => {
-  const feedbackMap: Record<string, { msg: string; color: string; bg: string }> = {
+  const feedbackMap: Record<string, { msg: string; role: "warning" | "danger" }> = {
     "Time Limit Exceeded": {
       msg: "Your code exceeded the execution time limit. Check for infinite loops or inefficient algorithms.",
-      color: "#9a3412",
-      bg: "#fff7ed"
+      role: "warning",
     },
     "Memory Limit Exceeded": {
       msg: "Memory limit exhausted. Avoid creating excessively large data structures or deep recursion.",
-      color: "#991b1b",
-      bg: "#fef2f2"
+      role: "danger",
     },
-    "SECURITY_ERROR": {
+    SECURITY_ERROR: {
       msg: "Submission rejected by the security system due to restricted system calls.",
-      color: "#7f1d1d",
-      bg: "#fee2e2"
+      role: "danger",
     },
     "Runtime Error": {
       msg: "The program terminated abruptly (crash). Check for memory management errors or division by zero.",
-      color: "#991b1b",
-      bg: "#fef2f2"
+      role: "danger",
     },
     "Wrong Answer": {
       msg: "The code executed, but the result is not as expected. Double-check the problem statement details.",
-      color: "#854d0e",
-      bg: "#fefce8"
-    }
+      role: "warning",
+    },
   };
   return feedbackMap[status] || null;
 };
@@ -37,11 +34,11 @@ const getStatusFeedback = (status: string) => {
 export default function Results() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { colors, fontMono, subtleBackground } = useTheme();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // States για το Manual Grading ανά ερώτηση (Bulk Override)
   const [manualGrades, setManualGrades] = useState<Record<number, { grade: string; comments: string }>>({});
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -70,13 +67,12 @@ export default function Results() {
       .get(`/submissions/${id}/result`)
       .then((res) => {
         setData(res.data);
-        
-        // Αρχικοποίηση του state για τη χειροκίνητη βαθμολόγηση ανά ερώτηση
+
         const initialManual: any = {};
         res.data.questions.forEach((q: any) => {
-          initialManual[q.submission_question_id] = { // Χρήση sq_id ως κλειδί
+          initialManual[q.submission_question_id] = {
             grade: String(q.points_earned || "0"),
-            comments: q.teacher_comments || ""
+            comments: q.teacher_comments || "",
           };
         });
         setManualGrades(initialManual);
@@ -96,47 +92,46 @@ export default function Results() {
   }, [id]);
 
   const handleManualGradeChange = (sqId: number, field: "grade" | "comments", value: string) => {
-  setManualGrades(prev => ({
-    ...prev,
-    [sqId]: { ...prev[sqId], [field]: value }
-  }));
-};
+    setManualGrades((prev) => ({
+      ...prev,
+      [sqId]: { ...prev[sqId], [field]: value },
+    }));
+  };
 
-  // Logic για το Bulk Manual Override (Συνολική αποθήκευση)
   const handleBulkOverride = async () => {
     if (!window.confirm("Save manual grades?")) return;
     setIsUpdating(true);
 
     try {
-        // Ασφαλές mapping με χρήση submissionQuestionId
-        const payload = Object.entries(manualGrades)
-            .map(([sqId, val]) => ({
-                submissionQuestionId: parseInt(sqId),
-                grade: parseFloat(String(val?.grade || "0").replace(',', '.')),
-                comments: val?.comments || ""
-            }))
-            .filter(item => !isNaN(item.submissionQuestionId));
+      const payload = Object.entries(manualGrades)
+        .map(([sqId, val]) => ({
+          submissionQuestionId: parseInt(sqId),
+          grade: parseFloat(String(val?.grade || "0").replace(",", ".")),
+          comments: val?.comments || "",
+        }))
+        .filter((item) => !isNaN(item.submissionQuestionId));
 
-        const res = await api.post(`/submissions/${id}/bulk-manual-grade`, { grades: payload });
-        
-        // Ακαριαία ενημέρωση του UI state με 2 δεκαδικά
-        const updatedQuestions = data.questions.map((q: any) => {
-            const match = payload.find(p => p.submissionQuestionId === q.submission_question_id);
-            return match ? { ...q, points_earned: Number(match.grade).toFixed(2), teacher_comments: match.comments } : q;
-        });
+      const res = await api.post(`/submissions/${id}/bulk-manual-grade`, { grades: payload });
 
-        setData({ 
-            ...data, 
-            total_grade: Number(res.data.newTotal).toFixed(2), 
-            status: 'graded', 
-            questions: updatedQuestions 
-        });
+      const updatedQuestions = data.questions.map((q: any) => {
+        const match = payload.find((p) => p.submissionQuestionId === q.submission_question_id);
+        return match ? { ...q, points_earned: Number(match.grade).toFixed(2), teacher_comments: match.comments } : q;
+      });
 
-        alert("Updated successfully!");
+      setData({
+        ...data,
+        total_grade: Number(res.data.newTotal).toFixed(2),
+        status: "graded",
+        questions: updatedQuestions,
+      });
+
+      alert("Updated successfully!");
     } catch (err) {
-        alert("Failed to update.");
-    } finally { setIsUpdating(false); }
-};
+      alert("Failed to update.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleBack = () => {
     navigate(isTeacher ? "/teacher/dashboard" : "/tests");
@@ -144,18 +139,29 @@ export default function Results() {
 
   if (loading) {
     return (
-      <div style={{ padding: "100px", textAlign: "center", color: "#64748b" }}>
-        <p style={{ fontSize: "1.2rem", fontWeight: "bold" }}>Analyzing the results...</p>
+      <div style={{ padding: "100px", textAlign: "center", color: colors.textSec, ...subtleBackground, minHeight: "100vh" }}>
+        <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>Analyzing the results...</p>
       </div>
     );
   }
 
   if (errorMsg) {
     return (
-      <div style={{ padding: "100px", textAlign: "center", color: "#dc2626" }}>
+      <div style={{ padding: "100px", textAlign: "center", color: colors.dangerText, ...subtleBackground, minHeight: "100vh" }}>
         <h2 style={{ marginBottom: "15px" }}>Error</h2>
         <p>{errorMsg}</p>
-        <button onClick={handleBack} style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}>
+        <button
+          onClick={handleBack}
+          style={{
+            marginTop: "20px",
+            padding: "10px 20px",
+            cursor: "pointer",
+            borderRadius: 8,
+            border: `1px solid ${colors.border}`,
+            background: colors.card,
+            color: colors.text,
+          }}
+        >
           Go Back
         </button>
       </div>
@@ -169,14 +175,17 @@ export default function Results() {
     0,
   );
 
+  const isSubmittedLike = ["graded", "submitted", "completed"].includes(data.status);
+
   return (
     <div
       style={{
         maxWidth: "950px",
-        margin: "40px auto",
-        padding: "20px",
-        fontFamily: "sans-serif",
-        color: "#1e293b",
+        margin: "0 auto",
+        padding: "40px 20px",
+        color: colors.text,
+        ...subtleBackground,
+        minHeight: "100vh",
       }}
     >
       {/* --- HEADER: TOTAL SCORE --- */}
@@ -185,18 +194,17 @@ export default function Results() {
           textAlign: "center",
           marginBottom: "40px",
           padding: "40px",
-          background: "#f8fafc",
+          background: colors.card,
           borderRadius: "16px",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+          border: `1px solid ${colors.border}`,
         }}
       >
-        <h1 style={{ margin: "0 0 10px 0", color: "#1e293b" }}>
+        <h1 style={{ margin: "0 0 10px 0", color: colors.text }}>
           {data.test_title || "Exam Report"}
         </h1>
-        <div style={{ fontSize: "4.5rem", fontWeight: "bold", color: "#2563eb" }}>
+        <div style={{ fontSize: "4.5rem", fontWeight: 700, color: colors.accent }}>
           {data.total_grade ?? "0.00"}
-          <span style={{ fontSize: "1.5rem", color: "#94a3b8", marginLeft: "10px" }}>
+          <span style={{ fontSize: "1.5rem", color: colors.textMuted, marginLeft: "10px" }}>
             / {totalPossible}.00
           </span>
         </div>
@@ -204,18 +212,18 @@ export default function Results() {
           <span
             style={{
               padding: "6px 16px",
-              borderRadius: "20px",
-              fontSize: "0.9rem",
-              fontWeight: "bold",
-              background: (data.status === "graded" || data.status === "submitted" || data.status === "completed") ? "#dcfce7" : "#fee2e2",
-              color: (data.status === "graded" || data.status === "submitted" || data.status === "completed") ? "#166534" : "#991b1b",
+              borderRadius: "999px",
+              fontSize: "0.85rem",
+              fontWeight: 700,
+              background: isSubmittedLike ? colors.successBg : colors.dangerBg,
+              color: isSubmittedLike ? colors.successText : colors.dangerText,
             }}
           >
             Status: {data.status?.toUpperCase()}
           </span>
         </div>
         {isTeacher && (
-          <p style={{ marginTop: "15px", color: "#64748b", fontWeight: "bold", fontSize: "0.9rem" }}>
+          <p style={{ marginTop: "15px", color: colors.textSec, fontWeight: 600, fontSize: "0.85rem" }}>
             PEDAGOGICAL REVIEW MODE
           </p>
         )}
@@ -224,30 +232,35 @@ export default function Results() {
       <h2
         style={{
           marginBottom: "24px",
-          borderBottom: "2px solid #f1f5f9",
+          borderBottom: `2px solid ${colors.border}`,
           paddingBottom: "12px",
         }}
       >
-        Question Review
+        Question review
       </h2>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {(data.questions ?? []).map((q: any, i: number) => {
           const isCorrect = Number(q.points_earned) >= Number(q.points_possible);
           const isPartial = Number(q.points_earned) > 0 && !isCorrect;
-          
+
           const testResults = q.eval_details?.black_box?.test_results || [];
           const whiteBoxDetails = q.eval_details?.white_box?.details || [];
-          
+
+          const scoreColors = isCorrect
+            ? { bg: colors.successBg, text: colors.successText, border: colors.successBorder }
+            : isPartial
+              ? { bg: colors.warningBg, text: colors.warningText, border: colors.warningBorder }
+              : { bg: colors.dangerBg, text: colors.dangerText, border: colors.dangerBorder };
+
           return (
             <div
               key={i}
               style={{
                 padding: "28px",
                 borderRadius: "14px",
-                border: "1px solid #e2e8f0",
-                background: "white",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                border: `1px solid ${colors.border}`,
+                background: colors.card,
               }}
             >
               <div
@@ -256,23 +269,25 @@ export default function Results() {
                   justifyContent: "space-between",
                   alignItems: "flex-start",
                   marginBottom: "20px",
+                  gap: "16px",
+                  flexWrap: "wrap",
                 }}
               >
-                <div style={{ flex: 1, paddingRight: "20px" }}>
-                  <h3 style={{ margin: "0 0 8px 0", color: "#1e293b" }}>
+                <div style={{ flex: 1, minWidth: "200px" }}>
+                  <h3 style={{ margin: "0 0 8px 0", color: colors.text }}>
                     {i + 1}. {q.question_text}
                   </h3>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div
                     style={{
-                      fontWeight: "bold",
+                      fontWeight: 700,
                       padding: "8px 16px",
                       borderRadius: "10px",
                       fontSize: "1.1rem",
-                      background: isCorrect ? "#f0fdf4" : isPartial ? "#fff7ed" : "#fef2f2",
-                      color: isCorrect ? "#16a34a" : isPartial ? "#ea580c" : "#dc2626",
-                      border: `1px solid ${isCorrect ? "#bbf7d0" : isPartial ? "#fdba74" : "#fecaca"}`,
+                      background: scoreColors.bg,
+                      color: scoreColors.text,
+                      border: `1px solid ${scoreColors.border}`,
                     }}
                   >
                     {q.points_earned ?? 0} / {q.points_possible ?? 0}
@@ -282,17 +297,53 @@ export default function Results() {
 
               {/* --- WHITE-BOX SECTION: Complexity & Rules --- */}
               {q.type === "programming" && whiteBoxDetails.length > 0 && (
-                <div style={{ marginBottom: "20px", padding: "15px", background: "#f0f9ff", borderRadius: "10px", border: "1px solid #bae6fd" }}>
-                  <p style={{ margin: "0 0 10px 0", fontSize: "0.85rem", fontWeight: "bold", color: "#0369a1" }}>Code Quality & Structure (White-Box):</p>
+                <div
+                  style={{
+                    marginBottom: "20px",
+                    padding: "15px",
+                    background: colors.accentSubtle,
+                    borderRadius: "10px",
+                    border: `1px solid ${colors.accent}33`,
+                  }}
+                >
+                  <p style={{ margin: "0 0 10px 0", fontSize: "0.85rem", fontWeight: 700, color: colors.accentText }}>
+                    Code quality & structure (white-box):
+                  </p>
                   {whiteBoxDetails.map((detail: any, idx: number) => (
-                    <div key={idx} style={{ fontSize: "0.85rem", display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: idx !== whiteBoxDetails.length - 1 ? "1px solid #e0f2fe" : "none" }}>
+                    <div
+                      key={idx}
+                      style={{
+                        fontSize: "0.85rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "4px 0",
+                        borderBottom:
+                          idx !== whiteBoxDetails.length - 1 ? `1px solid ${colors.accent}22` : "none",
+                        color: colors.text,
+                      }}
+                    >
                       <span>
-                        {detail.target === 'complexity' ? "Logic Complexity" : detail.description}
+                        {detail.target === "complexity" ? "Logic complexity" : detail.description}
                       </span>
-                      <span style={{ fontWeight: "bold", color: detail.passed ? "#16a34a" : (detail.target === 'complexity' ? '#0369a1' : "#dc2626") }}>
-                        {detail.target === 'complexity' 
-                          ? (detail.actual_value < 5 ? "Simple" : detail.actual_value < 15 ? "Moderate" : "High")
-                          : (detail.passed ? "Compliant" : "Violation")}
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: detail.passed
+                            ? colors.successText
+                            : detail.target === "complexity"
+                              ? colors.accentText
+                              : colors.dangerText,
+                        }}
+                      >
+                        {detail.target === "complexity"
+                          ? detail.actual_value < 5
+                            ? "Simple"
+                            : detail.actual_value < 15
+                              ? "Moderate"
+                              : "High"
+                          : detail.passed
+                            ? "Compliant"
+                            : "Violation"}
                       </span>
                     </div>
                   ))}
@@ -306,15 +357,15 @@ export default function Results() {
                     marginTop: "10px",
                     padding: "18px",
                     borderRadius: "10px",
-                    background: "#f8fafc",
-                    border: "1px solid #f1f5f9",
+                    background: colors.neutralBg,
+                    border: `1px solid ${colors.border}`,
                   }}
                 >
                   <div style={{ marginBottom: "12px" }}>
-                    <span style={{ color: "#64748b", fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
-                      Student Answer:
+                    <span style={{ color: colors.textSec, fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
+                      Student answer:
                     </span>
-                    <strong style={{ fontSize: "1rem", color: isCorrect ? "#16a34a" : "#dc2626" }}>
+                    <strong style={{ fontSize: "1rem", color: isCorrect ? colors.successText : colors.dangerText }}>
                       {q.type === "mcq"
                         ? q.student_answer || "No response"
                         : q.tf_student_answer === null
@@ -324,14 +375,12 @@ export default function Results() {
                   </div>
 
                   {!isCorrect && (
-                    <div style={{ paddingTop: "12px", borderTop: "1px solid #e2e8f0" }}>
-                      <span style={{ color: "#64748b", fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
-                        Correct Answer:
+                    <div style={{ paddingTop: "12px", borderTop: `1px solid ${colors.border}` }}>
+                      <span style={{ color: colors.textSec, fontSize: "0.9rem", display: "block", marginBottom: "4px" }}>
+                        Correct answer:
                       </span>
-                      <strong style={{ fontSize: "1rem", color: "#16a34a" }}>
-                        {q.type === "mcq"
-                          ? q.correct_answer
-                          : String(q.tf_correct_answer)}
+                      <strong style={{ fontSize: "1rem", color: colors.successText }}>
+                        {q.type === "mcq" ? q.correct_answer : String(q.tf_correct_answer)}
                       </strong>
                     </div>
                   )}
@@ -343,21 +392,47 @@ export default function Results() {
                 <>
                   {testResults.length > 0 && testResults.some((t: any) => !t.passed) && (
                     (() => {
-                        const errorResult = testResults.find((t: any) => !t.passed);
-                        const feedback = getStatusFeedback(errorResult?.status || "Wrong Answer");
-                        
-                        return feedback ? (
-                            <div style={{ marginTop: "15px", padding: "12px 16px", borderRadius: "8px", border: `1px solid ${feedback.color}44`, background: feedback.bg, color: feedback.color, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "12px" }}>
-                                <span>{feedback.msg}</span>
-                            </div>
-                        ) : null;
+                      const errorResult = testResults.find((t: any) => !t.passed);
+                      const feedback = getStatusFeedback(errorResult?.status || "Wrong Answer");
+                      if (!feedback) return null;
+                      const fc = feedback.role === "warning"
+                        ? { bg: colors.warningBg, text: colors.warningText, border: colors.warningBorder }
+                        : { bg: colors.dangerBg, text: colors.dangerText, border: colors.dangerBorder };
+                      return (
+                        <div
+                          style={{
+                            marginTop: "15px",
+                            padding: "12px 16px",
+                            borderRadius: "8px",
+                            border: `1px solid ${fc.border}`,
+                            background: fc.bg,
+                            color: fc.text,
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          <span>{feedback.msg}</span>
+                        </div>
+                      );
                     })()
                   )}
 
                   {q.student_code && (
                     <div style={{ marginTop: "20px" }}>
-                      <p style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#64748b", marginBottom: "8px" }}>Submitted Code:</p>
-                      <pre style={{ background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px", fontSize: "0.85rem", overflowX: "auto", fontFamily: "monospace", border: "1px solid #334155" }}>
+                      <p style={{ fontSize: "0.85rem", fontWeight: 700, color: colors.textSec, marginBottom: "8px" }}>
+                        Submitted code:
+                      </p>
+                      <pre
+                        style={{
+                          background: colors.codeBg,
+                          color: colors.codeText,
+                          padding: "16px",
+                          borderRadius: "8px",
+                          fontSize: "0.85rem",
+                          overflowX: "auto",
+                          fontFamily: fontMono,
+                          border: `1px solid ${colors.codeBorder}`,
+                        }}
+                      >
                         {q.student_code}
                       </pre>
                     </div>
@@ -365,11 +440,21 @@ export default function Results() {
 
                   {testResults.length > 0 && (
                     <div style={{ marginTop: "20px" }}>
-                      <p style={{ fontWeight: "bold", fontSize: "0.9rem", color: "#475569", marginBottom: "10px" }}>Functional Validation Table:</p>
-                      <div style={{ overflowX: "auto", background: "#f8fafc", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                      <p style={{ fontWeight: 700, fontSize: "0.9rem", color: colors.textSec, marginBottom: "10px" }}>
+                        Functional validation table:
+                      </p>
+                      <div
+                        style={{
+                          overflowX: "auto",
+                          background: colors.neutralBg,
+                          padding: "10px",
+                          borderRadius: "8px",
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                           <thead>
-                            <tr style={{ textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #e2e8f0" }}>
+                            <tr style={{ textAlign: "left", color: colors.textMuted, borderBottom: `1px solid ${colors.border}` }}>
                               <th style={{ padding: "10px" }}>Visibility</th>
                               <th style={{ padding: "10px" }}>Input</th>
                               <th style={{ padding: "10px" }}>Status</th>
@@ -377,11 +462,17 @@ export default function Results() {
                           </thead>
                           <tbody>
                             {testResults.map((test: any, idx: number) => (
-                              <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                              <tr key={idx} style={{ borderBottom: `1px solid ${colors.border}` }}>
                                 <td style={{ padding: "10px" }}>{test.is_public ? "Public" : "Private"}</td>
-                                <td style={{ padding: "10px", fontFamily: "monospace" }}>{test.input}</td>
-                                <td style={{ padding: "10px", fontWeight: "bold", color: test.passed ? "#16a34a" : "#dc2626" }}>
-                                  {test.passed ? "Passed" : (test.status === "Accepted" ? "Wrong Answer" : test.status)}
+                                <td style={{ padding: "10px", fontFamily: fontMono }}>{test.input}</td>
+                                <td
+                                  style={{
+                                    padding: "10px",
+                                    fontWeight: 700,
+                                    color: test.passed ? colors.successText : colors.dangerText,
+                                  }}
+                                >
+                                  {test.passed ? "Passed" : test.status === "Accepted" ? "Wrong Answer" : test.status}
                                 </td>
                               </tr>
                             ))}
@@ -395,27 +486,53 @@ export default function Results() {
 
               {/* --- INSTRUCTOR MANUAL OVERRIDE (Per Question) --- */}
               {isTeacher && (
-                <div style={{ marginTop: "25px", padding: "20px", background: "#fdfbff", border: "1px dashed #d1d5db", borderRadius: "10px" }}>
-                  <div style={{ display: "flex", gap: "20px" }}>
+                <div
+                  style={{
+                    marginTop: "25px",
+                    padding: "20px",
+                    background: colors.neutralBg,
+                    border: `1px dashed ${colors.border}`,
+                    borderRadius: "10px",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
                     <div style={{ width: "150px" }}>
-                      <label style={{ display: "block", fontSize: "0.75rem", fontWeight: "bold", color: "#6b7280", marginBottom: "5px" }}>ADJUST GRADE</label>
-                      <input 
+                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: colors.textSec, marginBottom: "5px" }}>
+                        ADJUST GRADE
+                      </label>
+                      <input
                         type="text"
-                        step="0.1"
-                        max={q.points_possible}
                         value={manualGrades[q.submission_question_id]?.grade || ""}
                         onChange={(e) => handleManualGradeChange(q.submission_question_id, "grade", e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border: `1px solid ${colors.border}`,
+                          background: colors.inputBg,
+                          color: colors.text,
+                          boxSizing: "border-box",
+                        }}
                       />
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "0.75rem", fontWeight: "bold", color: "#6b7280", marginBottom: "5px" }}>TEACHER FEEDBACK</label>
-                      <input 
+                    <div style={{ flex: 1, minWidth: "200px" }}>
+                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: colors.textSec, marginBottom: "5px" }}>
+                        TEACHER FEEDBACK
+                      </label>
+                      <input
                         type="text"
                         placeholder="Add a pedagogical comment for this question..."
                         value={manualGrades[q.submission_question_id]?.comments || ""}
                         onChange={(e) => handleManualGradeChange(q.submission_question_id, "comments", e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border: `1px solid ${colors.border}`,
+                          background: colors.inputBg,
+                          color: colors.text,
+                          boxSizing: "border-box",
+                        }}
                       />
                     </div>
                   </div>
@@ -424,9 +541,17 @@ export default function Results() {
 
               {/* --- STUDENT VIEW OF COMMENTS --- */}
               {!isTeacher && q.teacher_comments && (
-                <div style={{ marginTop: "15px", padding: "15px", background: "#f0fdf4", borderLeft: "4px solid #22c55e", borderRadius: "4px" }}>
-                  <p style={{ margin: 0, fontSize: "0.9rem", color: "#166534" }}>
-                    <strong>Instructor Comments:</strong> {q.teacher_comments}
+                <div
+                  style={{
+                    marginTop: "15px",
+                    padding: "15px",
+                    background: colors.successBg,
+                    borderLeft: `4px solid ${colors.successText}`,
+                    borderRadius: "4px",
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: "0.9rem", color: colors.successText }}>
+                    <strong>Instructor comments:</strong> {q.teacher_comments}
                   </p>
                 </div>
               )}
@@ -437,17 +562,42 @@ export default function Results() {
 
       {/* --- STICKY TEACHER ACTION BAR --- */}
       {isTeacher && (
-        <div style={{ position: "sticky", bottom: "25px", marginTop: "40px", padding: "25px", background: "#1e293b", borderRadius: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.4)" }}>
-          <div style={{ color: "white" }}>
-            <p style={{ margin: 0, fontWeight: "bold" }}>Manual Overrides Pending</p>
-            <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8" }}>Overrides will update the student's total grade automatically.</p>
+        <div
+          style={{
+            position: "sticky",
+            bottom: "25px",
+            marginTop: "40px",
+            padding: "25px",
+            background: colors.codeBg,
+            borderRadius: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ color: colors.codeText }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Manual overrides pending</p>
+            <p style={{ margin: 0, fontSize: "0.8rem", color: colors.textMuted }}>
+              Overrides will update the student's total grade automatically.
+            </p>
           </div>
-          <button 
+          <button
             onClick={handleBulkOverride}
             disabled={isUpdating}
-            style={{ padding: "12px 30px", background: "#22c55e", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+            style={{
+              padding: "12px 30px",
+              background: colors.accent,
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              fontWeight: 700,
+              cursor: "pointer",
+              opacity: isUpdating ? 0.7 : 1,
+            }}
           >
-            {isUpdating ? "Saving Changes..." : "Save All Manual Grades"}
+            {isUpdating ? "Saving changes..." : "Save all manual grades"}
           </button>
         </div>
       )}
@@ -456,18 +606,18 @@ export default function Results() {
         onClick={handleBack}
         style={{
           marginTop: "40px",
-          padding: "18px",
+          padding: "16px",
           width: "100%",
-          borderRadius: "14px",
-          border: "none",
-          background: "#f1f5f9",
-          color: "#475569",
+          borderRadius: "12px",
+          border: `1px solid ${colors.border}`,
+          background: colors.card,
+          color: colors.textSec,
           cursor: "pointer",
-          fontWeight: "bold",
-          fontSize: "1.1rem",
+          fontWeight: 600,
+          fontSize: "1rem",
         }}
       >
-        &larr; Go Back to Dashboard
+        ← Go back to dashboard
       </button>
     </div>
   );

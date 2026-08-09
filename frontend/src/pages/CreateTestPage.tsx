@@ -15,7 +15,7 @@ interface Slot {
 
 export default function CreateTestPage() {
   const navigate = useNavigate();
-  const { colors } = useTheme();
+  const { colors, subtleBackground } = useTheme();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,13 +122,42 @@ export default function CreateTestPage() {
   return (
     <div
       style={{
+        width: "100%",
         minHeight: "100vh",
-        backgroundColor: colors.bg,
         color: colors.text,
-        padding: "40px 20px",
+        ...subtleBackground,
       }}
     >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+
+      <style>{`
+        .ctp-form-grid {
+          display: grid;
+          grid-template-columns: 350px 1fr;
+          gap: 30px;
+        }
+        .ctp-slot-row {
+          display: grid;
+          grid-template-columns: 1.5fr 1fr 1fr 1.5fr 80px 2fr auto;
+          gap: 10px;
+          align-items: center;
+        }
+        @media (max-width: 900px) {
+          .ctp-form-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 720px) {
+          .ctp-slot-row {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+        @media (max-width: 480px) {
+          .ctp-slot-row {
+            grid-template-columns: 1fr;
+          }
+        }
+    `}</style>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "40px 20px" }}>
         <header style={{ marginBottom: "30px" }}>
           <h1 style={{ margin: 0 }}>Create Strict Exam Blueprint</h1>
           <p style={{ color: colors.textSec }}>
@@ -139,24 +168,17 @@ export default function CreateTestPage() {
         {error && (
           <div style={{ 
             padding: "12px", 
-            backgroundColor: "#fee2e2", 
-            color: "#b91c1c", 
+            backgroundColor: colors.dangerBg, 
+            color: colors.dangerText, 
             borderRadius: "8px", 
             marginBottom: "20px",
-            border: "1px solid #fca5a5" 
+            border: `1px solid ${colors.dangerBorder}` 
           }}>
             {error}
           </div>
         )}
 
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "350px 1fr",
-            gap: "30px",
-          }}
-        >
+        <form onSubmit={handleSubmit} className="ctp-form-grid">      
           {/* LEFT: Meta, Scheduling & Global Grace */}
           <section>
             <div style={cardStyle}>
@@ -272,11 +294,8 @@ export default function CreateTestPage() {
               {formData.slots.map((slot, index) => (
                 <div
                   key={index}
+                  className="ctp-slot-row"
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.5fr 1fr 1fr 1.5fr 80px 2fr auto",
-                    gap: "10px",
-                    alignItems: "center",
                     padding: "15px",
                     border: `1px solid ${colors.border}`,
                     borderRadius: "8px",
@@ -363,7 +382,7 @@ export default function CreateTestPage() {
                   <button
                     type="button"
                     onClick={() => removeSlot(index)}
-                    style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: "1.2rem" }}
+                    style={{ border: "none", background: "transparent", color: colors.dangerText, cursor: "pointer", fontSize: "1.2rem" }}
                   >
                     ×
                   </button>
@@ -394,8 +413,8 @@ export default function CreateTestPage() {
               style={{
                 width: "100%",
                 padding: "20px",
-                background: "#2563eb",
-                color: "#fff",
+                background: loading || formData.slots.length === 0 ? colors.neutralBg : colors.accent,
+                color: loading || formData.slots.length === 0 ? colors.neutralText : "#fff",
                 border: "none",
                 borderRadius: "12px",
                 fontSize: "1.2rem",

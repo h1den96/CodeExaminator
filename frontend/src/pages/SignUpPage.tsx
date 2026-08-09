@@ -2,14 +2,12 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 
-// Ensure this matches your API base URL
 const API_BASE = "http://localhost:3000";
 
 export default function SignUpPage() {
-  const { colors, theme } = useTheme();
+  const { colors, theme, fontMono, richBackground } = useTheme();
   const nav = useNavigate();
 
-  // Sign Up Fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [semester, setSemester] = useState<number | string>(1);
@@ -25,8 +23,6 @@ export default function SignUpPage() {
     setLoading(true);
 
     try {
-      // Assuming your backend endpoint is /api/auth/register
-      // Adjust the body fields if your backend expects different keys (e.g. first_name vs firstName)
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -36,7 +32,7 @@ export default function SignUpPage() {
           semester: Number(semester),
           email,
           password,
-          role: "student", // Default role, adjust if backend handles this automatically
+          role: "student",
         }),
       });
 
@@ -48,7 +44,6 @@ export default function SignUpPage() {
         return;
       }
 
-      // On success, redirect to login so they can authenticate
       alert("Account created successfully! Please log in.");
       nav("/login");
     } catch (err: any) {
@@ -58,12 +53,16 @@ export default function SignUpPage() {
     }
   }
 
-  const inputStyle = {
-    padding: "10px",
+  const inputStyle: React.CSSProperties = {
+    padding: "10px 12px",
+    height: "42px",
     background: colors.inputBg,
     border: `1px solid ${colors.border}`,
     color: colors.text,
-    borderRadius: 4,
+    borderRadius: 8,
+    fontSize: "0.95rem",
+    outline: "none",
+    boxSizing: "border-box",
   };
 
   return (
@@ -74,32 +73,81 @@ export default function SignUpPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: colors.bg,
         color: colors.text,
+        ...richBackground,
       }}
     >
       <form
         onSubmit={handleSubmit}
         style={{
           backgroundColor: colors.card,
-          padding: "2rem",
-          borderRadius: "8px",
+          padding: "2.25rem 2rem",
+          borderRadius: "14px",
           border: `1px solid ${colors.border}`,
           display: "flex",
           flexDirection: "column",
           gap: "1rem",
-          width: "320px",
-          boxShadow: theme === "light" ? "0 4px 10px rgba(0,0,0,0.1)" : "none",
+          width: "340px",
+          position: "relative",
+          zIndex: 1,
+          boxShadow:
+            theme === "light"
+              ? "0 4px 16px rgba(0,0,0,0.08)"
+              : "0 4px 16px rgba(0,0,0,0.4)",
         }}
       >
-        <h1 style={{ margin: "0 0 1rem 0", textAlign: "center" }}>Sign Up</h1>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            marginBottom: "2px",
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: colors.accentSubtle,
+              color: colors.accentText,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: fontMono,
+              fontWeight: 700,
+              fontSize: "1rem",
+            }}
+          >
+            {"</>"}
+          </div>
+          <span style={{ fontSize: "1.3rem", fontWeight: 700 }}>
+            Code Examinator
+          </span>
+        </div>
+        <h1
+          style={{
+            margin: "0 0 0.5rem 0",
+            textAlign: "center",
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            color: colors.textSec,
+          }}
+        >
+          Create your account
+        </h1>
 
         {error && (
           <div
             style={{
-              color: "#ef4444",
+              backgroundColor: colors.dangerBg,
+              color: colors.dangerText,
+              border: `1px solid ${colors.dangerBorder}`,
+              padding: "10px 12px",
+              borderRadius: "8px",
               textAlign: "center",
-              fontSize: "0.9rem",
+              fontSize: "0.85rem",
             }}
           >
             {error}
@@ -112,7 +160,7 @@ export default function SignUpPage() {
             type="text"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            placeholder="First Name"
+            placeholder="First name"
             required
           />
           <input
@@ -120,7 +168,7 @@ export default function SignUpPage() {
             type="text"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            placeholder="Last Name"
+            placeholder="Last name"
             required
           />
         </div>
@@ -141,7 +189,7 @@ export default function SignUpPage() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
+          placeholder="you@university.edu"
           required
         />
 
@@ -150,7 +198,7 @@ export default function SignUpPage() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
+          placeholder="••••••••••••"
           required
         />
 
@@ -158,35 +206,36 @@ export default function SignUpPage() {
           type="submit"
           disabled={loading}
           style={{
-            padding: "10px",
-            marginTop: "10px",
-            background: "#2563eb",
-            color: "white",
+            padding: "11px",
+            marginTop: "6px",
+            background: colors.accent,
+            color: "#ffffff",
             border: "none",
-            borderRadius: 4,
+            borderRadius: 8,
             cursor: "pointer",
             opacity: loading ? 0.7 : 1,
-            fontWeight: "bold",
+            fontWeight: 600,
+            fontSize: "0.95rem",
           }}
         >
-          {loading ? "Creating Account..." : "Sign Up"}
+          {loading ? "Creating account..." : "Sign up"}
         </button>
 
         <div
           style={{
             textAlign: "center",
-            fontSize: "0.9rem",
-            marginTop: "10px",
-            color: "#666",
+            fontSize: "0.85rem",
+            marginTop: "4px",
+            color: colors.textSec,
           }}
         >
           Already have an account?{" "}
           <span
             onClick={() => nav("/login")}
             style={{
-              color: "#2563eb",
+              color: colors.accent,
               cursor: "pointer",
-              textDecoration: "underline",
+              fontWeight: 600,
             }}
           >
             Log in

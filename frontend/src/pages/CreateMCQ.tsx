@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
 
 export default function CreateMCQ() {
-  const { colors, theme } = useTheme();
+  const { colors, theme, subtleBackground } = useTheme();
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
@@ -89,287 +89,285 @@ export default function CreateMCQ() {
   };
 
   return (
-
-    <div style={{ 
-      padding: "40px",
-      background: "#f3f4f6",
-      minHeight: "100vh",
-      color: colors.text,
-      fontFamily: "sans-serif" }}>
-    <button 
-      onClick={handleBack}
-      style={{
-        marginBottom: "20px",
-        background: "transparent",
-        color: colors.text,
-        border: `1px solid ${colors.border}`,
-        padding: "8px 16px",
-        borderRadius: "6px",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px"
-      }}
-    >
-      ← Back to Hub
-    </button>
-
     <div
       style={{
-        padding: "40px",
-        background: colors.bg,
+        width: "100%",
         minHeight: "100vh",
         color: colors.text,
+        ...subtleBackground,
       }}
     >
       <div
         style={{
           maxWidth: "800px",
           margin: "0 auto",
-          background: colors.card,
-          padding: "30px",
-          borderRadius: "12px",
-          border: `1px solid ${colors.border}`,
+          padding: "40px 20px",
         }}
       >
-        <h1 style={{ marginBottom: "20px" }}>Create Weighted MCQ</h1>
-
-        {/* Basic Info */}
-        <input
+        <button
+          onClick={handleBack}
           style={{
-            width: "100%",
-            padding: "10px",
-            marginBottom: "15px",
-            background: colors.inputBg,
-            border: `1px solid ${colors.border}`,
-            color: colors.text,
-          }}
-          placeholder="Question Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-
-        <textarea
-          style={{
-            width: "100%",
-            padding: "10px",
-            marginBottom: "15px",
-            height: "100px",
-            background: colors.inputBg,
-            border: `1px solid ${colors.border}`,
-            color: colors.text,
-          }}
-          placeholder="Question Body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-        />
-
-        <select
-          style={{
-            width: "100%",
-            padding: "10px",
             marginBottom: "20px",
-            background: colors.inputBg,
+            background: "transparent",
             color: colors.text,
             border: `1px solid ${colors.border}`,
+            padding: "8px 16px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
           }}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
         >
-          <option value="">Select Topic</option>
-          {topics.map((t) => (
-            <option key={t.topic_id} value={t.topic_id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+          ← Back to Hub
+        </button>
 
+        <div
+          style={{
+            background: colors.card,
+            padding: "30px",
+            borderRadius: "12px",
+            border: `1px solid ${colors.border}`,
+          }}
+        >
+          <h1 style={{ marginBottom: "20px" }}>Create Weighted MCQ</h1>
+
+          {/* Basic Info */}
+          <input
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "15px",
+              background: colors.inputBg,
+              border: `1px solid ${colors.border}`,
+              color: colors.text,
+              borderRadius: "6px",
+            }}
+            placeholder="Question Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+
+          <textarea
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "15px",
+              height: "100px",
+              background: colors.inputBg,
+              border: `1px solid ${colors.border}`,
+              color: colors.text,
+              borderRadius: "6px",
+            }}
+            placeholder="Question Body"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
 
           <select
-          style={{
-            width: "100%",
-            padding: "10px",
-            marginBottom: "20px",
-            background: colors.inputBg,
-            color: colors.text,
-            border: `1px solid ${colors.border}`,
-          }}
-          value={difficulty}
-          onChange={(e) => setDifficulty(e.target.value)}
-        >
-          <option value="">Select Difficulty</option>
-          {difficultiesList.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-
-
-
-
-        {/* Options Section */}
-        <h3>Options & Weights</h3>
-        <p
-          style={{
-            fontSize: "0.85rem",
-            color: colors.textSec,
-            marginBottom: "15px",
-          }}
-        >
-          Assign a <strong>Score %</strong> to each option. <br />
-          • 100 = Fully Correct
-          <br />
-          • 50 = Half Credit
-          <br />
-          • 0 = Incorrect
-          <br />• -25 = Penalty (if negative grading enabled)
-        </p>
-
-        {options.map((opt, idx) => (
-          <div
-            key={idx}
             style={{
-              display: "flex",
-              gap: "10px",
-              marginBottom: "10px",
-              alignItems: "center",
+              width: "100%",
+              padding: "10px",
+              marginBottom: "20px",
+              background: colors.inputBg,
+              color: colors.text,
+              border: `1px solid ${colors.border}`,
+              borderRadius: "6px",
+            }}
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+          >
+            <option value="">Select Topic</option>
+            {topics.map((t) => (
+              <option key={t.topic_id} value={t.topic_id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "20px",
+              background: colors.inputBg,
+              color: colors.text,
+              border: `1px solid ${colors.border}`,
+              borderRadius: "6px",
+            }}
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+          >
+            <option value="">Select Difficulty</option>
+            {difficultiesList.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Options Section */}
+          <h3>Options & Weights</h3>
+          <p
+            style={{
+              fontSize: "0.85rem",
+              color: colors.textSec,
+              marginBottom: "15px",
             }}
           >
-            {/* Weight Input */}
+            Assign a <strong>Score %</strong> to each option. <br />
+            • 100 = Fully Correct
+            <br />
+            • 50 = Half Credit
+            <br />
+            • 0 = Incorrect
+            <br />• -25 = Penalty (if negative grading enabled)
+          </p>
+
+          {options.map((opt, idx) => (
             <div
+              key={idx}
               style={{
-                width: "80px",
                 display: "flex",
+                gap: "10px",
+                marginBottom: "10px",
                 alignItems: "center",
-                position: "relative",
               }}
             >
-              <input
-                type="number"
-                value={opt.weight}
-                onChange={(e) =>
-                  handleOptionChange(idx, "weight", e.target.value)
-                }
+              {/* Weight Input */}
+              <div
                 style={{
-                  width: "100%",
+                  width: "80px",
+                  display: "flex",
+                  alignItems: "center",
+                  position: "relative",
+                }}
+              >
+                <input
+                  type="number"
+                  value={opt.weight}
+                  onChange={(e) =>
+                    handleOptionChange(idx, "weight", e.target.value)
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    background:
+                      opt.weight > 0
+                        ? colors.successBg
+                        : opt.weight < 0
+                          ? colors.dangerBg
+                          : colors.inputBg,
+                    border:
+                      opt.weight > 0
+                        ? `2px solid ${colors.successBorder}`
+                        : opt.weight < 0
+                          ? `2px solid ${colors.dangerBorder}`
+                          : `1px solid ${colors.border}`,
+                    color:
+                      opt.weight > 0
+                        ? colors.successText
+                        : opt.weight < 0
+                          ? colors.dangerText
+                          : colors.text,
+                    borderRadius: "6px",
+                  }}
+                />
+                <span
+                  style={{
+                    position: "absolute",
+                    right: "5px",
+                    fontSize: "0.8rem",
+                    opacity: 0.5,
+                  }}
+                >
+                  %
+                </span>
+              </div>
+
+              {/* Text Input */}
+              <input
+                style={{
+                  flex: 1,
                   padding: "10px",
-                  textAlign: "center",
-                  fontWeight: "bold",
-                  background:
-                    opt.weight > 0
-                      ? "#dcfce7"
-                      : opt.weight < 0
-                        ? "#fee2e2"
-                        : colors.inputBg,
-                  border:
-                    opt.weight > 0
-                      ? "2px solid #22c55e"
-                      : opt.weight < 0
-                        ? "2px solid #ef4444"
-                        : `1px solid ${colors.border}`,
-                  color:
-                    opt.weight > 0
-                      ? "#166534"
-                      : opt.weight < 0
-                        ? "#991b1b"
-                        : colors.text,
+                  background: colors.inputBg,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.text,
                   borderRadius: "6px",
                 }}
+                placeholder={`Option ${idx + 1}`}
+                value={opt.text}
+                onChange={(e) => handleOptionChange(idx, "text", e.target.value)}
               />
-              <span
-                style={{
-                  position: "absolute",
-                  right: "5px",
-                  fontSize: "0.8rem",
-                  opacity: 0.5,
-                }}
-              >
-                %
-              </span>
+
+              {/* Remove Button */}
+              {options.length > 2 && (
+                <button
+                  onClick={() => removeOption(idx)}
+                  style={{
+                    background: colors.dangerText,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    width: "30px",
+                    height: "30px",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
+          ))}
 
-            {/* Text Input */}
+          <button
+            onClick={addOption}
+            style={{
+              marginTop: "5px",
+              background: "none",
+              border: "none",
+              color: colors.accentText,
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            + Add Option
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
             <input
-              style={{
-                flex: 1,
-                padding: "10px",
-                background: colors.inputBg,
-                border: `1px solid ${colors.border}`,
-                color: colors.text,
-                borderRadius: "6px",
-              }}
-              placeholder={`Option ${idx + 1}`}
-              value={opt.text}
-              onChange={(e) => handleOptionChange(idx, "text", e.target.value)}
+              type="checkbox"
+              id="allowMultiple"
+              checked={allowMultiple}
+              onChange={(e) => setAllowMultiple(e.target.checked)}
+              style={{ width: "20px", height: "20px", cursor: "pointer" }}
             />
-
-            {/* Remove Button */}
-            {options.length > 2 && (
-              <button
-                onClick={() => removeOption(idx)}
-                style={{
-                  background: "#ef4444",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  width: "30px",
-                  height: "30px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            )}
+            <label htmlFor="allowMultiple" style={{ fontWeight: "bold", cursor: "pointer" }}>
+              Allow Multiple Correct Answers (Checkboxes)
+            </label>
           </div>
-        ))}
 
-        <button
-          onClick={addOption}
-          style={{
-            marginTop: "5px",
-            background: "none",
-            border: "none",
-            color: "#2563eb",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          + Add Option
-        </button>
+          <hr style={{ margin: "20px 0", borderColor: colors.border }} />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
-          <input
-            type="checkbox"
-            id="allowMultiple"
-            checked={allowMultiple}
-            onChange={(e) => setAllowMultiple(e.target.checked)}
-            style={{ width: "20px", height: "20px", cursor: "pointer" }}
-          />
-          <label htmlFor="allowMultiple" style={{ fontWeight: "bold", cursor: "pointer" }}>
-            Allow Multiple Correct Answers (Checkboxes)
-          </label>
+          <button
+            onClick={handleSubmit}
+            style={{
+              width: "100%",
+              padding: "12px 24px",
+              background: colors.accent,
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Save Question
+          </button>
         </div>
-
-        <hr style={{ margin: "20px 0", borderColor: colors.border }} />
-
-        <button
-          onClick={handleSubmit}
-          style={{
-            width: "100%",
-            padding: "12px 24px",
-            background: "#2563eb",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          Save Question
-        </button>
       </div>
     </div>
-  </div>
   );
 }
