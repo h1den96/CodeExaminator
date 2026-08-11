@@ -139,6 +139,106 @@ export async function getTestById(req: Request, res: Response) {
       [testId]
     );
 
+    const questionRes = await examDb.query(
+      `SELECT
+          q.question_id,
+          q.question_type,
+          q.body AS text,
+          tq.points,
+          pq.test_cases,
+          tf.correct_answer
+       FROM exam.test_questions tq
+       JOIN exam.questions q ON q.question_id = tq.question_id
+       LEFT JOIN exam.programming_questions pq ON pq.question_id = q.question_id
+       LEFT JOIN exam.true_false_answers tf ON tf.question_id = q.question_id
+       WHERE tq.test_id = $1
+       ORDER BY tq.position ASC`,
+      [testId]
+    );
+
+    let questions = questionRes.rows;
+    let isPoolPreview = false;
+
+    // Random/slot-based tests never populate exam.test_questions - the real
+    // question set only gets resolved per-student at startTest time. Fall
+    // back to showing the eligible pool for each slot, using the exact same
+    // matching criteria as SubmissionService.startTestForStudent's drawQuery.
+    if (questions.length === 0 && slotRes.rows.length > 0) {
+      isPoolPreview = true;
+
+      const poolRes = await examDb.query(
+        `SELECT
+            s.slot_id,
+            s.slot_order,
+            s.question_type,
+            s.difficulty,
+            s.topic_id,
+            top.name AS topic_name,
+            s.category AS slot_category,
+            s.points,
+            q.question_id,
+            q.body AS text,
+            pq.test_cases,
+            tf.correct_answer
+         FROM exam.test_slots s
+         LEFT JOIN exam.topics top ON top.topic_id = s.topic_id
+         JOIN exam.questions q
+           ON q.difficulty = s.difficulty
+          AND q.question_type = s.question_type
+         JOIN exam.question_topics qt
+           ON qt.question_id = q.question_id
+          AND qt.topic_id = s.topic_id
+         LEFT JOIN exam.programming_questions pq ON pq.question_id = q.question_id
+         LEFT JOIN exam.true_false_answers tf ON tf.question_id = q.question_id
+         WHERE s.test_id = $1
+           AND (s.category = 'ANY' OR pq.category = s.category OR s.question_type != 'programming')
+         ORDER BY s.slot_order ASC, q.question_id ASC`,
+        [testId]
+      );
+
+      questions = poolRes.rows;
+
+      const mcqIds = [...new Set(questions.filter((q: any) => q.question_type === "mcq").map((q: any) => q.question_id))];
+      if (mcqIds.length > 0) {
+        const optRes = await examDb.query(
+          `SELECT question_id, option_text AS text, is_correct
+           FROM exam.mcq_options
+           WHERE question_id = ANY($1::int[])
+           ORDER BY option_id ASC`,
+          [mcqIds]
+        );
+        const optionsByQuestion = new Map<number, any[]>();
+        for (const opt of optRes.rows) {
+          const list = optionsByQuestion.get(opt.question_id) || [];
+          list.push({ text: opt.text, is_correct: opt.is_correct });
+          optionsByQuestion.set(opt.question_id, list);
+        }
+        for (const q of questions) {
+          if (q.question_type === "mcq") q.options = optionsByQuestion.get(q.question_id) || [];
+        }
+      }
+    } else {
+      const mcqQuestions = questions.filter((q: any) => q.question_type === "mcq");
+      if (mcqQuestions.length > 0) {
+        const optRes = await examDb.query(
+          `SELECT question_id, option_text AS text, is_correct
+           FROM exam.mcq_options
+           WHERE question_id = ANY($1::int[])
+           ORDER BY option_id ASC`,
+          [mcqQuestions.map((q: any) => q.question_id)]
+        );
+        const optionsByQuestion = new Map<number, any[]>();
+        for (const opt of optRes.rows) {
+          const list = optionsByQuestion.get(opt.question_id) || [];
+          list.push({ text: opt.text, is_correct: opt.is_correct });
+          optionsByQuestion.set(opt.question_id, list);
+        }
+        for (const q of mcqQuestions) {
+          q.options = optionsByQuestion.get(q.question_id) || [];
+        }
+      }
+    }
+
     const subRes = await examDb.query(
       `SELECT 
           submission_id, 
@@ -155,6 +255,8 @@ export async function getTestById(req: Request, res: Response) {
 
     const testData = {
       ...testRes.rows[0],
+      questions,
+      is_pool_preview: isPoolPreview,
       slots: slotRes.rows,
       submissions: subRes.rows,
     };

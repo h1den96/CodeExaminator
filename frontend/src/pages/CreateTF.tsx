@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 export default function CreateTF() {
-  const { colors, subtleBackground } = useTheme();
+  const { colors, richBackground } = useTheme();
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
@@ -51,11 +52,15 @@ export default function CreateTF() {
         width: "100%",
         minHeight: "100vh",
         color: colors.text,
-        ...subtleBackground,
+        position: "relative",
+        ...richBackground,
       }}
     >
+      <BackgroundAccents />
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           maxWidth: "800px",
           margin: "0 auto",
           padding: "40px 20px",

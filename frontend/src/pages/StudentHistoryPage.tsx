@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchStudentHistory, type StudentHistoryItem } from "../api/examApi";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 export default function StudentHistoryPage() {
-  const { colors } = useTheme();
+  const { colors, richBackground } = useTheme();
   const navigate = useNavigate();
   const [history, setHistory] = useState<StudentHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,16 +24,24 @@ export default function StudentHistoryPage() {
   return (
     <div
       style={{
-        padding: "40px 20px",
-        maxWidth: "1000px",
-        margin: "0 auto",
+        width: "100%",
         minHeight: "100vh",
-        background: colors.bg,
         color: colors.text,
-        fontFamily: "sans-serif",
+        position: "relative",
+        ...richBackground,
       }}
     >
-      {/* 🌟 ΝΕΟ: Back Button */}
+      <BackgroundAccents />
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          padding: "40px 20px",
+          maxWidth: "1000px",
+          margin: "0 auto",
+        }}
+      >
+      {/* Back Button */}
       <button
         onClick={() => navigate("/tests")}
         style={{
@@ -41,7 +50,7 @@ export default function StudentHistoryPage() {
           gap: "8px",
           background: "transparent",
           border: "none",
-          color: "#2563eb", // Μπλε χρώμα που ταιριάζει με τα υπόλοιπα links
+          color: colors.accentText,
           fontSize: "1rem",
           fontWeight: "bold",
           cursor: "pointer",
@@ -49,8 +58,8 @@ export default function StudentHistoryPage() {
           marginBottom: "20px",
           transition: "color 0.2s",
         }}
-        onMouseOver={(e) => (e.currentTarget.style.color = "#1d4ed8")}
-        onMouseOut={(e) => (e.currentTarget.style.color = "#2563eb")}
+        onMouseOver={(e) => (e.currentTarget.style.color = colors.accentHover)}
+        onMouseOut={(e) => (e.currentTarget.style.color = colors.accentText)}
       >
         <span>&larr;</span> Back to Exams
       </button>
@@ -88,13 +97,16 @@ export default function StudentHistoryPage() {
             style={{
               marginTop: "20px",
               padding: "10px 20px",
-              backgroundColor: "#2563eb",
+              backgroundColor: colors.accent,
               color: "white",
               border: "none",
               borderRadius: "8px",
               cursor: "pointer",
               fontWeight: "bold",
+              transition: "background 0.15s",
             }}
+            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = colors.accentHover)}
+            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = colors.accent)}
           >
             Go to Available Exams
           </button>
@@ -138,7 +150,7 @@ export default function StudentHistoryPage() {
                   🕒 {new Date(item.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
                 <span style={{ 
-                  color: item.status === "completed" || item.status === "submitted" ? "#16a34a" : "#dc2626",
+                  color: item.status === "completed" || item.status === "submitted" ? colors.successText : colors.dangerText,
                   fontWeight: "bold",
                   textTransform: "uppercase"
                 }}>
@@ -154,7 +166,7 @@ export default function StudentHistoryPage() {
                   style={{
                     fontSize: "1.4rem",
                     fontWeight: "bold",
-                    color: "#2563eb",
+                    color: colors.accentText,
                   }}
                 >
                   {item.total_grade}
@@ -191,6 +203,7 @@ export default function StudentHistoryPage() {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

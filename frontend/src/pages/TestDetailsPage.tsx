@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 import api from "../api/axios";
 
 interface Submission {
@@ -21,6 +22,21 @@ interface Question {
   correct_answer?: string | boolean;
   options?: { text: string; is_correct: boolean }[];
   test_cases?: any[];
+  // Present only when is_pool_preview is true: groups candidate questions
+  // by the slot they could be drawn for.
+  slot_id?: number;
+  slot_order?: number;
+  difficulty?: string;
+  topic_name?: string;
+}
+
+interface SlotGroup {
+  slotId: number | string;
+  slotOrder: number;
+  difficulty?: string;
+  topicName?: string;
+  questionType?: string;
+  questions: Question[];
 }
 
 interface TestDetail {
@@ -31,12 +47,15 @@ interface TestDetail {
   questions?: Question[];
   slots?: Question[];
   submissions?: Submission[];
+  // True when this test uses random slot-based question selection, meaning
+  // `questions` is the full eligible pool per slot rather than a fixed set.
+  is_pool_preview?: boolean;
 }
 
 export default function TestDetailsPage() {
   const { testId } = useParams();
   const navigate = useNavigate();
-  const { colors, fontMono, subtleBackground } = useTheme();
+  const { colors, fontMono, richBackground } = useTheme();
 
   const [test, setTest] = useState<TestDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,19 +89,49 @@ export default function TestDetailsPage() {
 
   if (loading)
     return (
-      <div style={{ padding: "40px", color: colors.text, ...subtleBackground, minHeight: "100vh" }}>
-        Loading test details...
+      <div style={{ position: "relative", minHeight: "100vh", color: colors.text, ...richBackground }}>
+        <BackgroundAccents />
+        <div style={{ position: "relative", zIndex: 1, padding: "40px" }}>
+          Loading test details...
+        </div>
       </div>
     );
   if (!test)
     return (
-      <div style={{ padding: "40px", color: colors.text, ...subtleBackground, minHeight: "100vh" }}>
-        Test not found.
+      <div style={{ position: "relative", minHeight: "100vh", color: colors.text, ...richBackground }}>
+        <BackgroundAccents />
+        <div style={{ position: "relative", zIndex: 1, padding: "40px" }}>
+          Test not found.
+        </div>
       </div>
     );
 
   const questionsList = test.questions || test.slots || [];
   const submissionsList = test.submissions || [];
+  const isPoolPreview = !!test.is_pool_preview;
+
+  // In pool-preview mode, multiple questions can share the same slot_id
+  // (they're all candidates for that slot, not a fixed set). Group them so
+  // the UI can show "Slot 1 - 4 possible questions" instead of one flat list.
+  const slotGroups: SlotGroup[] = [];
+  if (isPoolPreview) {
+    const groupMap = new Map<number | string, SlotGroup>();
+    for (const q of questionsList) {
+      const key = q.slot_id ?? "unknown";
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          slotId: key,
+          slotOrder: q.slot_order ?? 0,
+          difficulty: q.difficulty,
+          topicName: q.topic_name,
+          questionType: q.question_type,
+          questions: [],
+        });
+      }
+      groupMap.get(key)!.questions.push(q);
+    }
+    slotGroups.push(...Array.from(groupMap.values()).sort((a, b) => a.slotOrder - b.slotOrder));
+  }
 
   const completedSubmissions = submissionsList.filter((s) =>
     ["submitted", "completed", "graded"].includes(s.status.toLowerCase()),
@@ -97,17 +146,148 @@ export default function TestDetailsPage() {
         ).toFixed(2)
       : "N/A";
 
+  const renderQuestionCard = (q: Question, index: number) => (
+    <div
+      key={q.question_id || index}
+      style={{
+        backgroundColor: colors.card,
+        border: `1px solid ${colors.border}`,
+        borderRadius: "10px",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: "10px",
+          flexWrap: "wrap",
+          gap: "8px",
+        }}
+      >
+        <span
+          style={{
+            fontWeight: 700,
+            color: colors.textSec,
+            textTransform: "uppercase",
+            fontSize: "0.8rem",
+            letterSpacing: "0.03em",
+          }}
+        >
+          {isPoolPreview ? "Candidate" : `Q${index + 1}`} &mdash; {q.question_type.replace("_", " ")}
+        </span>
+        <span
+          style={{
+            fontSize: "0.85rem",
+            color: colors.textSec,
+            backgroundColor: colors.neutralBg,
+            padding: "2px 10px",
+            borderRadius: "999px",
+          }}
+        >
+          {q.points} points
+        </span>
+      </div>
+
+      <div
+        style={{
+          fontSize: "1rem",
+          marginBottom: "15px",
+          color: colors.text,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {q.text}
+      </div>
+
+      {/* ANSWER KEY SECTION */}
+      {showAnswers && (
+        <div
+          style={{
+            marginTop: "15px",
+            padding: "15px",
+            backgroundColor: colors.successBg,
+            borderLeft: `4px solid ${colors.successText}`,
+            borderRadius: "4px",
+            fontSize: "0.9rem",
+          }}
+        >
+          <strong
+            style={{
+              color: colors.successText,
+              display: "block",
+              marginBottom: "5px",
+            }}
+          >
+            Correct answer:
+          </strong>
+
+          <div style={{ color: colors.successText }}>
+            {q.question_type === "true_false" && (
+              <span>{String(q.correct_answer).toUpperCase()}</span>
+            )}
+
+            {q.question_type === "mcq" && q.options && (
+              <ul style={{ margin: "5px 0 0 20px", padding: 0 }}>
+                {q.options.map((opt, i) => (
+                  <li
+                    key={`mcq-opt-${i}`}
+                    style={{
+                      fontWeight: opt.is_correct ? 700 : 400,
+                    }}
+                  >
+                    {opt.text} {opt.is_correct && "(Correct)"}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {q.question_type === "programming" && (
+              <div>
+                <p style={{ margin: "0 0 5px 0", fontSize: "0.85rem" }}>
+                  Test cases:
+                </p>
+                <pre
+                  style={{
+                    backgroundColor: colors.card,
+                    padding: "10px",
+                    borderRadius: "6px",
+                    overflowX: "auto",
+                    border: `1px solid ${colors.successBorder}`,
+                    margin: 0,
+                    fontFamily: fontMono,
+                    color: colors.text,
+                  }}
+                >
+                  {JSON.stringify(q.test_cases, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       style={{
-        padding: "40px 20px",
-        maxWidth: "1200px",
-        margin: "0 auto",
-        ...subtleBackground,
+        position: "relative",
         minHeight: "100vh",
         color: colors.text,
+        ...richBackground,
       }}
     >
+      <BackgroundAccents />
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          padding: "40px 20px",
+          maxWidth: "1200px",
+          margin: "0 auto",
+        }}
+      >
       {/* HEADER: Back Button, Title, Controls */}
       <div
         style={{
@@ -262,13 +442,12 @@ export default function TestDetailsPage() {
                   <th style={{ padding: "16px", color: colors.textSec }}>Started at</th>
                   <th style={{ padding: "16px", color: colors.textSec }}>Time taken</th>
                   <th style={{ padding: "16px", color: colors.textSec }}>Grade</th>
-                  <th style={{ padding: "16px", color: colors.textSec, textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {submissionsList.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: "40px", textAlign: "center", color: colors.textSec }}>
+                    <td colSpan={5} style={{ padding: "40px", textAlign: "center", color: colors.textSec }}>
                       No submissions yet.
                     </td>
                   </tr>
@@ -283,8 +462,6 @@ export default function TestDetailsPage() {
                     }
 
                     const isDone = ["completed", "submitted", "graded"].includes(sub.status.toLowerCase());
-                    const isStarted = sub.status === "started";
-                    const isClickable = isDone || isStarted;
 
                     return (
                       <tr key={sub.submission_id} style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -322,23 +499,6 @@ export default function TestDetailsPage() {
                           }}
                         >
                           {sub.total_grade !== null ? `${sub.total_grade}` : "-"}
-                        </td>
-                        <td style={{ padding: "16px", textAlign: "right" }}>
-                          <button
-                            onClick={() => navigate(`/results/${sub.submission_id}`)}
-                            disabled={!isClickable}
-                            style={{
-                              padding: "8px 16px",
-                              backgroundColor: "transparent",
-                              color: isClickable ? colors.accent : colors.textMuted,
-                              border: `1px solid ${isClickable ? colors.accent : colors.border}`,
-                              borderRadius: "8px",
-                              cursor: isClickable ? "pointer" : "not-allowed",
-                              fontWeight: 700,
-                            }}
-                          >
-                            View report
-                          </button>
                         </td>
                       </tr>
                     );
@@ -487,6 +647,7 @@ export default function TestDetailsPage() {
             No questions found in this test.
           </div>
         )}
+      </div>
       </div>
     </div>
   );

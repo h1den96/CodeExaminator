@@ -1,11 +1,12 @@
 // src/components/BackgroundAccents.tsx
-// Large, very faint corner accents (curly braces + a code-tag mark) used to keep
-// otherwise-empty branded pages (login, signup, dashboard) from feeling stark.
-// Purely decorative: absolutely positioned, non-interactive, sits behind content.
+// A soft, slowly drifting glow (a couple of large blurred color blobs) used to
+// keep otherwise-empty branded pages (login, signup, dashboard) from feeling
+// stark. Purely decorative: absolutely positioned, non-interactive, sits behind
+// content, works with the existing dot-grid (richBackground).
 import { useTheme } from "../context/ThemeContext";
 
 export default function BackgroundAccents() {
-  const { colors, fontMono } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <div
@@ -18,56 +19,52 @@ export default function BackgroundAccents() {
         zIndex: 0,
       }}
     >
-      <span
+      <style>{`
+        @keyframes glowDriftA {
+          0%, 100% { transform: translate(0%, 0%) scale(1); }
+          50% { transform: translate(-6%, 8%) scale(1.08); }
+        }
+        @keyframes glowDriftB {
+          0%, 100% { transform: translate(0%, 0%) scale(1); }
+          50% { transform: translate(7%, -6%) scale(1.06); }
+        }
+      `}</style>
+
+      {/* top-right glow */}
+      <div
         style={{
           position: "absolute",
-          top: "-70px",
-          right: "-10px",
-          fontSize: "280px",
-          lineHeight: 1,
-          fontFamily: fontMono,
-          fontWeight: 700,
-          color: colors.accent,
-          opacity: 0.05,
-          transform: "rotate(-4deg)",
-          userSelect: "none",
+          top: "-18%",
+          right: "-12%",
+          width: "55vw",
+          height: "55vw",
+          maxWidth: "700px",
+          maxHeight: "700px",
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${colors.accent} 0%, transparent 70%)`,
+          opacity: 0.12,
+          filter: "blur(60px)",
+          animation: "glowDriftA 24s ease-in-out infinite",
         }}
-      >
-        {"}"}
-      </span>
-      <span
+      />
+
+      {/* bottom-left glow */}
+      <div
         style={{
           position: "absolute",
-          bottom: "-90px",
-          left: "-20px",
-          fontSize: "240px",
-          lineHeight: 1,
-          fontFamily: fontMono,
-          fontWeight: 700,
-          color: colors.accent,
-          opacity: 0.05,
-          transform: "rotate(3deg)",
-          userSelect: "none",
+          bottom: "-20%",
+          left: "-14%",
+          width: "50vw",
+          height: "50vw",
+          maxWidth: "620px",
+          maxHeight: "620px",
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${colors.accent} 0%, transparent 70%)`,
+          opacity: 0.1,
+          filter: "blur(60px)",
+          animation: "glowDriftB 28s ease-in-out infinite",
         }}
-      >
-        {"{"}
-      </span>
-      <span
-        style={{
-          position: "absolute",
-          bottom: "40px",
-          right: "6%",
-          fontSize: "64px",
-          lineHeight: 1,
-          fontFamily: fontMono,
-          fontWeight: 700,
-          color: colors.accent,
-          opacity: 0.06,
-          userSelect: "none",
-        }}
-      >
-        {"</>"}
-      </span>
+      />
     </div>
   );
 }

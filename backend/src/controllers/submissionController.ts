@@ -182,12 +182,15 @@ export const overrideQuestionGrade = async (req: Request, res: Response) => {
     );
 
     const { rows } = await client.query(
-      `SELECT SUM(question_grade) as total FROM exam.student_answers sa
-       JOIN exam.submission_questions sq ON sa.submission_question_id = sq.submission_question_id
-       WHERE sq.submission_id = $1`, 
+      `SELECT COALESCE(SUM(sa.question_grade), 0) as earned, COALESCE(SUM(sq.points), 1) as possible
+       FROM exam.submission_questions sq
+       LEFT JOIN exam.student_answers sa ON sa.submission_question_id = sq.submission_question_id
+       WHERE sq.submission_id = $1`,
       [submissionId]
     );
-    const newTotal = rows[0].total || 0;
+    const earned = Number(rows[0].earned || 0);
+    const possible = Number(rows[0].possible || 1);
+    const newTotal = Number(((earned / possible) * 10).toFixed(2));
 
     await client.query(
       "UPDATE exam.submissions SET total_grade = $1 WHERE submission_id = $2",

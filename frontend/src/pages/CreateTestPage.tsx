@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { fetchTopics, createTest, type Topic } from "../api/examApi";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 interface Slot {
   topic_id: number;
@@ -15,7 +16,7 @@ interface Slot {
 
 export default function CreateTestPage() {
   const navigate = useNavigate();
-  const { colors, subtleBackground } = useTheme();
+  const { colors, richBackground } = useTheme();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,15 @@ export default function CreateTestPage() {
       return;
     }
 
+    if (formData.available_from && formData.available_until) {
+      const opens = new Date(formData.available_from);
+      const closes = new Date(formData.available_until);
+      if (closes.getTime() <= opens.getTime()) {
+        setError("The closing time must be after the opening time.");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const isoAvailableFrom = formData.available_from 
@@ -112,11 +122,21 @@ export default function CreateTestPage() {
     marginBottom: "20px",
   };
   const inputBase = {
-    padding: "8px",
-    borderRadius: "6px",
+    height: "42px",
+    padding: "0 12px",
+    borderRadius: "8px",
     border: `1px solid ${colors.border}`,
     backgroundColor: colors.inputBg,
     color: colors.text,
+    fontSize: "0.95rem",
+    boxSizing: "border-box" as const,
+  };
+  const labelStyle = {
+    display: "block",
+    marginBottom: "6px",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    color: colors.textSec,
   };
 
   return (
@@ -125,9 +145,11 @@ export default function CreateTestPage() {
         width: "100%",
         minHeight: "100vh",
         color: colors.text,
-        ...subtleBackground,
+        position: "relative",
+        ...richBackground,
       }}
     >
+      <BackgroundAccents />
 
       <style>{`
         .ctp-form-grid {
@@ -157,7 +179,7 @@ export default function CreateTestPage() {
           }
         }
     `}</style>
-      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "40px 20px" }}>
+      <div style={{ position: "relative", zIndex: 1, maxWidth: "1200px", margin: "0 auto", padding: "40px 20px" }}>
         <header style={{ marginBottom: "30px" }}>
           <h1 style={{ margin: 0 }}>Create Strict Exam Blueprint</h1>
           <p style={{ color: colors.textSec }}>
@@ -182,44 +204,77 @@ export default function CreateTestPage() {
           {/* LEFT: Meta, Scheduling & Global Grace */}
           <section>
             <div style={cardStyle}>
-              <h3 style={{ marginTop: 0 }}>General Settings</h3>
-              <input
-                placeholder="Exam Title"
-                style={{ ...inputBase, width: "100%", marginBottom: "15px" }}
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-              />
-              <textarea
-                placeholder="Instructions..."
-                style={{ ...inputBase, width: "100%", minHeight: "100px" }}
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </div>
-
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0 }}>Timing</h3>
-              <div style={{ marginBottom: "10px" }}>
-                <label style={{ display: "block", marginBottom: "5px" }}>Opens:</label>
+              <h3 style={{ marginTop: 0, marginBottom: "16px" }}>General Settings</h3>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={labelStyle}>Exam Title</label>
                 <input
-                  type="datetime-local"
+                  placeholder="e.g. Midterm Exam"
                   style={{ ...inputBase, width: "100%" }}
-                  onChange={(e) => setFormData({ ...formData, available_from: e.target.value })}
-                  required
-                />
-              </div>
-              <div style={{ marginBottom: "10px" }}>
-                <label style={{ display: "block", marginBottom: "5px" }}>Closes:</label>
-                <input
-                  type="datetime-local"
-                  style={{ ...inputBase, width: "100%" }}
-                  onChange={(e) => setFormData({ ...formData, available_until: e.target.value })}
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
                 />
               </div>
               <div>
-                <label style={{ display: "block", marginBottom: "5px" }}>Duration (Mins):</label>
+                <label style={labelStyle}>Instructions</label>
+                <textarea
+                  placeholder="Instructions for students taking this exam..."
+                  style={{
+                    ...inputBase,
+                    height: "auto",
+                    width: "100%",
+                    minHeight: "100px",
+                    padding: "10px 12px",
+                    resize: "vertical",
+                    fontFamily: "inherit",
+                  }}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div style={cardStyle}>
+              <h3 style={{ marginTop: 0, marginBottom: "16px" }}>Timing</h3>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={labelStyle}>Opens</label>
+                <input
+                  type="datetime-local"
+                  style={{ ...inputBase, width: "100%" }}
+                  value={formData.available_from}
+                  onChange={(e) => {
+                    const newOpens = e.target.value;
+                    setFormData((prev) => ({
+                      ...prev,
+                      available_from: newOpens,
+                      // Clear Closes if it's no longer after the new Opens time
+                      available_until:
+                        prev.available_until && newOpens && new Date(prev.available_until) <= new Date(newOpens)
+                          ? ""
+                          : prev.available_until,
+                    }));
+                  }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={labelStyle}>Closes</label>
+                <input
+                  type="datetime-local"
+                  style={{ ...inputBase, width: "100%" }}
+                  value={formData.available_until}
+                  min={formData.available_from || undefined}
+                  onChange={(e) => setFormData({ ...formData, available_until: e.target.value })}
+                  required
+                />
+                {formData.available_from && (
+                  <p style={{ margin: "6px 0 0", fontSize: "0.75rem", color: colors.textSec }}>
+                    Must be after the opening time.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>Duration (Mins)</label>
                 <input
                   type="number"
                   value={formData.duration_minutes}
@@ -231,11 +286,9 @@ export default function CreateTestPage() {
             </div>
 
             <div style={cardStyle}>
-              <h3 style={{ marginTop: 0 }}>🛡️ Global Grace Settings</h3>
-              <div style={{ marginBottom: "10px" }}>
-                <label style={{ display: "block", marginBottom: "5px", fontSize: "0.85rem", fontWeight: "bold" }}>
-                  Grace Mode:
-                </label>
+              <h3 style={{ marginTop: 0, marginBottom: "16px" }}>🛡️ Global Grace Settings</h3>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={labelStyle}>Grace Mode</label>
                 <select
                   style={{ ...inputBase, width: "100%" }}
                   value={formData.grace_mode}
@@ -247,11 +300,9 @@ export default function CreateTestPage() {
                 </select>
               </div>
 
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "12px" }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: "5px", fontSize: "0.8rem" }}>
-                    AST Threshold:
-                  </label>
+                  <label style={labelStyle}>AST Threshold</label>
                   <input
                     type="number"
                     step="0.05"
@@ -264,9 +315,7 @@ export default function CreateTestPage() {
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: "5px", fontSize: "0.8rem" }}>
-                    Grace Cap:
-                  </label>
+                  <label style={labelStyle}>Grace Cap</label>
                   <input
                     type="number"
                     step="0.05"
@@ -284,7 +333,7 @@ export default function CreateTestPage() {
           {/* RIGHT: THE SLOT MANAGER */}
           <section>
             <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <h3 style={{ margin: 0 }}>Question Slots</h3>
                 <span style={{ fontWeight: "bold", color: colors.textSec }}>
                   {formData.slots.length} Strict Requirements

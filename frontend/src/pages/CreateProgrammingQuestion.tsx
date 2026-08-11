@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 interface Topic {
   topic_id: number;
@@ -24,7 +25,7 @@ interface StructuralRule {
 }
 
 export default function CreateProgrammingQuestion() {
-  const { colors, fontMono, subtleBackground } = useTheme();
+  const { colors, fontMono, richBackground } = useTheme();
   const navigate = useNavigate();
 
   // Basic Form State
@@ -285,10 +286,12 @@ export default function CreateProgrammingQuestion() {
         width: "100%",
         minHeight: "100vh",
         color: colors.text,
-        ...subtleBackground,
+        position: "relative",
+        ...richBackground,
       }}
     >
-      <div style={{ maxWidth: "850px", margin: "0 auto", padding: "40px 20px" }}>
+      <BackgroundAccents />
+      <div style={{ position: "relative", zIndex: 1, maxWidth: "850px", margin: "0 auto", padding: "40px 20px" }}>
         <button
           onClick={handleBack}
           style={{

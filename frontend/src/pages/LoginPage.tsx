@@ -2,6 +2,7 @@ import { type FormEvent, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 const API_BASE = "http://localhost:3000";
 
@@ -70,6 +71,7 @@ export default function LoginPage() {
   }
 
   const inputStyle: React.CSSProperties = {
+    width: "100%",
     padding: "10px 12px",
     height: "42px",
     background: colors.inputBg,
@@ -94,6 +96,7 @@ export default function LoginPage() {
         ...richBackground,
       }}
     >
+      <BackgroundAccents />
       {/* Theme toggle */}
       <button
         type="button"

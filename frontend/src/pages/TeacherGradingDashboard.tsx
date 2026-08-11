@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import BackgroundAccents from '../components/BackgroundAccents';
 import api from '../api/axios';
 
 export default function TeacherGradingDashboard() {
-    const { colors, subtleBackground } = useTheme();
+    const { colors, richBackground } = useTheme();
     const navigate = useNavigate();
 
     const [tests, setTests] = useState<any[]>([]);
@@ -87,7 +88,9 @@ export default function TeacherGradingDashboard() {
     const activeQuestion = submissionDetails?.questions?.find((q: any) => q.question_id === activeQuestionId);
 
     return (
-        <div style={{ width: "100%", minHeight: "100vh", ...subtleBackground, display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "100%", minHeight: "100vh", position: "relative", ...richBackground, display: "flex", flexDirection: "column" }}>
+            <BackgroundAccents />
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
             {/* Top Bar Navigation */}
             <div style={{ padding: "20px 40px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.card }}>
                 <h1 style={{ color: colors.text, margin: 0, fontSize: "1.5rem" }}>Exam Grading & Review Dashboard</h1>
@@ -248,6 +251,7 @@ export default function TeacherGradingDashboard() {
                         </div>
                     )}
                 </div>
+            </div>
             </div>
         </div>
     );

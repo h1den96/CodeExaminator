@@ -10,22 +10,24 @@ export class TestService {
     if (!test) throw new Error("Test not found");
 
     const qRes = await db.query(
-      `
-      SELECT 
-        q.*, 
-        tq.points, 
-        pq.starter_code,
-        pq.category,
-        pq.function_signature,
-        pq.boilerplate_code as boiler_plate_code
-      FROM exam.questions q
-      JOIN exam.test_questions tq ON q.question_id = tq.question_id
-      LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
-      WHERE tq.test_id = $1
-      ORDER BY tq.position ASC
-    `,
-      [testId],
-    );
+  `
+  SELECT 
+    q.*, 
+    tq.points, 
+    pq.starter_code,
+    pq.category,
+    pq.function_signature,
+    pq.boilerplate_code as boiler_plate_code,
+    pq.test_cases,
+    pq.reference_solution
+  FROM exam.questions q
+  JOIN exam.test_questions tq ON q.question_id = tq.question_id
+  LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
+  WHERE tq.test_id = $1
+  ORDER BY tq.position ASC
+`,
+  [testId],
+);
 
     // Apply the dynamic factory fallback on load
     test.questions = qRes.rows.map((q: any) => {

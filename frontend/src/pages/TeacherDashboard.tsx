@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 import { useAuth } from "../auth/AuthContext";
 import { fetchAllTests, type TestSummary } from "../api/examApi";
 
 export default function TeacherDashboard() {
   const navigate = useNavigate();
-  const { colors, subtleBackground } = useTheme();
+  const { colors, richBackground } = useTheme();
   const { logout } = useAuth();
 
   const [tests, setTests] = useState<TestSummary[]>([]);
@@ -39,11 +40,15 @@ export default function TeacherDashboard() {
       style={{
         width: "100%",
         minHeight: "100vh",
-        ...subtleBackground,
+        position: "relative",
+        ...richBackground,
       }}
     >
+      <BackgroundAccents />
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           padding: "40px 20px",
           maxWidth: "1200px",
           margin: "0 auto",

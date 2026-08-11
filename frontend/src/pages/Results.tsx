@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 // --- Helper function για Pedagogical Feedback ---
 // Maps a judge status to a semantic theme role (warning vs danger) plus the message.
@@ -34,7 +35,7 @@ const getStatusFeedback = (status: string) => {
 export default function Results() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { colors, fontMono, subtleBackground } = useTheme();
+  const { colors, fontMono, richBackground } = useTheme();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -139,31 +140,37 @@ export default function Results() {
 
   if (loading) {
     return (
-      <div style={{ padding: "100px", textAlign: "center", color: colors.textSec, ...subtleBackground, minHeight: "100vh" }}>
-        <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>Analyzing the results...</p>
+      <div style={{ position: "relative", minHeight: "100vh", color: colors.textSec, ...richBackground }}>
+        <BackgroundAccents />
+        <div style={{ position: "relative", zIndex: 1, padding: "100px", textAlign: "center" }}>
+          <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>Analyzing the results...</p>
+        </div>
       </div>
     );
   }
 
   if (errorMsg) {
     return (
-      <div style={{ padding: "100px", textAlign: "center", color: colors.dangerText, ...subtleBackground, minHeight: "100vh" }}>
-        <h2 style={{ marginBottom: "15px" }}>Error</h2>
-        <p>{errorMsg}</p>
-        <button
-          onClick={handleBack}
-          style={{
-            marginTop: "20px",
-            padding: "10px 20px",
-            cursor: "pointer",
-            borderRadius: 8,
-            border: `1px solid ${colors.border}`,
-            background: colors.card,
-            color: colors.text,
-          }}
-        >
-          Go Back
-        </button>
+      <div style={{ position: "relative", minHeight: "100vh", color: colors.dangerText, ...richBackground }}>
+        <BackgroundAccents />
+        <div style={{ position: "relative", zIndex: 1, padding: "100px", textAlign: "center" }}>
+          <h2 style={{ marginBottom: "15px" }}>Error</h2>
+          <p>{errorMsg}</p>
+          <button
+            onClick={handleBack}
+            style={{
+              marginTop: "20px",
+              padding: "10px 20px",
+              cursor: "pointer",
+              borderRadius: 8,
+              border: `1px solid ${colors.border}`,
+              background: colors.card,
+              color: colors.text,
+            }}
+          >
+            Go Back
+          </button>
+        </div>
       </div>
     );
   }
@@ -180,14 +187,22 @@ export default function Results() {
   return (
     <div
       style={{
-        maxWidth: "950px",
-        margin: "0 auto",
-        padding: "40px 20px",
-        color: colors.text,
-        ...subtleBackground,
+        position: "relative",
         minHeight: "100vh",
+        color: colors.text,
+        ...richBackground,
       }}
     >
+      <BackgroundAccents />
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          maxWidth: "950px",
+          margin: "0 auto",
+          padding: "40px 20px",
+        }}
+      >
       {/* --- HEADER: TOTAL SCORE --- */}
       <div
         style={{
@@ -619,6 +634,7 @@ export default function Results() {
       >
         ← Go back to dashboard
       </button>
+      </div>
     </div>
   );
 }

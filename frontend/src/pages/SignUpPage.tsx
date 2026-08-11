@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundAccents from "../components/BackgroundAccents";
 
 const API_BASE = "http://localhost:3000";
 
@@ -54,6 +55,7 @@ export default function SignUpPage() {
   }
 
   const inputStyle: React.CSSProperties = {
+    width: "100%",
     padding: "10px 12px",
     height: "42px",
     background: colors.inputBg,
@@ -74,9 +76,11 @@ export default function SignUpPage() {
         alignItems: "center",
         justifyContent: "center",
         color: colors.text,
+        position: "relative",
         ...richBackground,
       }}
     >
+      <BackgroundAccents />
       <form
         onSubmit={handleSubmit}
         style={{
