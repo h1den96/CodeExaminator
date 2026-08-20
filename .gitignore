@@ -26,4 +26,7 @@ yarn-error.log*
 /backend/full_validation_output.txt
 
 
+# dist
+/backend/dist
+
 cookies.txt
