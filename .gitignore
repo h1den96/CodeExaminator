@@ -18,7 +18,7 @@ yarn-error.log*
 
 # Production builds
 /frontend/build
-/frontend/dist
+/frontend/dist/
 
 # misc files
 /judge0/isolate_job.rb
