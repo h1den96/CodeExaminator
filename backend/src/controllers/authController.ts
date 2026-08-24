@@ -1,7 +1,8 @@
 // src/controllers/authController.ts
 import { Request, Response } from "express";
 import argon2 from "argon2";
-import { examDb } from "../db/db";
+import { Pool } from "pg";
+
 import {
   signAccessToken,
   createRefreshTokenValue,
@@ -9,11 +10,40 @@ import {
   refreshCookieOptions,
 } from "../auth/tokens";
 
+interface ExtendedRequest extends Request {
+  db: Pool;
+}
+const getDb = (req: ExtendedRequest): Pool => req.db || (req as any).db;
+
 const COOKIE_NAME = process.env.COOKIE_NAME || "refresh_token";
+// Ίδιο παράθυρο με το maxAge στο refreshCookieOptions() — server-side enforcement
+// της λήξης, αφού το auth.refresh_tokens δεν έχει στήλη expires_at.
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// --- Shared rotation helper (χρησιμοποιείται από login() και refresh()) ---
+async function issueRefreshToken(
+  db: Pool,
+  userId: number,
+  oldRefreshValue?: string,
+): Promise<string> {
+  if (oldRefreshValue) {
+    await db.query(
+      `UPDATE auth.refresh_tokens SET revoked_at = now() WHERE token_hash = $1`,
+      [hashRefreshToken(oldRefreshValue)],
+    );
+  }
+  const newValue = createRefreshTokenValue();
+  await db.query(
+    `INSERT INTO auth.refresh_tokens (user_id, token_hash) VALUES ($1, $2)`,
+    [userId, hashRefreshToken(newValue)],
+  );
+  return newValue;
+}
 
 // --- REGISTER (Matches /api/auth/register) ---
 export const register = async (req: Request, res: Response) => {
   const { first_name, last_name, semester, email, password } = req.body || {};
+  const db = getDb(req as ExtendedRequest);
 
   if (!email || !password || !first_name || !last_name) {
     return res.status(400).json({ error: "Invalid input or missing fields" });
@@ -22,7 +52,7 @@ export const register = async (req: Request, res: Response) => {
   const normalizedEmail = String(email).toLowerCase();
   const fullName = `${first_name} ${last_name}`.trim();
 
-  const client = await examDb.connect();
+  const client = await db.connect();
 
   try {
     await client.query("BEGIN");
@@ -84,10 +114,11 @@ export const register = async (req: Request, res: Response) => {
 // --- LOGIN ---
 export const login = async (req: Request, res: Response) => {
   const { email, password } = req.body || {};
+  const db = getDb(req as ExtendedRequest);
   const normalizedEmail = String(email).toLowerCase();
 
   try {
-    const { rows } = await examDb.query(
+    const { rows } = await db.query(
       `SELECT user_id, email, role, password_hash, full_name
          FROM auth.users WHERE email=$1`,
       [normalizedEmail],
@@ -100,30 +131,20 @@ export const login = async (req: Request, res: Response) => {
     if (!ok)
       return res.status(401).json({ error: "Email or password is incorrect" });
 
-    // Handle Token Refresh Logic...
+    // Token Rotation (revoke παλιό αν υπάρχει, έκδοση νέου)
     const oldRefresh = req.cookies?.[COOKIE_NAME];
-    if (oldRefresh) {
-      await examDb.query(
-        `UPDATE auth.refresh_tokens SET revoked_at=now() WHERE token_hash=$1`,
-        [hashRefreshToken(oldRefresh)],
-      );
-    }
-    const newValue = createRefreshTokenValue();
-    await examDb.query(
-      `INSERT INTO auth.refresh_tokens (user_id, token_hash) VALUES ($1,$2)`,
-      [user.user_id, hashRefreshToken(newValue)],
-    );
+    const newValue = await issueRefreshToken(db, user.user_id, oldRefresh);
 
     res.cookie(COOKIE_NAME, newValue, refreshCookieOptions());
     const accessToken = signAccessToken(user.user_id, user.role);
 
     res.json({
       accessToken,
-      user: { 
-        user_id: user.user_id, 
-        email: user.email, 
+      user: {
+        user_id: user.user_id,
+        email: user.email,
         role: user.role,
-        full_name: user.full_name // 🔥 Προσθήκη ονόματος
+        full_name: user.full_name,
       },
     });
   } catch (err) {
@@ -132,10 +153,53 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-// ... (refresh and logout can stay same or be imported)
+// --- REFRESH (rotation: επικυρώνει το cookie, ανακαλεί το παλιό, εκδίδει νέο ζεύγος) ---
 export const refresh = async (req: Request, res: Response) => {
-  /* ... reuse logic ... */
+  const db = getDb(req as ExtendedRequest);
+  const oldRefresh = req.cookies?.[COOKIE_NAME];
+
+  if (!oldRefresh) {
+    return res.status(401).json({ error: "No refresh token" });
+  }
+
+  try {
+    const tokenHash = hashRefreshToken(oldRefresh);
+    const { rows } = await db.query(
+      `SELECT rt.id, rt.user_id, rt.revoked_at, rt.created_at, u.role
+         FROM auth.refresh_tokens rt
+         JOIN auth.users u ON u.user_id = rt.user_id
+        WHERE rt.token_hash = $1`,
+      [tokenHash],
+    );
+    const record = rows[0];
+
+    if (!record || record.revoked_at) {
+      res.clearCookie(COOKIE_NAME, refreshCookieOptions());
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    const ageMs = Date.now() - new Date(record.created_at).getTime();
+    if (ageMs > REFRESH_TOKEN_MAX_AGE_MS) {
+      await db.query(
+        `UPDATE auth.refresh_tokens SET revoked_at = now() WHERE id = $1`,
+        [record.id],
+      );
+      res.clearCookie(COOKIE_NAME, refreshCookieOptions());
+      return res.status(401).json({ error: "Refresh token expired" });
+    }
+
+    const newValue = await issueRefreshToken(db, record.user_id, oldRefresh);
+    res.cookie(COOKIE_NAME, newValue, refreshCookieOptions());
+
+    const accessToken = signAccessToken(record.user_id, record.role);
+    res.json({ accessToken });
+  } catch (err) {
+    console.error("REFRESH ERR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 };
+
+// --- LOGOUT ---
 export const logout = async (req: Request, res: Response) => {
   res.clearCookie(COOKIE_NAME, refreshCookieOptions());
   res.json({ ok: true });

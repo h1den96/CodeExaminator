@@ -1,8 +1,6 @@
 // src/index.ts
 import "dotenv/config";
 import express from "express";
-import session from "express-session";
-import connectPg from "connect-pg-simple";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
@@ -16,7 +14,6 @@ import teacherReviewRouter from "./routes/teacherReviewRoute";
 import { requireAuth, requireTeacher } from "./middleware/requireAuth";
 
 const app = express();
-const PgStore = connectPg(session);
 
 app.use(
   cors({
@@ -27,26 +24,6 @@ app.use(
 
 app.use(express.json());
 app.use(cookieParser());
-
-app.use(
-  session({
-    store: new PgStore({
-      pool: authDb,
-      tableName: "session",
-      schemaName: "auth",
-    }),
-    name: "sid",
-    secret: process.env.SESSION_SECRET || "dev-only-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    },
-  }),
-);
 
 // ---------- AUTH ----------
 app.use(
