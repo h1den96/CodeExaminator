@@ -7,61 +7,13 @@ import RunTestPage from "../pages/RunTestPage";
 import StudentHistoryPage from "../pages/StudentHistoryPage";
 import ResultsPage from "../pages/Results";
 import TeacherDashboard from "../pages/TeacherDashboard";
-import CreateTestPage from "../pages/CreateTestPage"; // keeping the import for later
+import CreateTestPage from "../pages/CreateTestPage";
 
 import { RequireAuth } from "../auth/RequireAuth";
 
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* --- DEBUG: PUT THIS FIRST --- */}
-      {/* If you see "IT WORKS", the router is fine. */}
-      <Route
-        path="/teacher/create-test"
-        element={
-          <h1
-            style={{
-              color: "red",
-              fontSize: "50px",
-              textAlign: "center",
-              marginTop: "50px",
-            }}
-          >
-            IT WORKS
-          </h1>
-        }
-      />
-
-        {/* 4. ΝΕΟ ROUTE ΓΙΑ ΤΟ ΙΣΤΟΡΙΚΟ */}
-      <Route
-        path="/history"
-        element={
-          <RequireAuth>
-            <StudentHistoryPage />
-          </RequireAuth>
-        }
-      />
-
-        {/* 5. ΝΕΟ ROUTE ΓΙΑ ΤΑ ΑΠΟΤΕΛΕΣΜΑΤΑ (με δυναμικό ID) */}
-      <Route
-        path="/results/:id"
-        element={
-          <RequireAuth>
-            <ResultsPage />
-          </RequireAuth>
-        }
-      />
-
-      {/* TEACHER ROUTES */}
-      <Route
-        path="/teacher"
-        element={
-          <RequireAuth>
-            <TeacherDashboard />
-          </RequireAuth>
-        }
-      />
-
       {/* --- STANDARD ROUTES --- */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LoginPage />} />
@@ -80,6 +32,40 @@ export default function AppRoutes() {
         element={
           <RequireAuth>
             <RunTestPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          <RequireAuth>
+            <StudentHistoryPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/results/:id"
+        element={
+          <RequireAuth>
+            <ResultsPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* TEACHER ROUTES */}
+      <Route
+        path="/teacher"
+        element={
+          <RequireAuth>
+            <TeacherDashboard />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/teacher/create-test"
+        element={
+          <RequireAuth allowedRoles={["teacher"]}>
+            <CreateTestPage />
           </RequireAuth>
         }
       />

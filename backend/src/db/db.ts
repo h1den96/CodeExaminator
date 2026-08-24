@@ -28,12 +28,18 @@ const EXAM_URL = makeUrlForUser(
   process.env.APP_EXAM_DB_PASSWORD || "",
 );
 
-export const authDb = new Pool({ connectionString: AUTH_URL });
-export const examDb = new Pool({ connectionString: EXAM_URL });
-
-// Set schema search_path on every new connection
-authDb.on("connect", (c) => c.query("SET search_path TO auth, public"));
-examDb.on("connect", (c) => c.query("SET search_path TO exam, public"));
+// search_path περνάει ως libpq startup option, ώστε η Postgres να το θέτει
+// στο ίδιο το handshake κάθε νέου connection, χωρίς ξεχωριστό client.query()
+// μετά τη σύνδεση (που προκαλούσε το "client already executing a query"
+// deprecation warning λόγω race με τα queries πιο κάτω).
+export const authDb = new Pool({
+  connectionString: AUTH_URL,
+  options: "-c search_path=auth,public",
+});
+export const examDb = new Pool({
+  connectionString: EXAM_URL,
+  options: "-c search_path=exam,public",
+});
 
 // Optional health logs (nice to keep)
 authDb
