@@ -14,6 +14,7 @@ export default function CreateTF() {
   const [difficulty, setDifficulty] = useState("");
   const [topics, setTopics] = useState<any[]>([]);
   const [isTrue, setIsTrue] = useState(true);
+  const [penaltyPercent, setPenaltyPercent] = useState(100);
 
   const difficultiesList = [
     { id: "easy", name: "Easy" },
@@ -34,6 +35,7 @@ export default function CreateTF() {
         difficulty,
         topic_ids: [Number(topic)],
         is_true: isTrue,
+        penalty_ratio: penaltyPercent / 100,
       });
       alert("True/False Question Created!");
       navigate("/teacher/create-question-hub");
@@ -203,6 +205,35 @@ export default function CreateTF() {
             >
               FALSE
             </button>
+          </div>
+
+          <div style={{ marginTop: "20px" }}>
+            <h3>Penalty for a Wrong Answer:</h3>
+            <p style={{ fontSize: "13px", color: colors.text, opacity: 0.75, marginTop: "4px" }}>
+              Only applies if the test this question is used in has negative
+              marking enabled. 100% deducts full points on a wrong answer,
+              same as the question's own points; lower it for a softer
+              penalty.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={penaltyPercent}
+                onChange={(e) => setPenaltyPercent(Number(e.target.value))}
+                style={{
+                  width: "100px",
+                  padding: "10px",
+                  background: colors.inputBg,
+                  border: `1px solid ${colors.border}`,
+                  color: colors.text,
+                  borderRadius: "6px",
+                }}
+              />
+              <span>%</span>
+            </div>
           </div>
 
           <button

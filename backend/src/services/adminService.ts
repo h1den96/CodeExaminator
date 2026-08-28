@@ -21,6 +21,8 @@ export type CreateQuestionDto = {
   // Type Specifics
   options?: { text: string; is_correct: boolean; score_weight?: number }[];
   correct_answer?: boolean;
+  is_true?: boolean; // alias accepted from POST /api/questions/tf (see createTF)
+  penalty_ratio?: number; // fraction of maxPoints deducted on a wrong T/F answer, default 1.0
   
   // Programming Specifics
   category?: "SCALAR" | "LINEAR" | "CUSTOM";
@@ -117,11 +119,16 @@ export class AdminService {
             [qId, opt.text, opt.is_correct, weight]
           );
         }
-      } else if (dto.question_type === "true_false" && dto.correct_answer !== undefined) {
+      } else if (dto.question_type === "true_false" && (dto.correct_answer !== undefined || dto.is_true !== undefined)) {
+        // POST /api/questions (generic) sends correct_answer; POST /api/questions/tf
+        // sends is_true. Both are accepted here so a T/F question created through
+        // either path actually gets its answer row (previously, is_true was
+        // silently dropped because only correct_answer was checked).
+        const correctAnswer = dto.correct_answer !== undefined ? dto.correct_answer : dto.is_true;
         await client.query(
-          `INSERT INTO exam.true_false_answers (question_id, correct_answer)
-           VALUES ($1, $2)`,
-          [qId, dto.correct_answer]
+          `INSERT INTO exam.true_false_answers (question_id, correct_answer, penalty_ratio)
+           VALUES ($1, $2, $3)`,
+          [qId, correctAnswer, dto.penalty_ratio ?? 1.0]
         );
       } else if (dto.question_type === "programming") {
         await client.query(

@@ -182,11 +182,17 @@ export const createMCQ = async (req: Request, res: Response) => {
 // POST /api/questions/tf
 export const createTF = async (req: Request, res: Response) => {
   try {
-    const { title, body, difficulty, topic_ids, is_true } = req.body;
+    const { title, body, difficulty, topic_ids, is_true, penalty_ratio } = req.body;
     const teacher_id = (req as any).user.user_id;
 
     if (typeof is_true !== "boolean")
       return res.status(400).json({ error: "is_true must be boolean" });
+
+    if (
+      penalty_ratio !== undefined &&
+      (typeof penalty_ratio !== "number" || penalty_ratio < 0)
+    )
+      return res.status(400).json({ error: "penalty_ratio must be a non-negative number" });
 
     await AdminService.createTF({
       title,
@@ -194,6 +200,7 @@ export const createTF = async (req: Request, res: Response) => {
       difficulty,
       topic_ids,
       is_true,
+      penalty_ratio,
       teacher_id,
     });
     res.status(201).json({ message: "True/False created" });

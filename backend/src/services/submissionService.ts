@@ -328,7 +328,7 @@ export class SubmissionService {
                 q.grace_mode, q.grace_threshold, q.grace_cap,
                 pq.test_cases, pq.language_id, pq.category, pq.function_signature,
                 pq.boilerplate_code, pq.cpu_time_limit, pq.memory_limit, pq.helper_code,
-                tf.correct_answer as tf_correct, t.enable_negative_grading,
+                tf.correct_answer as tf_correct, tf.penalty_ratio as tf_penalty_ratio, t.enable_negative_grading,
                 (SELECT json_agg(json_build_object('id', mo.option_id, 'weight', mo.score_weight))
                 FROM exam.mcq_options mo WHERE mo.question_id = q.question_id) as mcq_options_data
             FROM exam.submission_questions sq
@@ -368,7 +368,13 @@ export class SubmissionService {
                     evalResult = { type: 'mcq', selected: ans.mcq_option_ids };
                 } 
                 else if (ans.question_type === 'true_false') {
-                    earned = GradingService.calculateTrueFalse(points, ans.tf_answer, ans.tf_correct);
+                    earned = GradingService.calculateTrueFalse(
+                        points,
+                        ans.tf_answer,
+                        ans.tf_correct,
+                        ans.enable_negative_grading,
+                        ans.tf_penalty_ratio != null ? Number(ans.tf_penalty_ratio) : 1.0,
+                    );
                     evalResult = { type: 'tf', student_ans: ans.tf_answer, correct_ans: ans.tf_correct };
                 } 
                 else if (ans.question_type === 'programming') {

@@ -41,9 +41,12 @@ export class GradingService {
     maxPoints: number,
     studentAnswer: boolean | null,
     correctAnswer: boolean,
+    enableNegative: boolean = false,
+    penaltyRatio: number = 1.0,
   ): number {
     if (studentAnswer === null || studentAnswer === undefined) return 0;
-    return studentAnswer === correctAnswer ? maxPoints : 0;
+    if (studentAnswer === correctAnswer) return maxPoints;
+    return enableNegative ? -maxPoints * penaltyRatio : 0;
   }
 
   /**
@@ -62,7 +65,7 @@ export class GradingService {
     forbidden: string[] = [],
     required: string[] = []
   ): { passed: boolean; error?: string; violationType?: string } {
-    
+
     if (!code || code.trim().length === 0) {
         return { passed: false, error: "No code submitted." };
     }
@@ -84,7 +87,7 @@ export class GradingService {
     // Evaluate Forbidden Statements
     for (const word of finalForbidden) {
         const targetCode = word.includes('(') ? normalizedCode : cleanCode;
-        
+
         if (targetCode.includes(word)) {
             return {
                 passed: false,
@@ -136,7 +139,7 @@ export class GradingService {
 
     if (cleanActual === cleanExpected) return true;
 
-    // Normalize spacing inside vectors/arrays/lists by stripping all whitespace 
+    // Normalize spacing inside vectors/arrays/lists by stripping all whitespace
     // for structural comparison (e.g., "[1, -1, 0]" vs "[1,-1,0]")
     const strippedActual = cleanActual.replace(/\s+/g, "");
     const strippedExpected = cleanExpected.replace(/\s+/g, "");
