@@ -210,7 +210,7 @@ export class SubmissionService {
 
             const drawQuery = `
                 INSERT INTO exam.submission_questions (submission_id, question_id, q_order, points, question_snapshot)
-                WITH RECURSIVE 
+                WITH RECURSIVE
                 slots AS (
                     SELECT slot_id, slot_order, topic_id, difficulty, question_type, category, points,
                             ROW_NUMBER() OVER (ORDER BY slot_order) as rn
@@ -219,10 +219,13 @@ export class SubmissionService {
                 ),
                 picker AS (
                     (
-                        SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot, ARRAY[q_pool.question_id] as used_ids, s.rn
+                        SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot,
+                               CASE WHEN q_pool.question_id IS NOT NULL
+                                    THEN ARRAY[q_pool.question_id] ELSE ARRAY[]::int[] END as used_ids,
+                               s.rn
                         FROM slots s
-                        CROSS JOIN LATERAL (
-                            SELECT q.question_id, 
+                        LEFT JOIN LATERAL (
+                            SELECT q.question_id,
                                 to_jsonb(q) || jsonb_build_object('starter_code', pq.starter_code, 'boilerplate_code', pq.boilerplate_code) as snapshot
                             FROM exam.questions q
                             JOIN exam.question_topics qt ON q.question_id = qt.question_id
@@ -230,17 +233,20 @@ export class SubmissionService {
                             WHERE q.difficulty = s.difficulty
                             AND qt.topic_id = s.topic_id
                             AND q.question_type = s.question_type
-                            AND (s.category = 'ANY' OR pq.category = s.category)
+                            AND (s.question_type != 'programming' OR s.category = 'ANY' OR pq.category = s.category)
                             ORDER BY RANDOM()
                             LIMIT 1
-                        ) q_pool
+                        ) q_pool ON TRUE
                         WHERE s.rn = 1
                     )
                     UNION ALL
-                    SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot, p.used_ids || q_pool.question_id, s.rn
+                    SELECT s.slot_order, s.points, q_pool.question_id, q_pool.snapshot,
+                           CASE WHEN q_pool.question_id IS NOT NULL
+                                THEN p.used_ids || q_pool.question_id ELSE p.used_ids END,
+                           s.rn
                     FROM slots s
                     JOIN picker p ON s.rn = p.rn + 1
-                    CROSS JOIN LATERAL (
+                    LEFT JOIN LATERAL (
                         SELECT q.question_id,
                             to_jsonb(q) || jsonb_build_object('starter_code', pq.starter_code, 'boilerplate_code', pq.boilerplate_code) as snapshot
                             FROM exam.questions q
@@ -249,13 +255,13 @@ export class SubmissionService {
                             WHERE q.difficulty = s.difficulty
                             AND qt.topic_id = s.topic_id
                             AND q.question_type = s.question_type
-                            AND (s.category = 'ANY' OR pq.category = s.category)
+                            AND (s.question_type != 'programming' OR s.category = 'ANY' OR pq.category = s.category)
                             AND q.question_id != ALL(p.used_ids)
                         ORDER BY RANDOM()
                         LIMIT 1
-                    ) q_pool
+                    ) q_pool ON TRUE
                 )
-                SELECT $1, question_id, slot_order, points, snapshot FROM picker;
+                SELECT $1, question_id, slot_order, points, snapshot FROM picker WHERE question_id IS NOT NULL;
                 `;
 
             await client.query(drawQuery, [submissionId, t.test_id]);

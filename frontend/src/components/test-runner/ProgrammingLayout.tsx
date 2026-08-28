@@ -48,8 +48,6 @@ export default function ProgrammingLayout({
   isRunning,
   runResult,
   runError,
-  topPart,
-  bottomPart,
 }: Props) {
   const { colors, theme } = useTheme();
   const [leftWidth, setLeftWidth] = useState(40);
@@ -96,27 +94,6 @@ export default function ProgrammingLayout({
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, []);
-
-  const readOnlyOptions = {
-    readOnly: true,
-    domReadOnly: true,
-    minimap: { enabled: false },
-    lineNumbers: "off" as const,
-    folding: false,
-    glyphMargin: false,
-    lineDecorationsWidth: 0,
-    lineNumbersMinChars: 0,
-    scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
-    scrollBeyondLastLine: false,
-    contextmenu: false,
-    selectionHighlight: false,
-    occurrencesHighlight: "off" as const,
-    hideCursorInOverviewRuler: true,
-    matchBrackets: "never" as const,
-    renderLineHighlight: "none" as const,
-    fontSize: 14,
-    automaticLayout: true,
-  };
 
   const isCompilationError =
     runResult?.status === "Compilation Error" ||
@@ -379,7 +356,7 @@ export default function ProgrammingLayout({
         style={{ width: "5px", cursor: "col-resize", background: "#334155" }}
       />
 
-      {/* RIGHT COLUMN: Code View (3 Stacked Editors) */}
+      {/* RIGHT COLUMN: Code View */}
       <div
         style={{
           width: `${100 - leftWidth}%`,
@@ -389,19 +366,6 @@ export default function ProgrammingLayout({
           overflow: "hidden",
         }}
       >
-        {/* Top read-only context block */}
-        {topPart && (
-          <div style={{ height: "160px", borderBottom: "1px solid #2d2d2d", opacity: 0.55 }}>
-            <Editor
-              height="100%"
-              defaultLanguage="cpp"
-              theme={theme === "dark" ? "vs-dark" : "light"}
-              value={topPart.trim()}
-              options={readOnlyOptions}
-            />
-          </div>
-        )}
-
         {/* Central interactive user code element */}
         <div style={{ flex: 1 }}>
           <Editor
@@ -421,19 +385,6 @@ export default function ProgrammingLayout({
             }}
           />
         </div>
-
-        {/* Bottom read-only main routine block */}
-        {bottomPart && (
-          <div style={{ height: "240px", borderTop: "1px solid #2d2d2d", opacity: 0.55 }}>
-            <Editor
-              height="100%"
-              defaultLanguage="cpp"
-              theme={theme === "dark" ? "vs-dark" : "light"}
-              value={bottomPart.trim()}
-              options={readOnlyOptions}
-            />
-          </div>
-        )}
       </div>
     </div>
   );
