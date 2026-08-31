@@ -266,7 +266,7 @@ export class SubmissionService {
 
             await client.query(drawQuery, [submissionId, t.test_id]);
             await client.query("COMMIT");
-            const freshTest = await TestService.reconstructTestFromSubmission(submissionId, db);
+            const freshTest = await TestService.reconstructTestFromSubmission(submissionId, client as any);
             return {
                 submissionId,
                 dto: { 
