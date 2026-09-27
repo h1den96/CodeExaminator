@@ -1,44 +1,4 @@
-// Ενδεικτικό (indicative) τεστ ταυτόχρονου φόρτου (concurrent load) για το
-// endpoint POST /api/test/start του CodeExaminator, ενάντια στον πραγματικό
-// backend + PostgreSQL σου. ΔΕΝ χρειάζεται Judge0 / Docker, γιατί το
-// /test/start δεν καλεί καθόλου τον Judge0Service.
-//
-// Πώς το τρέχεις:
-//   1) Ξεκίνα κανονικά το backend σου: cd backend && npm run dev
-//      (χρειάζεται η PostgreSQL σου να τρέχει, όπως πάντα)
-//   2) Σε άλλο τερματικό, μέσα στον ίδιο φάκελο με αυτό το αρχείο:
-//        node codeexaminator_loadtest.js
-//
-// Παραμετροποίηση (προαιρετικά, μέσω environment variables):
-//   BASE_URL   βασικό URL του backend            (default: http://localhost:3000)
-//   TEST_ID    το test_id ενός ΔΙΑΘΕΣΙΜΟΥ τεστ    (default: 1)
-//              (πρέπει να είναι μέσα στο [available_from, available_until]
-//               του και να έχει slots με τουλάχιστον 1 αντίστοιχη ερώτηση,
-//               αλλιώς θα δεις 400/404 σε όλα τα requests, όχι bug)
-//   B_SIZES    πλήθη φοιτητών για το Σενάριο Β, χωρισμένα με κόμμα
-//              (default: 12,50,100)
-//
-// Παράδειγμα:
-//   BASE_URL=http://localhost:3000 TEST_ID=7 B_SIZES=10,40 node codeexaminator_loadtest.js
-//
-// Τι κάνει:
-//   Σενάριο Α: 1 φοιτητής, Κ ταυτόχρονα POST /test/start για το ΙΔΙΟ τεστ
-//              (διπλό κλικ / retry σε flaky δίκτυο). Δεν αφορά το deadlock
-//              bug· ελέγχει τη λογική "already started" (race στο
-//              check-then-insert). Αναμενόμενο: μερικά 500 σε πολύ υψηλή
-//              ταυτοχρονία είναι γνωστό, ξεχωριστό, μη επικίνδυνο ζήτημα
-//              (καμία διπλοεγγραφή στη βάση, απλώς μη κομψό error status).
-//   Σενάριο Β: Ν διαφορετικοί φοιτητές, ταυτόχρονα POST /test/start για το
-//              ΙΔΙΟ τεστ (ολόκληρο τμήμα ξεκινάει μαζί). Αυτό είναι το
-//              σενάριο που πριν το fix "κρέμαγε" ολόκληρο τον server μόνιμα
-//              για Ν >= 10 (μέγεθος pool). Μετά το fix, αναμένεται 100%
-//              επιτυχία (status 200) σε όλα τα Ν.
-//
-// Μετά το τρέξιμο, μπορείς να επαληθεύσεις στη βάση ότι δεν υπάρχουν
-// διπλές ενεργές υποβολές:
-//   SELECT student_id, test_id, COUNT(*) FROM exam.submissions
-//   WHERE status = 'in_progress' GROUP BY student_id, test_id HAVING COUNT(*) > 1;
-// (should return 0 rows)
+
 
 const http = require("http");
 const https = require("https");

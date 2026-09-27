@@ -1,4 +1,4 @@
-// server/dto/TestDTO.ts
+
 export type McqOptionPublicDTO = {
   option_id: number;
   option_text: string;
@@ -16,9 +16,9 @@ export type TestQuestionDTO = {
 
 export type TestDTO = {
   submission_id: number;
-  test_id: number | null; // or number if you always use a tests table
+  test_id: number | null;
   status: "in_progress";
-  //created_at: string;
+
   questions: TestQuestionDTO[];
 };
 

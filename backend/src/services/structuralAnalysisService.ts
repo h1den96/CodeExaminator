@@ -13,12 +13,6 @@ export interface AnalysisRule {
 export class StructuralAnalysisService {
   private static parser: Parser;
 
-  // Cyclomatic complexity of 1 means zero branching (if/for/while/case/&&/||)
-  // at all — pure straight-line code. A one-line constant-return stub like
-  // `return 0;` scores exactly 1 here, which is <= the penalty threshold, so
-  // without this floor it silently earned FULL complexity credit, identical
-  // to a correct, well-structured solution. Requiring at least this much
-  // complexity means "avoids the penalty" is no longer the same as "did work".
   private static readonly MIN_COMPLEXITY_FOR_CREDIT = 2;
 
   private static initParser() {
@@ -94,21 +88,11 @@ export class StructuralAnalysisService {
   }
 
   private static hasUsingNamespaceDirective(node: Parser.SyntaxNode): boolean {
-    // tree-sitter-cpp parses `using namespace std;` as a using_declaration node.
-    // Matching on the 'namespace' keyword in the node text (rather than assuming
-    // a specific child structure) so this stays robust across grammar versions —
-    // same pattern already used by detectSmartPointers below.
+
     const usingDecls = node.descendantsOfType("using_declaration");
     return usingDecls.some((u) => /\bnamespace\b/.test(u.text));
   }
 
-  // A body containing only a single "return <literal>;" statement (e.g.
-  // `return 0;`, `return false;`, `return nullptr;`) is treated the same as
-  // an empty body: it is definitionally a constant-return stub and cannot
-  // constitute a real solution to any non-trivial problem. This is checked
-  // separately from complexity so that a genuinely correct one-line
-  // expression-based solution (e.g. `return n * 2;`, which is NOT a bare
-  // literal) is not caught by this rule.
   private static isTrivialLiteralReturn(stmt: Parser.SyntaxNode): boolean {
     if (stmt.type !== "return_statement") return false;
     const text = stmt.text.trim();
@@ -127,7 +111,7 @@ export class StructuralAnalysisService {
         );
 
         if (meaningfulChildren.length === 0) {
-          // Truly empty body for this function — keep checking others.
+
           continue;
         }
 
@@ -136,14 +120,12 @@ export class StructuralAnalysisService {
           this.isTrivialLiteralReturn(meaningfulChildren[0]);
 
         if (!isSingleTrivialReturn) {
-          // This function has real content — the submission as a whole is
-          // not considered empty.
+
           return false;
         }
       }
     }
-    // Every function found is either truly empty or a single constant-literal
-    // return — i.e. a stub.
+
     return true;
   }
 
@@ -175,10 +157,7 @@ export class StructuralAnalysisService {
         return true;
       }
     }
-    // `auto p = std::make_unique<T>(...)` never produces a template_type node —
-    // only a template_function call node for `make_unique<T>`. Without this
-    // check, that (arguably more idiomatic) style was silently invisible to
-    // this rule while `std::unique_ptr<T> p = ...` was detected fine.
+
     const templateFunctions = node.descendantsOfType("template_function");
     for (const t of templateFunctions) {
       const text = t.text;
@@ -204,22 +183,22 @@ export class StructuralAnalysisService {
     const root = tree.rootNode;
 
     if (this.hasMainFunction(root)) {
-      return { 
-        score: 0, 
-        details: [{ 
-          passed: false, 
-          description: "Defining main() is strictly forbidden. The system provides its own entry point." 
-        }] 
+      return {
+        score: 0,
+        details: [{
+          passed: false,
+          description: "Defining main() is strictly forbidden. The system provides its own entry point."
+        }]
       };
     }
 
     if (this.hasPreprocessorDirectives(root)) {
-      return { 
-        score: 0, 
-        details: [{ 
-          passed: false, 
-          description: "Preprocessor directives (#include, #define) are not allowed. Necessary headers are included by the judge." 
-        }] 
+      return {
+        score: 0,
+        details: [{
+          passed: false,
+          description: "Preprocessor directives (#include, #define) are not allowed. Necessary headers are included by the judge."
+        }]
       };
     }
 
@@ -268,15 +247,10 @@ export class StructuralAnalysisService {
     if (!securityPassed) return { score: 0, details };
 
     const complexityScore = this.calculateCyclomaticComplexity(root);
-    const complexityWeight = 30; 
+    const complexityWeight = 30;
     const complexityThreshold = 15;
     totalPossibleWeight += complexityWeight;
 
-    // Complexity credit now requires a minimum floor of actual branching
-    // logic. Previously this term only ever penalized *exceeding* the
-    // threshold and otherwise defaulted to full credit — meaning a stub with
-    // zero branches (complexity == 1) scored identically to a correct,
-    // well-structured solution on this metric.
     let complexityEarned = 0;
     if (complexityScore >= this.MIN_COMPLEXITY_FOR_CREDIT) {
       complexityEarned = complexityWeight;
@@ -307,7 +281,7 @@ export class StructuralAnalysisService {
 
       if (rule.target === "recursion") {
         passed = this.detectRecursion(root);
-      } 
+      }
       else if (rule.target === "loop") {
         passed = this.hasLoop(code);
       }
@@ -346,10 +320,7 @@ export class StructuralAnalysisService {
   }
 
   private static detectRecursion(node: Parser.SyntaxNode): boolean {
-    // Direct self-calls (f calls f) are one case; mutual/indirect recursion
-    // (f calls g, g calls f) is another. Build a call graph across every
-    // function defined in the student's code and check reachability back to
-    // the starting function, rather than only checking self-calls.
+
     const functions = node.descendantsOfType("function_definition");
     const funcBodies: Record<string, Parser.SyntaxNode> = {};
     const funcNames: string[] = [];

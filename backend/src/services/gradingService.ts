@@ -8,9 +8,7 @@ export type QuestionCategory =
   | "CUSTOM";
 
 export class GradingService {
-  /**
-   * 📊 CALCULATE MCQ SCORE
-   */
+
   static calculateMCQ(
     maxPoints: number,
     options: { id: number; weight: number }[],
@@ -34,9 +32,6 @@ export class GradingService {
     return parseFloat(finalScore.toFixed(2));
   }
 
-  /**
-   * ✅ CALCULATE TRUE/FALSE SCORE
-   */
   static calculateTrueFalse(
     maxPoints: number,
     studentAnswer: boolean | null,
@@ -49,17 +44,10 @@ export class GradingService {
     return enableNegative ? -maxPoints * penaltyRatio : 0;
   }
 
-  /**
-   * 🧼 REMOVE COMMENTS FROM CODE STRING
-   */
   private static stripComments(code: string): string {
     return code.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
   }
 
-  /**
-   * 🧠 STATIC ANALYSIS
-   * Scans code for banned or required keywords safely outside comments.
-   */
   static performStaticAnalysis(
     code: string,
     forbidden: string[] = [],
@@ -70,13 +58,10 @@ export class GradingService {
         return { passed: false, error: "No code submitted." };
     }
 
-    // Clean out all multi-line and single-line comment blocks
     const cleanCode = this.stripComments(code);
 
-    // Normalize spacing to avoid spaces bypass structures like "system   ("
     const normalizedCode = cleanCode.replace(/\s+/g, '');
 
-    // Hardcoded Security Core Definitions
     const systemSecurityList = [
         "system(", "fork(", "fstream", "ifstream", "ofstream",
         "asm", "__asm__", "syscall", "int0x80", "\\x", "__attribute__"
@@ -84,7 +69,6 @@ export class GradingService {
 
     const finalForbidden = Array.from(new Set([...forbidden, ...systemSecurityList]));
 
-    // Evaluate Forbidden Statements
     for (const word of finalForbidden) {
         const targetCode = word.includes('(') ? normalizedCode : cleanCode;
 
@@ -97,7 +81,6 @@ export class GradingService {
         }
     }
 
-    // Evaluate Required Statements
     if (required && required.length > 0) {
         for (const word of required) {
             if (!cleanCode.includes(word)) {
@@ -112,17 +95,12 @@ export class GradingService {
     return { passed: true };
   }
 
-  /**
-   * ⚖️ SMART LOGICAL COMPARISON
-   * Strips out hidden newlines, trailing whitespaces, and normalizes floats.
-   */
   static smartCompare(actual: string, expected: string): boolean {
     let cleanActual = actual.replace(/\r/g, "").trim();
     let cleanExpected = expected.replace(/\r/g, "").trim();
 
     if (cleanActual === cleanExpected) return true;
 
-    // Remove surrounding quotes if present
     if (
         (cleanExpected.startsWith('"') && cleanExpected.endsWith('"')) ||
         (cleanExpected.startsWith("'") && cleanExpected.endsWith("'"))
@@ -139,8 +117,6 @@ export class GradingService {
 
     if (cleanActual === cleanExpected) return true;
 
-    // Normalize spacing inside vectors/arrays/lists by stripping all whitespace
-    // for structural comparison (e.g., "[1, -1, 0]" vs "[1,-1,0]")
     const strippedActual = cleanActual.replace(/\s+/g, "");
     const strippedExpected = cleanExpected.replace(/\s+/g, "");
 

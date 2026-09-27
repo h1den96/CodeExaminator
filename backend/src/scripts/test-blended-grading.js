@@ -21,10 +21,6 @@ const dbConfig = {
 
 const QUESTION_ID = 122;
 
-// ============================================================
-// Reusable code snippets
-// ============================================================
-
 const CODE_NO_LOOP_UNGUARDED = `void swapPointers(int** ptrA, int** ptrB) {
     int* temp = *ptrA;
     *ptrA = *ptrB;
@@ -119,9 +115,8 @@ const CODE_MISSING_SEMICOLON = `void swapPointers(int** ptrA, int** ptrB) {
 const CODE_UNCLOSED_BRACE = `void swapPointers(int** ptrA, int** ptrB) {
     int* temp = *ptrA;
     *ptrA = *ptrB;
-    *ptrB = temp;`; // missing closing brace
+    *ptrB = temp;`;
 
-// 16 sequential branches to try to push cyclomatic complexity past a "> 15" threshold
 const highComplexityBranches = Array.from({ length: 16 }, (_, i) =>
   `    if (ptrA && *ptrA && **ptrA == ${i}) { /* branch ${i} */ }`
 ).join('\n');
@@ -132,11 +127,6 @@ ${highComplexityBranches}
     *ptrB = temp;
 }`;
 
-// Direct self-recursion: swapPointers calls itself once (guarded by a static
-// depth counter so it terminates and is safe to invoke across multiple stdin
-// lines in the same harness process). Functionally equivalent to
-// CODE_WITH_LOOP_GUARDED (nullptr-guarded, correct swap), so black-box should
-// fully pass — isolates the recursion structural check.
 const CODE_RECURSION_DIRECT_SELF_CALL = `void swapPointers(int** ptrA, int** ptrB) {
     static int recursionDepth = 0;
     if (recursionDepth > 0) {
@@ -152,12 +142,6 @@ const CODE_RECURSION_DIRECT_SELF_CALL = `void swapPointers(int** ptrA, int** ptr
     recursionDepth--;
 }`;
 
-// Mutual/indirect recursion: swapPointers calls swapHelper, swapHelper calls
-// swapPointers back — neither function calls itself directly. This is the
-// actual new capability added by the detectRecursion rewrite (call-graph
-// reachability vs. direct self-call check). Custom boilerplate substitutes
-// this whole block at file scope via [[STUDENT_CODE_ZONE]], so the forward
-// declaration and global guard variable are valid C++ here.
 const CODE_RECURSION_MUTUAL_INDIRECT = `int g_recursionGuard = 0;
 
 void swapHelper(int** ptrA, int** ptrB);
@@ -180,8 +164,6 @@ void swapHelper(int** ptrA, int** ptrB) {
     swapPointers(ptrA, ptrB);
 }`;
 
-// Explicit unique_ptr type declaration — should hit the `template_type`
-// branch that detectSmartPointers actually checks.
 const CODE_SMART_POINTER_EXPLICIT_TYPE = `void swapPointers(int** ptrA, int** ptrB) {
     std::unique_ptr<int> guard = std::make_unique<int>(0);
     if (ptrA && ptrB) {
@@ -191,11 +173,6 @@ const CODE_SMART_POINTER_EXPLICIT_TYPE = `void swapPointers(int** ptrA, int** pt
     }
 }`;
 
-// Same idea via `auto` — no explicit unique_ptr/shared_ptr type token ever
-// appears in the source; only a template_function call (make_unique<int>)
-// does. detectSmartPointers only scans template_type nodes, so this is
-// expected (per source reading) to NOT be detected — testing the exact gap
-// flagged in Open Item #3.
 const CODE_SMART_POINTER_AUTO_MAKE_UNIQUE = `void swapPointers(int** ptrA, int** ptrB) {
     auto guard = std::make_unique<int>(0);
     if (ptrA && ptrB) {
@@ -225,13 +202,6 @@ const RULES_RECURSION_REQUIRED = JSON.stringify([
 const RULES_SMART_POINTERS_REQUIRED = JSON.stringify([
   { type: 'REQUIRE', target: 'smart_pointers', description: 'Must use a smart pointer (unique_ptr/shared_ptr)', weight: 40 },
 ]);
-
-// ============================================================
-// Test case definitions
-// structural_rules: null = don't touch (leave whatever is currently set)
-// expect: { type: 'exact', value, tolerance } | { type: 'note' } — 'note' cases
-//          just print full output for manual review, no pass/fail assertion
-// ============================================================
 
 const TEST_CASES = [
   {
@@ -374,7 +344,7 @@ const TEST_CASES = [
     description: 'Tests Grace Mode: code fails to compile due to a missing semicolon, but has high AST health, so it should receive partial credit via the grace cap.',
     structuralRules: RULES_LOOP_AND_RAWPTR,
     code: CODE_MISSING_SEMICOLON,
-    expect: { type: 'note' }, // set to 'note' first to inspect the exact AST health and score output
+    expect: { type: 'note' },
     predicted: 'Compilation fails; H_ast should be >= 0.90, triggering grace mode award (S_bb = 0.15 * H_ast).',
   },
   {
@@ -432,10 +402,6 @@ const TEST_CASES = [
     predicted: 'Linear loop is not recognized as logarithmic; structural check fails and applies score penalty.',
   },
 ];
-
-// ============================================================
-// Harness plumbing
-// ============================================================
 
 function generateTestToken(userId, role = 'student') {
   return jwt.sign({ user_id: userId, role }, JWT_SECRET, { expiresIn: '2h' });

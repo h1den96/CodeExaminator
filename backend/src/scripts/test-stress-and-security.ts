@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API_URL = "http://localhost:3000/api";
-const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJyb2xlIjoic3R1ZGVudCIsImlhdCI6MTc3NjE3NTIyOCwiZXhwIjoxNzc2MTc2MTI4fQ.guDfeFz7ObFGqTSiMBHn1K632cP9RgyLrOAujTYEyqM"; 
+const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJyb2xlIjoic3R1ZGVudCIsImlhdCI6MTc3NjE3NTIyOCwiZXhwIjoxNzc2MTc2MTI4fQ.guDfeFz7ObFGqTSiMBHn1K632cP9RgyLrOAujTYEyqM";
 const SUBMISSION_ID = 7;
 const QUESTION_ID = 127;
 
@@ -11,7 +11,7 @@ async function testStressAndSecurity() {
     const tests = [
         {
             name: "1. Infinite Loop (CPU Timeout)",
-            // Στέλνουμε ολόκληρη τη συνάρτηση για να είναι έγκυρη C++
+
             code: `bool isPrime(int n) { while(true); return false; }`,
             expectedStatus: "Time Limit Exceeded"
         },
@@ -45,22 +45,20 @@ async function testStressAndSecurity() {
     for (const t of tests) {
         try {
             console.log(`\nTesting: ${t.name}...`);
-            const res = await axios.post(`${API_URL}/submissions/${SUBMISSION_ID}/run`, 
+            const res = await axios.post(`${API_URL}/submissions/${SUBMISSION_ID}/run`,
                 { question_id: QUESTION_ID, code: t.code },
                 { headers: { Authorization: `Bearer ${TOKEN}` } }
             );
 
             const resData = res.data;
             const firstResult = resData.test_results?.[0];
-            
-            // Παίρνουμε το κείμενο του status
+
             const statusObj = firstResult?.status || resData.status;
             const statusText = typeof statusObj === 'string' ? statusObj : (statusObj?.description || "Unknown");
 
             console.log(`Result: ${statusText}`);
 
-            // Έλεγχος αν πέτυχε το τεστ
-            const isExpected = statusText.toLowerCase().includes(t.expectedStatus.toLowerCase()) || 
+            const isExpected = statusText.toLowerCase().includes(t.expectedStatus.toLowerCase()) ||
                                (resData.error && resData.error.includes(t.expectedStatus));
 
             if (isExpected) {
@@ -68,7 +66,7 @@ async function testStressAndSecurity() {
             } else {
                 console.log(`❌ Unexpected behavior. Expected: ${t.expectedStatus}`);
                 if (firstResult?.compile_output) {
-                    // Ασφαλής αποκωδικοποίηση Base64 για τα σφάλματα
+
                     const decodedError = Buffer.from(firstResult.compile_output, 'base64').toString('utf-8');
                     console.log("Compile Error Detail:", decodedError);
                 }

@@ -1,4 +1,4 @@
-// src/index.ts
+
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -25,7 +25,6 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// ---------- AUTH ----------
 app.use(
   "/api/auth",
   (req, _res, next) => {
@@ -35,7 +34,6 @@ app.use(
   authRouter,
 );
 
-// ---------- TESTS (start / submit / available) ----------
 app.use(
   "/api/test",
   (req, _res, next) => {
@@ -46,11 +44,10 @@ app.use(
   testRouter,
 );
 
-// ---------- SUBMISSIONS (Moved ABOVE the generic /api routes!) ----------
 app.use(
   "/api/submissions",
   (req, _res, next) => {
-    console.log("[/api/submissions] hit", req.method, req.path); // 🎯 ΠΡΟΣΘΕΣΕ ΑΥΤΟ
+    console.log("[/api/submissions] hit", req.method, req.path);
     (req as any).db = examDb;
     next();
   },
@@ -67,7 +64,7 @@ app.use(
   },
   teacherReviewRouter
 );
-// ---------- OTHER EXAM ROUTES ----------
+
 app.use(
   "/api",
   (req, _res, next) => {

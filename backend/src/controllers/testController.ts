@@ -11,7 +11,6 @@ import { CodeExecutionService } from "../services/codeExecutionService";
 
 type AuthUser = { user_id: number; role: string };
 
-// 1. GET AVAILABLE TESTS (For Students)
 export async function getAvailableTests(req: Request, res: Response) {
   try {
     const user = (req as any).user as AuthUser | undefined;
@@ -29,16 +28,15 @@ export async function getAvailableTests(req: Request, res: Response) {
   }
 }
 
-// GET ALL TESTS (For Admin/Teacher - Filtered by Teacher ID)
 export async function getAllTests(req: Request, res: Response) {
   try {
     const user = (req as any).user as AuthUser | undefined;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const result = await examDb.query(`
-      SELECT t.*, 
+      SELECT t.*,
              (SELECT COUNT(*) FROM exam.test_slots ts WHERE ts.test_id = t.test_id) as slot_count
-      FROM exam.tests t 
+      FROM exam.tests t
       WHERE t.created_by = $1
       ORDER BY created_at DESC
     `, [user.user_id]);
@@ -50,7 +48,6 @@ export async function getAllTests(req: Request, res: Response) {
   }
 }
 
-// 2. START TEST
 export async function startTest(req: Request, res: Response) {
   const user = (req as any).user;
   const testId = req.body.test_id;
@@ -72,9 +69,9 @@ export async function startTest(req: Request, res: Response) {
   } catch (err: any) {
     if (err.message?.toLowerCase().includes("submitted")) {
       const existing = await examDb.query(
-        `SELECT submission_id 
-         FROM exam.submissions 
-         WHERE test_id = $1 AND student_id = $2 
+        `SELECT submission_id
+         FROM exam.submissions
+         WHERE test_id = $1 AND student_id = $2
          ORDER BY submission_id DESC LIMIT 1`,
         [Number(testId), String(user.user_id)],
       );
@@ -92,7 +89,6 @@ export async function startTest(req: Request, res: Response) {
   }
 }
 
-// 3. CREATE TEST
 export async function createTest(req: Request, res: Response) {
   try {
     const user = (req as any).user as AuthUser | undefined;
@@ -116,7 +112,6 @@ export async function createTest(req: Request, res: Response) {
   }
 }
 
-// 5. GET SINGLE TEST BY ID
 export async function getTestById(req: Request, res: Response) {
   try {
     const testId = req.params.id;
@@ -159,10 +154,6 @@ export async function getTestById(req: Request, res: Response) {
     let questions = questionRes.rows;
     let isPoolPreview = false;
 
-    // Random/slot-based tests never populate exam.test_questions - the real
-    // question set only gets resolved per-student at startTest time. Fall
-    // back to showing the eligible pool for each slot, using the exact same
-    // matching criteria as SubmissionService.startTestForStudent's drawQuery.
     if (questions.length === 0 && slotRes.rows.length > 0) {
       isPoolPreview = true;
 
@@ -240,12 +231,12 @@ export async function getTestById(req: Request, res: Response) {
     }
 
     const subRes = await examDb.query(
-      `SELECT 
-          submission_id, 
-          student_id, 
-          status, 
-          started_at, 
-          submitted_at, 
+      `SELECT
+          submission_id,
+          student_id,
+          status,
+          started_at,
+          submitted_at,
           total_grade
        FROM exam.submissions
        WHERE test_id = $1
@@ -268,7 +259,6 @@ export async function getTestById(req: Request, res: Response) {
   }
 }
 
-// 6. UPDATE TEST CASES
 export async function updateQuestionTestCases(req: Request, res: Response) {
   try {
     const { questionId } = req.params;
@@ -289,7 +279,6 @@ export async function updateQuestionTestCases(req: Request, res: Response) {
   }
 }
 
-// 7. RUN CODE (Delegates cleanly to our updated CodeExecutionService) 🚀
 export async function runSubmissionCode(req: Request, res: Response) {
   try {
     const submissionId = Number(req.params.id);
@@ -299,8 +288,8 @@ export async function runSubmissionCode(req: Request, res: Response) {
     console.log(`[testController] Run Code request for Q${question_id}, Sub${submissionId}`);
 
     const sqRes = await examDb.query(
-      `SELECT submission_question_id 
-       FROM exam.submission_questions 
+      `SELECT submission_question_id
+       FROM exam.submission_questions
        WHERE submission_id = $1 AND question_id = $2`,
       [submissionId, question_id]
     );
@@ -341,7 +330,6 @@ export async function runSubmissionCode(req: Request, res: Response) {
   }
 }
 
-// 8. SUBMIT EXAM (Final Submission)
 export async function submitTest(req: Request, res: Response) {
   try {
     const submissionId = Number(req.params.id);
@@ -366,7 +354,6 @@ export async function submitTest(req: Request, res: Response) {
   }
 }
 
-// 9. GET STUDENT HISTORY (List of completed tests)
 export const getStudentHistory = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -378,10 +365,10 @@ export const getStudentHistory = async (req: Request, res: Response) => {
     console.log(`[getStudentHistory] Fetching history for student: ${studentId}`);
 
     const result = await examDb.query(
-      `SELECT 
-        s.submission_id, 
-        COALESCE(t.title, 'Deleted Test') as test_title, 
-        s.submitted_at, 
+      `SELECT
+        s.submission_id,
+        COALESCE(t.title, 'Deleted Test') as test_title,
+        s.submitted_at,
         s.total_grade,
         s.status,
         t.test_id
@@ -395,23 +382,22 @@ export const getStudentHistory = async (req: Request, res: Response) => {
     return res.status(200).json(result.rows);
   } catch (error: any) {
     console.error("Fetch History Error:", error.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to load exam history",
-      details: error.message 
+      details: error.message
     });
   }
 };
 
-// 10. TOGGLE PUBLISH STATUS
 export async function togglePublishStatus(req: Request, res: Response) {
   try {
     const testId = req.params.id;
     const { is_published } = req.body;
 
     const result = await examDb.query(
-      `UPDATE exam.tests 
-       SET is_published = $1 
-       WHERE test_id = $2 
+      `UPDATE exam.tests
+       SET is_published = $1
+       WHERE test_id = $2
        RETURNING *`,
       [is_published, testId]
     );

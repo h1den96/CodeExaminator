@@ -40,13 +40,7 @@ export interface GradingOutput {
 }
 
 export class ProgrammingGradingEngine {
-  // Structural (white-box) credit is only meaningful if the submission
-  // demonstrates some baseline of functional correctness. Without this gate,
-  // a stub that "doesn't violate any FORBID rule" (because it does nothing)
-  // can earn full white-box credit while contributing zero real logic.
-  // Tuned as a floor rather than requiring S_bb === 0, so a student who has
-  // clearly attempted real logic and earned a small amount of genuine partial
-  // credit isn't punished the same as someone who submitted an unmodified stub.
+
   private static readonly MIN_FUNCTIONAL_FLOOR = 0.15;
 
   private static safeDecode(str: string | null): string {
@@ -111,7 +105,6 @@ export class ProgrammingGradingEngine {
       languageId = DEFAULT_LANG_ID
     } = input;
 
-    // 1. Basic Static Security Scan
     const staticAnalysis = GradingService.performStaticAnalysis(studentCode);
     if (!staticAnalysis.passed) {
       return {
@@ -142,12 +135,10 @@ export class ProgrammingGradingEngine {
       };
     }
 
-    // Sanity check: log if student code lacks function body
     if (!cleanedCode.includes("{")) {
       console.warn(`[WARNING] Received code without function body '{' for signature: ${signature}`);
     }
 
-    // 2. White-Box Track: Dynamic Structural AST Analysis
     const wbResult = await StructuralAnalysisService.analyze(studentCode, structuralRules);
     const S_wb = wbResult.score;
 
@@ -155,8 +146,6 @@ export class ProgrammingGradingEngine {
       throw new Error("No test cases specified for verification.");
     }
 
-    // 3. Prepare Runtime Harness
-    // Pass as single options object to prevent positional parameter mismatch
     const finalSourceCode = BoilerplateFactory.createFullHarness({
       studentCode: cleanedCode,
       signatureStr: signature,
@@ -165,11 +154,10 @@ export class ProgrammingGradingEngine {
       helperCode: helperCode
     });
 
-    // ==================== DIAGNOSTIC LOGGING ====================
     try {
       fs.writeFileSync("/tmp/last_generated_harness.cpp", finalSourceCode);
     } catch (e) {
-      // Ignore file write errors if /tmp isn't writeable
+
     }
 
     console.log("=== [BOILERPLATE] Category ===", category);
@@ -180,7 +168,6 @@ export class ProgrammingGradingEngine {
     console.log("=== [BOILERPLATE] Full Generated Harness ===");
     console.log(finalSourceCode);
     console.log("=================================================");
-    // ============================================================
 
     const payloads = testCases.map((tc: any) => ({
       source_code: this.safeEncode(finalSourceCode),
@@ -189,15 +176,12 @@ export class ProgrammingGradingEngine {
       expected_output: this.safeEncode(tc.expected_output || tc.expected || ""),
     }));
 
-    // ==================== JUDGE0 REQUEST LOGGING ====================
     console.log("=== [JUDGE0] Submitting batch ===");
     console.log(`  test count: ${testCases.length}`);
     testCases.forEach((tc: any, i: number) => {
       console.log(`  [${i}] input=${JSON.stringify(tc.input || "")} expected=${JSON.stringify(tc.expected_output || tc.expected || "")}`);
     });
-    // ===================================================================
 
-    // 4. Batch Execution in Sandbox
     const batchResponse = await axios.post(
       `${RUNTIME_ENGINE_URL}/submissions/batch?base64_encoded=true&wait=false`,
       { submissions: payloads }
@@ -231,7 +215,6 @@ export class ProgrammingGradingEngine {
       throw new Error("Grading timeout from sandbox execution.");
     }
 
-    // ==================== JUDGE0 RAW RESPONSE LOGGING ====================
     console.log("=== [JUDGE0] Raw results (decoded) ===");
     results.forEach((r: any, i: number) => {
       console.log(`  [${i}] status=${r.status?.description} (id=${r.status?.id})`);
@@ -261,7 +244,6 @@ export class ProgrammingGradingEngine {
       }
     }
 
-    // 5. Calculate Syntactic Health Index (H_ast)
     const astHealth = StructuralAnalysisService.calculateSyntacticHealth(studentCode);
     const H_ast = astHealth.healthIndex;
 
@@ -271,7 +253,7 @@ export class ProgrammingGradingEngine {
     const isCompiled = !firstCompError;
 
     if (!isCompiled) {
-      // Compilation Failed Handling
+
       if (graceMode === "STRICT") {
         S_bb = 0.0;
         feedback = "Compilation failed. Strict Mode active: 0 execution points awarded.";
@@ -299,7 +281,7 @@ export class ProgrammingGradingEngine {
       }));
 
     } else {
-      // Successful Compilation Handling
+
       let totalTestWeight = 0;
       let earnedTestWeight = 0;
       let hasAnyMemoryLeak = false;
@@ -311,12 +293,7 @@ export class ProgrammingGradingEngine {
         const expectedOutput = testCases[idx].expected_output || testCases[idx].expected || "";
 
         const tcCategory = testCases[idx].category || "FUNCTIONAL";
-        // NOTE: previously EDGE cases defaulted to weight 5 (higher than
-        // normal FUNCTIONAL cases at 3), which meant an easy-to-hit boundary
-        // case (e.g. n=1 -> 0, satisfiable by a constant-return stub) could
-        // outweigh the tests that actually prove the logic works. Lowered to
-        // 2 as a safer default. Test authors should still set explicit
-        // per-case weights in the DB rather than relying on this fallback.
+
         const caseWeight = Number(testCases[idx].weight ?? (tcCategory === "EDGE" ? 2 : tcCategory === "SANITY" ? 1 : 3));
         totalTestWeight += caseWeight;
 
@@ -356,12 +333,6 @@ export class ProgrammingGradingEngine {
 
       let S_bb_raw = totalTestWeight > 0 ? earnedTestWeight / totalTestWeight : 0.0;
 
-      // Canary gate: if this question defines one or more canary tests
-      // (test cases specifically designed so no constant/no-op return can
-      // satisfy them) and NONE of them passed, zero out black-box credit —
-      // regardless of how many other tests coincidentally passed. This is
-      // the direct fix for a stub passing a lucky boundary case like
-      // n=1 -> 0 while failing every test that requires real logic.
       if (canaryCount > 0 && canaryPassedCount === 0) {
         S_bb_raw = 0.0;
       }
@@ -378,14 +349,10 @@ export class ProgrammingGradingEngine {
       S_bb = S_bb_raw;
     }
 
-    // 6. Master Equation: Final Earned Score Calculation
     const hasWbRules = Array.isArray(structuralRules) && structuralRules.length > 0;
     const effectiveWeightBb = hasWbRules ? weightBb : 1.0;
     const effectiveWeightWb = hasWbRules ? weightWb : 0.0;
 
-    // Structural credit is gated on a minimum floor of functional correctness.
-    // A stub that avoids forbidden constructs (by doing nothing) should not
-    // earn white-box credit just for not violating rules it never engaged with.
     const effectiveS_wb = S_bb >= this.MIN_FUNCTIONAL_FLOOR ? S_wb : 0;
 
     const totalRatio = (effectiveWeightWb * effectiveS_wb) + (effectiveWeightBb * S_bb);

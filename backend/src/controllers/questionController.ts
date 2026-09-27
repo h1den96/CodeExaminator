@@ -2,9 +2,6 @@ import { Request, Response } from "express";
 import { AdminService } from "../services/adminService";
 import { ProgrammingGradingEngine } from "../services/programmingGradingEngine";
 
-// A test case with both blank input and blank expected output will pass
-// trivially (empty stdout matches empty expected) without exercising the
-// student's code at all. Reject these before they reach validation/grading.
 function findVacuousTestCase(testCases: any[]): boolean {
   return testCases.some(
     (tc: any) =>
@@ -13,7 +10,6 @@ function findVacuousTestCase(testCases: any[]): boolean {
   );
 }
 
-// GET /api/topics (For the dropdown in your UI)
 export const getTopics = async (req: Request, res: Response) => {
   try {
     const topics = await AdminService.getAllTopics();
@@ -35,7 +31,6 @@ export const getProgrammingCategories = (req: Request, res: Response) => {
   res.json(categories);
 };
 
-// POST /api/questions (Create Generic Question)
 export const createQuestion = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -61,7 +56,6 @@ export const createQuestion = async (req: Request, res: Response) => {
   }
 };
 
-// POST /api/questions/programming (Create Programming Question with Hybrid Blueprint)
 export const createProgrammingQuestion = async (
   req: Request,
   res: Response,
@@ -69,7 +63,6 @@ export const createProgrammingQuestion = async (
   try {
     const user = (req as any).user;
 
-    // 1. Security Check
     if (!user || user.role !== "teacher") {
       return res.status(403).json({ error: "Access denied" });
     }
@@ -96,7 +89,6 @@ export const createProgrammingQuestion = async (
       memory_limit,
     } = req.body;
 
-    // 2. Validation
     if (!title || !body || !difficulty || !topic_ids) {
       return res.status(400).json({ error: "Missing required basic fields" });
     }
@@ -121,7 +113,6 @@ export const createProgrammingQuestion = async (
         .json({ error: "CUSTOM category questions require boilerplate_code" });
     }
 
-    // 3. Prepare Payload with fallback defaults for missing parameters
     const payload = {
       teacher_id: user.user_id,
       title,
@@ -145,7 +136,6 @@ export const createProgrammingQuestion = async (
       memory_limit: memory_limit ?? 128000,
     };
 
-    // 4. Call Service to persist in PostgreSQL
     const result = await AdminService.createProgrammingQuestion(payload);
 
     res.status(201).json(result);
@@ -155,7 +145,6 @@ export const createProgrammingQuestion = async (
   }
 };
 
-// POST /api/questions/mcq
 export const createMCQ = async (req: Request, res: Response) => {
   try {
     const { title, body, difficulty, topic_ids, options } = req.body;
@@ -179,7 +168,6 @@ export const createMCQ = async (req: Request, res: Response) => {
   }
 };
 
-// POST /api/questions/tf
 export const createTF = async (req: Request, res: Response) => {
   try {
     const { title, body, difficulty, topic_ids, is_true, penalty_ratio } = req.body;
@@ -210,10 +198,6 @@ export const createTF = async (req: Request, res: Response) => {
   }
 };
 
-// POST /api/questions/programming/validate-boilerplate
-// Stateless: runs reference_solution through the harness (auto-generated or
-// teacher-supplied boilerplate_code) against test_cases via Judge0, with no
-// submission/student context. Used at authoring time to gate publish.
 export const validateProgrammingBoilerplate = async (
   req: Request,
   res: Response,
@@ -264,7 +248,7 @@ export const validateProgrammingBoilerplate = async (
       signature: function_signature,
       boilerplateCode: boilerplate_code || null,
       helperCode: helper_code || null,
-      structuralRules: [], // irrelevant when validating the reference solution itself
+      structuralRules: [],
       weightWb: 0,
       weightBb: 1,
       cpuLimit: cpu_time_limit ?? 2.0,

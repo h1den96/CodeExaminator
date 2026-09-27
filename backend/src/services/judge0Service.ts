@@ -9,7 +9,7 @@ export class Judge0Service {
   private static getLanguageId(lang: string): number {
     if (lang === "cpp" || lang === "c++") return 54;
     if (lang === "python") return 71;
-    return 54; // Default to C++
+    return 54;
   }
 
   static async runBatch(
@@ -24,7 +24,7 @@ export class Judge0Service {
     let passedCount = 0;
 
     for (const tc of testCases) {
-      // 1. Εκτέλεση του κώδικα στο Judge0
+
       const output: Judge0Result = await this.submitCode(
         langId,
         code,
@@ -35,36 +35,31 @@ export class Judge0Service {
 
       const expectedStr = tc.expected_output || tc.output || "";
 
-      // 2. Normalization (Καθαρισμός κενών/αλλαγών γραμμής)
       const actualNormalized = normalizeOutput(output.stdout);
       const expectedNormalized = normalizeOutput(expectedStr);
 
-      // 3. Logic Comparison με Smart Compare 🚀
-      // Ελέγχουμε αν η εκτέλεση ήταν επιτυχής ΚΑΙ αν το αποτέλεσμα είναι σωστό (με ανοχή Epsilon)
       const isAcceptedStatus = output.status === "Accepted";
       const logicMatches = GradingService.smartCompare(actualNormalized, expectedNormalized);
 
-      // 4. Δημιουργία του Status Object για τον Controller
       const finalStatusObj = {
-        id: isAcceptedStatus && logicMatches ? 3 : 4, // 3=Accepted, 4=Wrong Answer
+        id: isAcceptedStatus && logicMatches ? 3 : 4,
         description:
           isAcceptedStatus && logicMatches
             ? "Accepted"
             : isAcceptedStatus
               ? "Wrong Answer"
-              : output.status, // Διατήρηση του αρχικού σφάλματος (π.χ. TLE, Runtime Error)
+              : output.status,
       };
 
       if (isAcceptedStatus && logicMatches) {
         passedCount++;
       }
 
-      // 5. Push των αποτελεσμάτων με τα σωστά property names
       results.push({
         input: tc.input,
         expected_output: expectedStr,
-        stdout: output.stdout, 
-        status: finalStatusObj, 
+        stdout: output.stdout,
+        status: finalStatusObj,
         stderr: output.stderr,
         compile_output: output.compile_output,
         time: output.time,

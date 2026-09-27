@@ -1,14 +1,10 @@
-// src/controllers/submissionController.ts
+
 import { Request, Response } from "express";
 import { Pool } from "pg";
 import { SubmitAnswerDto } from "../types/examTypes";
 import { SubmissionService } from "../services/submissionService";
 import { CodeExecutionService } from "../services/codeExecutionService";
 
-/**
- * Επεκτείνουμε το Request της Express για να αναγνωρίζει το TypeScript 
- * το db pool και το user object που περνάνε από τα middleware.
- */
 interface ExtendedRequest extends Request {
   db: Pool;
   user?: {
@@ -17,10 +13,8 @@ interface ExtendedRequest extends Request {
   };
 }
 
-// Helper για λήψη του DB pool με σωστό typing
 const getDb = (req: ExtendedRequest): Pool => req.db || (req as any).db;
 
-// 1. SAVE ANSWERS (Autosave για MCQ/TF/Text)
 export const saveAnswers = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   try {
@@ -52,7 +46,6 @@ export const saveAnswers = async (req: Request, res: Response) => {
   }
 };
 
-// 2. SUBMIT EXAM (Οριστική Υποβολή & Αυτόματη Βαθμολόγηση)
 export const submitSubmission = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   try {
@@ -77,7 +70,6 @@ export const submitSubmission = async (req: Request, res: Response) => {
   }
 };
 
-// 3. SUBMIT CODE (Εκτέλεση μέσω Judge0)
 export const submitCode = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   try {
@@ -87,16 +79,14 @@ export const submitCode = async (req: Request, res: Response) => {
 
     const db = getDb(ereq);
 
-    // Safeguard για ID mismatch
     if (String(submissionQuestionId) === String(question_id)) {
       console.warn("⚠️ Detected ID mismatch bug. Forcing lookup.");
       submissionQuestionId = null;
     }
 
-    // Lookup αν λείπει το SQ_ID
     if (!submissionQuestionId && submission_id && question_id) {
       const lookup = await db.query(
-        `SELECT submission_question_id FROM exam.submission_questions 
+        `SELECT submission_question_id FROM exam.submission_questions
          WHERE submission_id = $1 AND question_id = $2`,
         [submission_id, question_id]
       );
@@ -120,7 +110,6 @@ export const submitCode = async (req: Request, res: Response) => {
   }
 };
 
-// 4. GET SUBMISSION RESULT (Αποτελέσματα για Μαθητή/Καθηγητή)
 export const getSubmissionResult = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   try {
@@ -142,15 +131,14 @@ export const getSubmissionResult = async (req: Request, res: Response) => {
   }
 };
 
-// 5. OVERRIDE TOTAL GRADE (Manual αλλαγή συνολικού βαθμού)
 export const overrideTotalGrade = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   const { id } = ereq.params;
   const { newGrade } = ereq.body;
-  
+
   const db = getDb(ereq);
-  const client = await db.connect(); 
-  
+  const client = await db.connect();
+
   try {
     await client.query(
       "UPDATE exam.submissions SET total_grade = $1, status = 'completed' WHERE submission_id = $2",
@@ -164,15 +152,14 @@ export const overrideTotalGrade = async (req: Request, res: Response) => {
   }
 };
 
-// 6. OVERRIDE QUESTION GRADE (Manual αλλαγή βαθμού ερώτησης & recalculate total)
 export const overrideQuestionGrade = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   const { id: submissionId, answerId } = ereq.params;
   const { newQuestionGrade } = ereq.body;
-  
+
   const db = getDb(ereq);
   const client = await db.connect();
-  
+
   try {
     await client.query("BEGIN");
 
@@ -207,18 +194,17 @@ export const overrideQuestionGrade = async (req: Request, res: Response) => {
   }
 };
 
-// 7. BULK MANUAL GRADES (Μαζική βαθμολόγηση από καθηγητή)
 export const submitBulkManualGrades = async (req: Request, res: Response) => {
   const ereq = req as ExtendedRequest;
   const { id: submissionId } = ereq.params;
-  const { grades } = ereq.body; 
+  const { grades } = ereq.body;
 
   try {
-    const db = getDb(ereq); // Την παίρνουμε σωστά εδώ
+    const db = getDb(ereq);
     const result = await SubmissionService.manuallyGradeEntireSubmission(
       Number(submissionId),
       grades,
-      db // Την περνάμε καθαρά εδώ
+      db
     );
     res.json(result);
   } catch (error: any) {
@@ -226,7 +212,6 @@ export const submitBulkManualGrades = async (req: Request, res: Response) => {
   }
 };
 
-// Placeholder
 export const getSubmission = async (req: Request, res: Response) => {
   res.status(501).json({ error: "Not implemented yet" });
 };

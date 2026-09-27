@@ -5,13 +5,13 @@ import { SubmissionService } from "../services/submissionService";
 cron.schedule("* * * * *", async () => {
   try {
     const query = `
-        SELECT s.submission_id 
+        SELECT s.submission_id
         FROM exam.submissions s
         JOIN exam.tests t ON s.test_id = t.test_id
-        WHERE s.status = 'in_progress' 
+        WHERE s.status = 'in_progress'
         AND NOW() > (s.started_at + (t.duration_minutes * interval '1 minute'))
     `;
-    
+
     const expiredSubmissions = await examDb.query(query);
     if (expiredSubmissions.rows.length === 0) return;
 

@@ -1,4 +1,4 @@
-// src/services/questionReadService.ts
+
 import { examDb } from "../db/db";
 import { McqPublicDTO } from "../dto/questions/MultipleChoiceDTO";
 import { QuestionDetailDto } from "../dto/questions/QuestionDetailDTO";

@@ -61,7 +61,7 @@ async function postJson(path, payload, token) {
 
 async function prepareTestSubmissionContext(client, questionIds) {
   console.log('Fetching existing student & teacher IDs...');
-  
+
   const userRes = await client.query(`SELECT user_id, role FROM auth.users LIMIT 5;`);
   let teacherId = userRes.rows.find(u => u.role === 'teacher')?.user_id || 1;
   let studentId = userRes.rows.find(u => u.role === 'student')?.user_id || 1;
@@ -99,10 +99,10 @@ async function prepareTestSubmissionContext(client, questionIds) {
 async function cleanupTestSubmissionContext(client, testId, submissionId) {
   console.log('Cleaning up temporary harness context...');
   await client.query(
-    `DELETE FROM exam.student_answers 
+    `DELETE FROM exam.student_answers
      WHERE submission_question_id IN (
        SELECT submission_question_id FROM exam.submission_questions WHERE submission_id = $1
-     );`, 
+     );`,
     [submissionId]
   );
   await client.query(`DELETE FROM exam.submission_questions WHERE submission_id = $1;`, [submissionId]);
@@ -136,9 +136,9 @@ async function runValidation() {
 
   try {
     const query = `
-      SELECT 
-        q.question_id, 
-        q.title, 
+      SELECT
+        q.question_id,
+        q.title,
         pq.reference_solution
       FROM exam.questions q
       JOIN exam.programming_questions pq ON q.question_id = pq.question_id
@@ -156,7 +156,6 @@ async function runValidation() {
     submissionId = context.submissionId;
     const authToken = context.token;
 
-    // Adjust CONCURRENCY via environment variable or default to 4 parallel workers
     const CONCURRENCY = parseInt(process.env.CONCURRENCY || '4', 10);
 
     console.log(`\nValidating solutions concurrently (Level: ${CONCURRENCY}) against /api/submissions/submit-code...\n`);
@@ -207,7 +206,7 @@ async function runValidation() {
         passedCount++;
       } else {
         console.log(`${String(res.qId).padEnd(4)} | ${res.title} | ${res.grade}/10 | FAIL (HTTP ${res.statusCode || 'ERR'})`);
-        
+
         if (res.body || res.reason || res.error) {
           console.log(`\n--- Diagnostic Error Output for Question ${res.qId} (${res.title.trim()}) ---`);
           console.dir(res.body || { error: res.error || res.reason }, { depth: null });

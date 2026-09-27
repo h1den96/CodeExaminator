@@ -1,7 +1,6 @@
 import { Pool } from "pg";
 import { examDb } from "../db/db";
 
-// Types for Creation
 export type CreateQuestionDto = {
   title?: string;
   body: string;
@@ -46,9 +45,8 @@ export class ExamManagementService {
     try {
       await client.query("BEGIN");
 
-      // 1. Insert Base Question
       const qRes = await client.query(
-        `INSERT INTO exam.questions 
+        `INSERT INTO exam.questions
          (title, body, question_type, difficulty, created_by)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING question_id`,
@@ -62,7 +60,6 @@ export class ExamManagementService {
       );
       const qId = qRes.rows[0].question_id;
 
-      // 2. Link Topics
       if (dto.topic_ids && dto.topic_ids.length > 0) {
         for (const tId of dto.topic_ids) {
           await client.query(
@@ -72,7 +69,6 @@ export class ExamManagementService {
         }
       }
 
-      // 3. Handle Type Specifics
       if (dto.question_type === "mcq" && dto.options) {
         for (const opt of dto.options) {
           await client.query(
@@ -109,10 +105,9 @@ export class ExamManagementService {
   }
 
   static async createTest(dto: CreateTestDto) {
-    // Optional: Add math validation here (counts vs config)
 
     const sql = `
-      INSERT INTO exam.tests 
+      INSERT INTO exam.tests
       (title, description, created_by,
        tf_count, mcq_count, prog_count,
        tf_points, mcq_points, prog_points,

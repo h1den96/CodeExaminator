@@ -1,4 +1,4 @@
-// src/middleware/requireAuth.ts
+
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../auth/tokens";
 
@@ -38,7 +38,6 @@ export function requireTeacher(
 ) {
   const user = (req as any).user;
 
-  // Safety check: if requireAuth wasn't called or failed silently
   if (!user) {
     console.error(
       "[requireTeacher] No user found on request. Did you forget requireAuth?",

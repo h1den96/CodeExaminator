@@ -16,7 +16,7 @@ export async function startTest(params?: {
   if (params?.prog) q.set("prog", String(params.prog));
   const qs = q.toString() ? `?${q.toString()}` : "";
   const { data } = await http.get(`/api/test/start${qs}`);
-  return data; // { submission_id, questions, ... }
+  return data;
 }
 
 export async function fetchSubmission(id: number) {

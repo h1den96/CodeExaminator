@@ -1,6 +1,5 @@
 import { examDb } from "../db/db";
 
-// Helper type for Question Input
 export type CreateQuestionDto = {
   title?: string;
   body: string;
@@ -10,7 +9,6 @@ export type CreateQuestionDto = {
   teacher_id: number;
   allow_multiple?: boolean;
 
-  // Hybrid Blueprint & Grace Specifics
   weight_wb?: number;
   weight_bb?: number;
   grace_mode?: "STRICT" | "STANDARD" | "THRESHOLD";
@@ -18,13 +16,11 @@ export type CreateQuestionDto = {
   grace_cap?: number;
   structural_rules?: any[];
 
-  // Type Specifics
   options?: { text: string; is_correct: boolean; score_weight?: number }[];
   correct_answer?: boolean;
-  is_true?: boolean; // alias accepted from POST /api/questions/tf (see createTF)
-  penalty_ratio?: number; // fraction of maxPoints deducted on a wrong T/F answer, default 1.0
-  
-  // Programming Specifics
+  is_true?: boolean;
+  penalty_ratio?: number;
+
   category?: "SCALAR" | "LINEAR" | "CUSTOM";
   function_signature?: string;
   language_id?: number;
@@ -58,14 +54,11 @@ export type CreateTestDto = {
   is_random: boolean;
   slots: SlotDto[];
   is_published?: boolean;
-  
+
 };
 
 export class AdminService {
-  /**
-   * Universal Create Question Function
-   * Saves weights, grace settings, structural rules, and technical metadata.
-   */
+
   static async createQuestion(dto: CreateQuestionDto) {
     const client = await examDb.connect();
     try {
@@ -79,17 +72,17 @@ export class AdminService {
       const structuralRules = dto.structural_rules || [];
 
       const qRes = await client.query(
-        `INSERT INTO exam.questions 
+        `INSERT INTO exam.questions
          (title, body, question_type, difficulty, created_by, allow_multiple,
           weight_wb, weight_bb, grace_mode, grace_threshold, grace_cap, structural_rules)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING question_id`,
         [
-          dto.title, 
-          dto.body, 
-          dto.question_type, 
-          dto.difficulty, 
-          dto.teacher_id, 
+          dto.title,
+          dto.body,
+          dto.question_type,
+          dto.difficulty,
+          dto.teacher_id,
           dto.allow_multiple || false,
           weightWb,
           weightBb,
@@ -120,10 +113,7 @@ export class AdminService {
           );
         }
       } else if (dto.question_type === "true_false" && (dto.correct_answer !== undefined || dto.is_true !== undefined)) {
-        // POST /api/questions (generic) sends correct_answer; POST /api/questions/tf
-        // sends is_true. Both are accepted here so a T/F question created through
-        // either path actually gets its answer row (previously, is_true was
-        // silently dropped because only correct_answer was checked).
+
         const correctAnswer = dto.correct_answer !== undefined ? dto.correct_answer : dto.is_true;
         await client.query(
           `INSERT INTO exam.true_false_answers (question_id, correct_answer, penalty_ratio)
@@ -132,8 +122,8 @@ export class AdminService {
         );
       } else if (dto.question_type === "programming") {
         await client.query(
-          `INSERT INTO exam.programming_questions 
-           (question_id, category, function_signature, language_id, starter_code, helper_code, 
+          `INSERT INTO exam.programming_questions
+           (question_id, category, function_signature, language_id, starter_code, helper_code,
             test_cases, reference_solution, boilerplate_code, cpu_time_limit, memory_limit)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
@@ -162,16 +152,13 @@ export class AdminService {
     }
   }
 
-  /**
-   * Create Test Blueprint (Exam)
-   */
   static async createTest(dto: CreateTestDto) {
     const client = await examDb.connect();
     try {
       await client.query("BEGIN");
 
       const testSql = `
-        INSERT INTO exam.tests 
+        INSERT INTO exam.tests
         (title, description, created_by, is_random, duration_minutes, available_from, available_until, strict_deadline, is_published)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING test_id
@@ -185,14 +172,14 @@ export class AdminService {
 
       if (dto.slots && dto.slots.length > 0) {
         const slotSql = `
-          INSERT INTO exam.test_slots 
+          INSERT INTO exam.test_slots
           (test_id, slot_order, topic_id, question_type, difficulty, category, points, weight_bb, weight_wb)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `;
 
         for (let i = 0; i < dto.slots.length; i++) {
           const s = dto.slots[i];
-          
+
           let dbType = String(s.question_type).toLowerCase();
           if (dbType === "multiple_choice") dbType = "mcq";
           if (dbType === "t/f") dbType = "true_false";
@@ -229,8 +216,6 @@ export class AdminService {
     const res = await examDb.query("SELECT * FROM exam.topics ORDER BY name ASC");
     return res.rows;
   }
-
-  // --- RESTORED WRAPPER METHODS FOR COMPATIBILITY ---
 
   static async createProgrammingQuestion(data: any) {
     return this.createQuestion({ ...data, question_type: "programming" });

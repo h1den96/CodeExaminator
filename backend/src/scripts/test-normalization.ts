@@ -10,16 +10,16 @@ const TOKEN = process.env.TOKEN || "mock_token";
 
 async function testNormalization() {
     console.log("\n--- NORMALIZATION PRECISION TEST ---");
-    
+
     const messyCode = `
     #include <iostream>
-    int main() { 
-        std::cout << "  10  " << std::endl; 
-        return 0; 
+    int main() {
+        std::cout << "  10  " << std::endl;
+        return 0;
     }`;
 
     try {
-        const res = await axios.post(`${API_URL}/submissions/${SUBMISSION_ID}/run`, 
+        const res = await axios.post(`${API_URL}/submissions/${SUBMISSION_ID}/run`,
             { question_id: QUESTION_ID, code: messyCode },
             { headers: { Authorization: `Bearer ${TOKEN}` } }
         );

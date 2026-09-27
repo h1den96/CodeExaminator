@@ -13,7 +13,7 @@ const MockedStructuralService = StructuralAnalysisService as jest.Mocked<typeof 
 describe("Dynamic Question Category Testing Suite", () => {
   let productionQuestions: any[] = [];
   let originalSmartCompare: any;
-  let activeQuestionInLoop: any = null; // 🔥 Tracks the live running question layout
+  let activeQuestionInLoop: any = null;
 
   beforeAll(async () => {
     originalSmartCompare = GradingService.smartCompare;
@@ -28,7 +28,7 @@ describe("Dynamic Question Category Testing Suite", () => {
   afterAll(async () => {
     GradingService.smartCompare = originalSmartCompare;
     await examDb.end();
-    const { authDb } = require("../db/db"); 
+    const { authDb } = require("../db/db");
     await authDb.end();
   });
 
@@ -43,15 +43,13 @@ describe("Dynamic Question Category Testing Suite", () => {
       return;
     }
 
-    // Intercept database reads globally for this test run
     mockPoolQueryForMetadata();
 
     for (const question of productionQuestions) {
-      activeQuestionInLoop = question; // 🔥 Set our tracker to the current question profile
+      activeQuestionInLoop = question;
       const mockSqId = 999;
       const maxPoints = 10.00;
 
-      // --- MATRIX TEST 1: SYNTAX ERROR / COMPILATION CRASH ---
       GradingService.smartCompare = originalSmartCompare;
 
       mockedAxios.post.mockResolvedValueOnce({ data: question.test_cases.map(() => ({ token: "err_tok" })) });
@@ -74,7 +72,6 @@ describe("Dynamic Question Category Testing Suite", () => {
       const expectedStaticScore = parseFloat((maxPoints * 0.2).toFixed(2));
       expect(compileErrorResult.question_grade).toBe(expectedStaticScore);
 
-      // --- MATRIX TEST 2: PERFECT PASS SIMULATION ---
       GradingService.smartCompare = () => true;
 
       mockedAxios.post.mockResolvedValueOnce({ data: question.test_cases.map(() => ({ token: "pass_tok" })) });
@@ -84,8 +81,8 @@ describe("Dynamic Question Category Testing Suite", () => {
             const exactOutput = tc.expected_output || tc.expected || "";
             return {
               status: { id: 3, description: "Accepted" },
-              stdout: Buffer.from(String(exactOutput)).toString("base64"), 
-              stderr: null, 
+              stdout: Buffer.from(String(exactOutput)).toString("base64"),
+              stderr: null,
               compile_output: null
             };
           })
@@ -105,7 +102,7 @@ describe("Dynamic Question Category Testing Suite", () => {
   function mockPoolQueryForMetadata() {
     examDb.query = jest.fn().mockImplementation((queryText, values) => {
       if (queryText.includes("SELECT pq.test_cases")) {
-        // 🔥 Always deliver the EXACT test cases matching our active loop tracker
+
         return Promise.resolve({
           rows: [{
             test_cases: activeQuestionInLoop.test_cases,

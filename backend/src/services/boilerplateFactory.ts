@@ -268,7 +268,7 @@ inline vector<string> splitCommandStream(const string& str) {
     for (char c : str) {
         if (c == '(' || c == '[' || c == '{' || c == '<') depth++;
         else if (c == ')' || c == ']' || c == '}' || c == '>') depth--;
-        
+
         if (c == ',' && depth == 0) {
             if (!cur.empty()) cmds.push_back(cur);
             cur.clear();
@@ -463,8 +463,8 @@ inline vector<string> splitCommandStream(const string& str) {
         n = n.replace(/\[[^\]]*\]/g, "");
         const starMatch = n.match(/^(\*+)?([A-Za-z_]\w*)$/);
         if (!starMatch) continue;
-        fields.push({ 
-          type: type + (starMatch[1] || ""), 
+        fields.push({
+          type: type + (starMatch[1] || ""),
           name: starMatch[2],
           isPublic: currentAccess === "public"
         });
@@ -617,7 +617,7 @@ inline ostream& operator<<(ostream& os, const Node* head) {
 
     const headerTokens = declHeader.split(/\s+/);
     let functionName = headerTokens.pop() || "";
-    
+
     const pointerMatch = functionName.match(/^(\*+)(.+)$/);
     let extraStars = "";
     if (pointerMatch) {
@@ -683,19 +683,19 @@ inline ostream& operator<<(ostream& os, const Node* head) {
         const isDoublePointer = !isFunctionPointer && cleanType.includes("**");
         const isPointer = !isFunctionPointer && (cleanType.includes("*") || isDoublePointer) && !isLinkedList && !isVectorOfNodes;
 
-        params.push({ 
-          rawType, 
-          cleanType, 
-          name, 
-          isReference, 
-          isVector, 
-          isGrid, 
-          isLinkedList, 
-          isVectorOfNodes, 
-          isPointer, 
-          isDoublePointer, 
-          isFunctionPointer, 
-          funcPtrReturnPart, 
+        params.push({
+          rawType,
+          cleanType,
+          name,
+          isReference,
+          isVector,
+          isGrid,
+          isLinkedList,
+          isVectorOfNodes,
+          isPointer,
+          isDoublePointer,
+          isFunctionPointer,
+          funcPtrReturnPart,
           funcPtrArgsPart,
           hasDefault,
           defaultValue
@@ -823,18 +823,6 @@ int main() {
     const baseIncludes = BoilerplateFactory.getBaseIncludes(studentCode);
     const postStudentSupport = BoilerplateFactory.getPostStudentCodeSupport(studentCode);
 
-    // NOTE: Previously, student code containing `int main(...)` bypassed the
-    // entire harness system here and ran as the literal program entry point —
-    // meaning a student could hardcode expected outputs (or do anything else)
-    // completely outside the test-input/output contract, with black-box scoring
-    // computed from output the student fully controlled. That branch has been
-    // removed. Student-defined main() now falls through to normal harness
-    // generation below, where it collides with the harness's own main() and
-    // fails to compile — consistent with the white-box hard gate in
-    // structuralAnalysisService.ts, which already forbids main() outright.
-    // Defense in depth: programmingGradingEngine.ts's cleanStudentCode also
-    // rejects `int main(` explicitly before this point is ever reached.
-
     if (customBoilerplate && customBoilerplate.trim().length > 0) {
       if (customBoilerplate.includes("// [[STUDENT_CODE_ZONE]]")) {
         return customBoilerplate.replace("// [[STUDENT_CODE_ZONE]]", studentCode);
@@ -909,7 +897,7 @@ int main() {
       if (p.isFunctionPointer) {
         declarationLines.push(`        ${p.funcPtrReturnPart} (*${varName})(${p.funcPtrArgsPart}) = nullptr;`);
         declarationLines.push(`        string func_str_${idx};`);
-        
+
         let dispatchCode = `(readQuotedString(ss, func_str_${idx}), `;
         topFunctions.forEach((fn) => {
           dispatchCode += `(func_str_${idx} == "${fn}" ? (${varName} = &${fn}, true) : `;
@@ -959,11 +947,11 @@ int main() {
         const baseType = cleanType.replace(/\*/g, "").trim();
         const valueVar = `${varName}_val`;
         const tokVar = `ptr_tok_${idx}`;
-        
+
         declarationLines.push(`        ${baseType} ${valueVar} = {};`);
         declarationLines.push(`        ${cleanType} ${varName} = ${defaultInit ?? "nullptr"};`);
         declarationLines.push(`        string ${tokVar};`);
-        
+
         streamReadExprs.push(
           makeOptionalIfDefaulted(p, `(skipDelimiter(ss), (readQuotedString(ss, ${tokVar})) ? (${tokVar} != "nullptr" && ${tokVar} != "NULL" && ${tokVar} != "null" ? (stringstream(${tokVar}) >> ${valueVar} ? (${varName} = &${valueVar}, true) : false) : (${varName} = nullptr, true)) : false)`)
         );
@@ -990,7 +978,7 @@ int main() {
     const streamReads = streamReadExprs.length > 0 ? streamReadExprs.join(" && ") : "true";
     const postReadSetup = postReadSetupLines.join("\n");
     const callArgsStr = callArgs.join(", ");
-    
+
     const invocationPrefix = isClassContext ? "instance." : "";
     const callExpr = `${invocationPrefix}${parsed.functionName}(${callArgsStr})`;
 

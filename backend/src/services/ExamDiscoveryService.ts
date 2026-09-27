@@ -11,17 +11,17 @@ export class ExamDiscoveryService {
     db: Pool,
   ) {
     const query = `
-    SELECT 
-      t.test_id, 
-      t.title, 
-      t.description, 
-      t.duration_minutes, 
+    SELECT
+      t.test_id,
+      t.title,
+      t.description,
+      t.duration_minutes,
       t.available_until,
       s.status as submission_status
     FROM exam.tests t
     LEFT JOIN exam.submissions s ON t.test_id = s.test_id AND s.student_id = $1
     WHERE t.is_published = true
-      AND NOW() >= t.available_from 
+      AND NOW() >= t.available_from
       AND NOW() <= t.available_until
       AND (s.status IS NULL OR s.status = 'in_progress')
     ORDER BY t.available_until ASC;

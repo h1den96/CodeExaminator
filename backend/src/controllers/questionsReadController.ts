@@ -1,4 +1,4 @@
-// src/controllers/questionsReadController.ts
+
 import { Request, Response } from "express";
 import { QuestionReadService } from "../services/questionReadService";
 
@@ -25,7 +25,6 @@ export const getRandomProgramming = async (_req: Request, res: Response) => {
   }
 };
 
-// GET /api/questions/mcq/random
 export const getRandomMultipleChoice = async (req: Request, res: Response) => {
   try {
     const question = await service.getRandomMultipleChoice();

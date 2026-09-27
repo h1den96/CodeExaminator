@@ -11,9 +11,9 @@ export class TestService {
 
     const qRes = await db.query(
   `
-  SELECT 
-    q.*, 
-    tq.points, 
+  SELECT
+    q.*,
+    tq.points,
     pq.starter_code,
     pq.category,
     pq.function_signature,
@@ -29,11 +29,10 @@ export class TestService {
   [testId],
 );
 
-    // Apply the dynamic factory fallback on load
     test.questions = qRes.rows.map((q: any) => {
       if (q.question_type === "programming" && (!q.boiler_plate_code || q.boiler_plate_code.trim() === "")) {
         q.boiler_plate_code = BoilerplateFactory.createFullHarness(
-          (q.category || "LINEAR") as QuestionCategory, 
+          (q.category || "LINEAR") as QuestionCategory,
           q.function_signature || ""
         );
       }
@@ -44,8 +43,8 @@ export class TestService {
       if (q.question_type === "mcq") {
         const optRes = await db.query(
           `SELECT option_id, option_text, option_id as id, option_text as text
-           FROM exam.mcq_options 
-           WHERE question_id = $1 
+           FROM exam.mcq_options
+           WHERE question_id = $1
            ORDER BY option_id`,
           [q.question_id],
         );
@@ -70,12 +69,12 @@ export class TestService {
 
     const qRes = await db.query(
       `
-      SELECT 
-        q.question_id, 
-        q.title, 
-        q.body, 
+      SELECT
+        q.question_id,
+        q.title,
+        q.body,
         q.question_type,
-        sq.points, 
+        sq.points,
         pq.starter_code,
         pq.category,
         pq.function_signature,
@@ -90,11 +89,10 @@ export class TestService {
       [submissionId],
     );
 
-    // Apply the dynamic factory fallback on load
     test.questions = qRes.rows.map((q: any) => {
       if (q.question_type === "programming" && (!q.boiler_plate_code || q.boiler_plate_code.trim() === "")) {
         q.boiler_plate_code = BoilerplateFactory.createFullHarness(
-          (q.category || "LINEAR") as QuestionCategory, 
+          (q.category || "LINEAR") as QuestionCategory,
           q.function_signature || ""
         );
       }
@@ -106,7 +104,7 @@ export class TestService {
         const optRes = await db.query(
           `SELECT option_id, option_text, option_id as id, option_text as text
            FROM exam.mcq_options
-           WHERE question_id = $1 
+           WHERE question_id = $1
            ORDER BY option_id`,
           [q.question_id],
         );

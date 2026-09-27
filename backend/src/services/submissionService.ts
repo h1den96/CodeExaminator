@@ -58,7 +58,7 @@ export class SubmissionService {
                 await client.query(
                     `INSERT INTO exam.student_answers (submission_question_id, question_grade, teacher_comments, is_manually_graded)
                      VALUES ($1, $2, $3, true)
-                     ON CONFLICT (submission_question_id) 
+                     ON CONFLICT (submission_question_id)
                      DO UPDATE SET question_grade = EXCLUDED.question_grade, teacher_comments = EXCLUDED.teacher_comments, is_manually_graded = true`,
                     [sqId, gVal, item.comments || null]
                 );
@@ -68,7 +68,7 @@ export class SubmissionService {
                 `SELECT SUM(sa.question_grade) as earned, SUM(sq.points) as possible
                  FROM exam.submission_questions sq
                  LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
-                 WHERE sq.submission_id = $1`, 
+                 WHERE sq.submission_id = $1`,
                 [submissionId]
             );
 
@@ -92,8 +92,8 @@ export class SubmissionService {
     static async getAvailableTestsForStudent(userId: number, db: Pool) {
         const query = `
             SELECT test_id, title, description, available_from, available_until, duration_minutes
-            FROM exam.tests 
-            WHERE is_published = true 
+            FROM exam.tests
+            WHERE is_published = true
             AND (available_until IS NULL OR available_until > NOW())
             ORDER BY created_at DESC
         `;
@@ -126,12 +126,12 @@ export class SubmissionService {
         }
 
         const query = `
-            SELECT 
-                s.submission_id, 
-                s.test_id, 
-                t.title as test_title, 
-                COALESCE(s.total_grade, 0) as total_grade, 
-                s.status, 
+            SELECT
+                s.submission_id,
+                s.test_id,
+                t.title as test_title,
+                COALESCE(s.total_grade, 0) as total_grade,
+                s.status,
                 s.submitted_at,
                 COALESCE(
                     (
@@ -151,12 +151,12 @@ export class SubmissionService {
                         JOIN exam.questions q ON sq.question_id = q.question_id
                         LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
                         WHERE sq.submission_id = s.submission_id
-                    ), 
+                    ),
                     '[]'::json
                 ) as questions
             FROM exam.submissions s
             JOIN exam.tests t ON s.test_id = t.test_id
-            WHERE s.submission_id = $1 
+            WHERE s.submission_id = $1
               AND (s.student_id::text = $2 OR $2 = 'TEACHER_BYPASS')
         `;
 
@@ -171,8 +171,8 @@ export class SubmissionService {
         if (!t) throw new Error(`Test template with id=${testId} not found`);
 
         const existingRes = await db.query(
-            `SELECT submission_id, status, started_at FROM exam.submissions 
-             WHERE student_id = $1 AND test_id = $2 
+            `SELECT submission_id, status, started_at FROM exam.submissions
+             WHERE student_id = $1 AND test_id = $2
              ORDER BY started_at DESC LIMIT 1`,
             [studentId, testId],
         );
@@ -185,13 +185,13 @@ export class SubmissionService {
             const fullTest = await TestService.reconstructTestFromSubmission(existingSubmission.submission_id, db);
             return {
                 submissionId: existingSubmission.submission_id,
-                dto: { 
-                    ...fullTest, 
-                    questions: fullTest.questions, 
-                    test_id: t.test_id, 
-                    title: t.title, 
+                dto: {
+                    ...fullTest,
+                    questions: fullTest.questions,
+                    test_id: t.test_id,
+                    title: t.title,
                     started_at: existingSubmission.started_at,
-                    duration_minutes: t.duration_minutes 
+                    duration_minutes: t.duration_minutes
                 },
             };
         }
@@ -200,8 +200,8 @@ export class SubmissionService {
         try {
             await client.query("BEGIN");
             const sRes = await client.query(
-                `INSERT INTO exam.submissions (student_id, test_id, status, started_at) 
-                VALUES ($1, $2, 'in_progress', NOW()) 
+                `INSERT INTO exam.submissions (student_id, test_id, status, started_at)
+                VALUES ($1, $2, 'in_progress', NOW())
                 RETURNING submission_id, started_at`,
                 [studentId, t.test_id],
             );
@@ -269,12 +269,12 @@ export class SubmissionService {
             const freshTest = await TestService.reconstructTestFromSubmission(submissionId, client as any);
             return {
                 submissionId,
-                dto: { 
-                    ...freshTest, 
-                    questions: freshTest.questions, 
-                    test_id: t.test_id, 
-                    title: t.title, 
-                    started_at: sRes.rows[0].started_at 
+                dto: {
+                    ...freshTest,
+                    questions: freshTest.questions,
+                    test_id: t.test_id,
+                    title: t.title,
+                    started_at: sRes.rows[0].started_at
                 },
             };
         } catch (e) {
@@ -287,8 +287,8 @@ export class SubmissionService {
 
     static async saveSingleAnswer(submissionId: number, studentId: string, dto: SubmitAnswerDto, db: Pool) {
         const subCheck = await db.query(
-           `SELECT submission_id FROM exam.submissions 
-            WHERE submission_id = $1 AND student_id = $2 
+           `SELECT submission_id FROM exam.submissions
+            WHERE submission_id = $1 AND student_id = $2
             AND status IN ('in_progress', 'started')`,
             [submissionId, studentId],
         );
@@ -305,7 +305,7 @@ export class SubmissionService {
         await db.query(
             `INSERT INTO exam.student_answers (submission_question_id, mcq_option_ids, tf_answer, code_answer, answered_at)
              VALUES ($1, $2, $3, $4, NOW())
-             ON CONFLICT (submission_question_id) DO UPDATE SET 
+             ON CONFLICT (submission_question_id) DO UPDATE SET
              mcq_option_ids = EXCLUDED.mcq_option_ids, tf_answer = EXCLUDED.tf_answer, code_answer = EXCLUDED.code_answer, answered_at = NOW()`,
             [sqId, dto.mcq_option_ids || null, dto.tf_answer ?? null, dto.code_answer || null],
         );
@@ -325,9 +325,8 @@ export class SubmissionService {
             throw new Error("ACCESS_DENIED");
         }
 
-        // Replace lines 212-230 in SubmissionService.ts with:
         const dataQuery = `
-            SELECT 
+            SELECT
                 sa.answer_id, sq.submission_question_id, sa.mcq_option_ids, sa.tf_answer, sa.code_answer,
                 q.question_id, q.question_type, sq.points as question_points,
                 q.structural_rules, q.weight_wb, q.weight_bb,
@@ -341,14 +340,14 @@ export class SubmissionService {
             JOIN exam.questions q ON sq.question_id = q.question_id
             JOIN exam.submissions s ON sq.submission_id = s.submission_id
             JOIN exam.tests t ON s.test_id = t.test_id
-            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id 
+            LEFT JOIN exam.programming_questions pq ON q.question_id = pq.question_id
             LEFT JOIN exam.student_answers sa ON sq.submission_question_id = sa.submission_question_id
             LEFT JOIN exam.true_false_answers tf ON q.question_id = tf.question_id
             WHERE sq.submission_id = $1
         `;
 
         const { rows: questionsToGrade } = await db.query(dataQuery, [submissionId]);
-        
+
         if (questionsToGrade.length === 0) {
             await db.query(
                 `UPDATE exam.submissions SET status = 'submitted', total_grade = 0, submitted_at = NOW() WHERE submission_id = $1`,
@@ -364,7 +363,7 @@ export class SubmissionService {
         for (const ans of questionsToGrade) {
             const points = Number(ans.question_points);
             maxTotalPoints += points;
-            
+
             let earned = 0;
             let evalResult: any = {};
 
@@ -372,7 +371,7 @@ export class SubmissionService {
                 if (ans.question_type === 'mcq') {
                     earned = GradingService.calculateMCQ(points, ans.mcq_options_data || [], ans.mcq_option_ids || [], ans.enable_negative_grading);
                     evalResult = { type: 'mcq', selected: ans.mcq_option_ids };
-                } 
+                }
                 else if (ans.question_type === 'true_false') {
                     earned = GradingService.calculateTrueFalse(
                         points,
@@ -382,10 +381,10 @@ export class SubmissionService {
                         ans.tf_penalty_ratio != null ? Number(ans.tf_penalty_ratio) : 1.0,
                     );
                     evalResult = { type: 'tf', student_ans: ans.tf_answer, correct_ans: ans.tf_correct };
-                } 
+                }
                 else if (ans.question_type === 'programming') {
                     const rawCode = codeOverride || ans.code_answer;
-                    
+
                     if (rawCode) {
                         const evaluation = await ProgrammingGradingEngine.evaluate({
                             studentCode: rawCode,
@@ -419,27 +418,27 @@ export class SubmissionService {
                 }
             }
 
-            gradingResults.push({ 
-                answerId: ans.answer_id, 
-                score: Number(earned.toFixed(2)), 
-                evalResult 
+            gradingResults.push({
+                answerId: ans.answer_id,
+                score: Number(earned.toFixed(2)),
+                evalResult
             });
             rawEarnedPoints += earned;
         }
 
-        const finalNormalizedGrade = maxTotalPoints > 0 
-            ? Number(((rawEarnedPoints / maxTotalPoints) * 10).toFixed(2)) 
+        const finalNormalizedGrade = maxTotalPoints > 0
+            ? Number(((rawEarnedPoints / maxTotalPoints) * 10).toFixed(2))
             : 0;
 
         const client = await db.connect();
         try {
             await client.query("BEGIN");
-            
+
             for (const res of gradingResults) {
                 if (res.answerId) {
                     await client.query(
-                        `UPDATE exam.student_answers 
-                         SET question_grade = $1, eval_result = $2, is_submitted = true 
+                        `UPDATE exam.student_answers
+                         SET question_grade = $1, eval_result = $2, is_submitted = true
                          WHERE answer_id = $3`,
                         [res.score, res.evalResult, res.answerId]
                     );
@@ -447,17 +446,17 @@ export class SubmissionService {
             }
 
             await client.query(
-                `UPDATE exam.submissions 
-                 SET status = 'submitted', submitted_at = NOW(), total_grade = $1 
+                `UPDATE exam.submissions
+                 SET status = 'submitted', submitted_at = NOW(), total_grade = $1
                  WHERE submission_id = $2`,
                 [finalNormalizedGrade, submissionId]
             );
 
             await client.query("COMMIT");
-            return { 
-                success: true, 
-                submission_id: submissionId, 
-                final_score: finalNormalizedGrade 
+            return {
+                success: true,
+                submission_id: submissionId,
+                final_score: finalNormalizedGrade
             };
         } catch (e: any) {
             await client.query("ROLLBACK");

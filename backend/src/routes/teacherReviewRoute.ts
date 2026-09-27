@@ -1,10 +1,10 @@
-// src/routes/teacherReviewRoutes.ts
+
 import { Router } from "express";
-import { 
-  getTeacherTests, 
-  getTestSubmissions, 
-  getSubmissionDetails, 
-  saveTeacherReview 
+import {
+  getTeacherTests,
+  getTestSubmissions,
+  getSubmissionDetails,
+  saveTeacherReview
 } from "../controllers/teacherReviewController";
 
 const router = Router();

@@ -1,4 +1,4 @@
-// src/types/exam.types.ts
+
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -40,19 +40,16 @@ export type TestTemplateRow = {
   strict_deadline: boolean;
 };
 
-// --- 👇 NEW: Define the Question Shape Here 👇 ---
 export interface Question {
   question_id: number;
-  question_type: "mcq" | "true_false" | "programming" | "tf" | "prog"; // Handle all variations
+  question_type: "mcq" | "true_false" | "programming" | "tf" | "prog";
   body: string;
   points: number;
 
-  // ✅ THE CRITICAL FIELD
   allow_multiple?: boolean;
 
-  // Specific fields
-  options?: { id: number; text: string }[]; // For MCQ
-  test_cases?: any[]; // For Programming
+  options?: { id: number; text: string }[];
+  test_cases?: any[];
 }
 
 export type AnswersPayload = {
@@ -85,7 +82,7 @@ export interface TestDTO {
   duration_minutes?: number;
   available_until?: string | null;
   strict_deadline?: boolean;
-  started_at?: string; // Important for the timer!
+  started_at?: string;
 }
 
 export interface Judge0Result {

@@ -13,7 +13,7 @@ export class CodeExecutionService {
   ) {
     try {
       const questionQuery = `
-        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, pq.helper_code, 
+        SELECT pq.test_cases, pq.category, pq.function_signature, pq.boilerplate_code, pq.helper_code,
                sq.points as max_points, q.question_type, q.structural_rules, pq.language_id,
                q.weight_wb, q.weight_bb, pq.cpu_time_limit, pq.memory_limit
         FROM exam.submission_questions sq
@@ -60,14 +60,14 @@ export class CodeExecutionService {
       };
 
       const upsertQuery = `
-        INSERT INTO exam.student_answers 
+        INSERT INTO exam.student_answers
         (submission_question_id, code_answer, eval_result, question_grade, answered_at)
         VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (submission_question_id) 
-        DO UPDATE SET 
-          code_answer = EXCLUDED.code_answer, 
-          eval_result = EXCLUDED.eval_result, 
-          question_grade = EXCLUDED.question_grade, 
+        ON CONFLICT (submission_question_id)
+        DO UPDATE SET
+          code_answer = EXCLUDED.code_answer,
+          eval_result = EXCLUDED.eval_result,
+          question_grade = EXCLUDED.question_grade,
           answered_at = NOW()
         RETURNING answer_id, question_grade
       `;

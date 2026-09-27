@@ -10,7 +10,6 @@ const SUBMISSION_ID = 77;
 const STUDENT_ID = "6";
 const QUESTION_ID = 84;
 
-// Helper to pause execution (The "Cooldown")
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function runPacedTest(totalRequests: number, batchSize: number) {
@@ -29,7 +28,7 @@ async function runPacedTest(totalRequests: number, batchSize: number) {
 
     const squad = Array.from({ length: currentBatchSize }).map(async () => {
       try {
-        // We reset the lock so the grader doesn't skip it
+
         await pool.query(
           "UPDATE exam.submissions SET status = 'in_progress' WHERE submission_id = $1",
           [SUBMISSION_ID],
@@ -43,7 +42,6 @@ async function runPacedTest(totalRequests: number, batchSize: number) {
 
     await Promise.all(squad);
 
-    // The Breath: Give the CPU 500ms to cool down between batches
     if (i + batchSize < totalRequests) {
       console.log("⏸️  Cooldown... letting the fans spin down.");
       await sleep(500);
@@ -57,5 +55,4 @@ async function runPacedTest(totalRequests: number, batchSize: number) {
   );
 }
 
-// 15 total requests, handled 3 at a time.
 runPacedTest(15, 3).then(() => pool.end());

@@ -45,13 +45,13 @@ export async function getTestSubmissions(req: Request, res: Response) {
 
     const db = getDb(ereq);
     const query = `
-      SELECT 
-        s.submission_id, 
-        s.student_id, 
-        COALESCE(st.first_name, u.full_name, s.student_id) AS first_name, 
-        COALESCE(st.last_name, '') AS last_name, 
-        s.submitted_at, 
-        s.total_grade, 
+      SELECT
+        s.submission_id,
+        s.student_id,
+        COALESCE(st.first_name, u.full_name, s.student_id) AS first_name,
+        COALESCE(st.last_name, '') AS last_name,
+        s.submitted_at,
+        s.total_grade,
         s.status
       FROM exam.submissions s
       LEFT JOIN exam.students st ON s.student_id = st.student_id::text
@@ -86,20 +86,20 @@ export async function getSubmissionDetails(req: Request, res: Response) {
     const submission = subResult.rows[0];
 
     const questionsQuery = `
-      SELECT 
-        sq.question_id, 
-        q.title, 
-        q.body AS question_body, 
-        q.question_type, 
+      SELECT
+        sq.question_id,
+        q.title,
+        q.body AS question_body,
+        q.question_type,
         10 AS max_points,
-        sa.answer_id, 
-        sa.code_answer, 
+        sa.answer_id,
+        sa.code_answer,
         sa.question_grade AS auto_grade,
         pq.reference_solution,
         pq.function_signature,
-        tr.review_id, 
-        tr.commentary, 
-        tr.highlighted_data, 
+        tr.review_id,
+        tr.commentary,
+        tr.highlighted_data,
         tr.score_override
       FROM exam.submission_questions sq
       JOIN exam.questions q ON sq.question_id = q.question_id
@@ -141,11 +141,11 @@ export async function saveTeacherReview(req: Request, res: Response) {
       await client.query("BEGIN");
 
       const reviewQuery = `
-        INSERT INTO exam.teacher_reviews 
+        INSERT INTO exam.teacher_reviews
           (submission_id, question_id, teacher_id, commentary, highlighted_data, score_override, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
         ON CONFLICT (submission_id, question_id)
-        DO UPDATE SET 
+        DO UPDATE SET
             commentary = EXCLUDED.commentary,
             highlighted_data = EXCLUDED.highlighted_data,
             score_override = EXCLUDED.score_override,
@@ -166,8 +166,8 @@ export async function saveTeacherReview(req: Request, res: Response) {
           `UPDATE exam.student_answers sa
            SET question_grade = $1
            FROM exam.submission_questions sq
-           WHERE sa.submission_question_id = sq.submission_question_id 
-             AND sq.submission_id = $2 
+           WHERE sa.submission_question_id = sq.submission_question_id
+             AND sq.submission_id = $2
              AND sq.question_id = $3`,
           [Number(scoreOverride), submissionId, questionId]
         );

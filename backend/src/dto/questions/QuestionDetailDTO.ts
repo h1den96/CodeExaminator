@@ -1,4 +1,4 @@
-// src/dto/questions/question-detail.dto.ts
+
 export type QuestionDetailDto = {
   question_id: number;
   title: string | null;

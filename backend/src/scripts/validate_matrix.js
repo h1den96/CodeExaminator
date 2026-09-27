@@ -62,7 +62,7 @@ async function postJson(path, payload, token) {
 
 async function prepareTestSubmissionContext(client, questionIds) {
   console.log('Fetching existing student & teacher IDs...');
-  
+
   const userRes = await client.query(`SELECT user_id, role FROM auth.users LIMIT 5;`);
   let teacherId = userRes.rows.find(u => u.role === 'teacher')?.user_id || 1;
   let studentId = userRes.rows.find(u => u.role === 'student')?.user_id || 1;
@@ -114,9 +114,9 @@ async function runValidation() {
 
   try {
     const query = `
-      SELECT 
-        q.question_id, 
-        q.title, 
+      SELECT
+        q.question_id,
+        q.title,
         pq.reference_solution
       FROM exam.questions q
       JOIN exam.programming_questions pq ON q.question_id = pq.question_id
@@ -172,13 +172,10 @@ async function runValidation() {
           passedCount++;
         } else {
           console.log(`${String(qId).padEnd(4)} | ${title} | ${grade}/10 | FAIL (HTTP ${res.statusCode})`);
-          
-          // Isolate targeted questions (e.g. 91, 116) for complete JSON payload trace printing
 
             console.log(`\n========== FULL DEBUG PAYLOAD FOR TARGET Q${qId} ==========`);
             console.dir(body, { depth: null });
             console.log(`===========================================================\n`);
-          
 
           failures.push({ id: qId, title: q.title, response: body });
           failedCount++;

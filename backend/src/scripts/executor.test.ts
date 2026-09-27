@@ -29,7 +29,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockPool = {
       query: jest.fn().mockImplementation((queryText) => {
         if (queryText.includes("SELECT pq.test_cases")) {
@@ -43,7 +43,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
   test("Matrix Case 1: Empty student submission logic parsing block", async () => {
     const studentCode = "";
-    
+
     const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(false);
 
     const result = await CodeExecutionService.executeAndGrade(
@@ -54,13 +54,13 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
     expect(result.question_grade).toBe(0);
     expect(result.details[0].status).toBe("Security Violation");
-    
+
     spy.mockRestore();
   });
 
   test("Matrix Case 2: Security violation block (banned process runtime execution)", async () => {
     const studentCode = "int main() { system(\"rm -rf /\"); }";
-    
+
     const spy = jest.spyOn(StructuralAnalysisService, "hasLoop").mockReturnValue(true);
 
     const result = await CodeExecutionService.executeAndGrade(
@@ -71,7 +71,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
 
     expect(result.question_grade).toBe(0);
     expect(result.details[0].status).toBe("Security Violation");
-    
+
     spy.mockRestore();
   });
 
@@ -109,10 +109,10 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
       mockPool
     );
 
-    expect(result.question_grade).toBe(2); 
+    expect(result.question_grade).toBe(2);
     expect(result.details[0].passed).toBe(false);
     expect(result.details[0].status).toBe("Compilation Error");
-    
+
     spy.mockRestore();
   });
 
@@ -153,7 +153,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
     expect(result.question_grade).toBe(6);
     expect(result.details[0].passed).toBe(true);
     expect(result.details[1].passed).toBe(false);
-    
+
     spy.mockRestore();
   });
 
@@ -194,7 +194,7 @@ describe("CodeExecutionService Execution Matrix & Grading Tests", () => {
     expect(result.question_grade).toBe(10);
     expect(result.details[0].passed).toBe(true);
     expect(result.details[1].passed).toBe(true);
-    
+
     spy.mockRestore();
   });
 });
