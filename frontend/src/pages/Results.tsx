@@ -4,8 +4,6 @@ import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
 import BackgroundAccents from "../components/BackgroundAccents";
 
-// --- Helper function για Pedagogical Feedback ---
-// Maps a judge status to a semantic theme role (warning vs danger) plus the message.
 const getStatusFeedback = (status: string) => {
   const feedbackMap: Record<string, { msg: string; role: "warning" | "danger" }> = {
     "Time Limit Exceeded": {
@@ -203,7 +201,6 @@ export default function Results() {
           padding: "40px 20px",
         }}
       >
-      {/* --- HEADER: TOTAL SCORE --- */}
       <div
         style={{
           textAlign: "center",
@@ -310,7 +307,6 @@ export default function Results() {
                 </div>
               </div>
 
-              {/* --- WHITE-BOX SECTION: Complexity & Rules --- */}
               {q.type === "programming" && whiteBoxDetails.length > 0 && (
                 <div
                   style={{
@@ -365,7 +361,6 @@ export default function Results() {
                 </div>
               )}
 
-              {/* --- MCQ & TRUE/FALSE FEEDBACK --- */}
               {(q.type === "mcq" || q.type === "true_false") && (
                 <div
                   style={{
@@ -402,7 +397,6 @@ export default function Results() {
                 </div>
               )}
 
-              {/* --- PROGRAMMING FEEDBACK & CODE --- */}
               {q.type === "programming" && (
                 <>
                   {testResults.length > 0 && testResults.some((t: any) => !t.passed) && (
@@ -499,7 +493,6 @@ export default function Results() {
                 </>
               )}
 
-              {/* --- INSTRUCTOR MANUAL OVERRIDE (Per Question) --- */}
               {isTeacher && (
                 <div
                   style={{
@@ -553,8 +546,6 @@ export default function Results() {
                   </div>
                 </div>
               )}
-
-              {/* --- STUDENT VIEW OF COMMENTS --- */}
               {!isTeacher && q.teacher_comments && (
                 <div
                   style={{
@@ -574,8 +565,6 @@ export default function Results() {
           );
         })}
       </div>
-
-      {/* --- STICKY TEACHER ACTION BAR --- */}
       {isTeacher && (
         <div
           style={{

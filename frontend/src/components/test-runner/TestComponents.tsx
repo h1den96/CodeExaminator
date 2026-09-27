@@ -31,7 +31,7 @@ export const QuestionHeader = ({
   question: Question;
   idx: number;
 }) => {
-  // Optional: Helper to ensure literal "\n" strings are treated as breaks
+
   const processText = (txt: string) => txt?.replace(/\\n/g, "\n");
 
   return (
@@ -41,7 +41,7 @@ export const QuestionHeader = ({
         style={{
           fontSize: "1.1rem",
           lineHeight: "1.6",
-          // THIS IS THE KEY FIX FOR FORMATTING:
+
           whiteSpace: "pre-wrap",
           fontFamily: "inherit",
         }}

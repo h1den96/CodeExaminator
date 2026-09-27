@@ -10,8 +10,8 @@ interface Slot {
   difficulty: "easy" | "medium" | "hard";
   category: "SCALAR" | "LINEAR" | "GRID" | "LINKED_LIST" | "CUSTOM";
   points: number;
-  weight_bb: number; // Black-box (Results)
-  weight_wb: number; // White-box (Logic)
+  weight_bb: number;
+  weight_wb: number;
 }
 
 export default function CreateTestPage() {
@@ -31,7 +31,7 @@ export default function CreateTestPage() {
     grace_mode: "STANDARD" as "STRICT" | "STANDARD" | "THRESHOLD",
     grace_threshold: 0.90,
     grace_cap: 0.15,
-    slots: [] as Slot[], 
+    slots: [] as Slot[],
   });
 
   useEffect(() => {
@@ -89,12 +89,12 @@ export default function CreateTestPage() {
 
     setLoading(true);
     try {
-      const isoAvailableFrom = formData.available_from 
-        ? new Date(formData.available_from).toISOString() 
+      const isoAvailableFrom = formData.available_from
+        ? new Date(formData.available_from).toISOString()
         : null;
-        
-      const isoAvailableUntil = formData.available_until 
-        ? new Date(formData.available_until).toISOString() 
+
+      const isoAvailableUntil = formData.available_until
+        ? new Date(formData.available_until).toISOString()
         : null;
 
       await createTest({
@@ -113,7 +113,6 @@ export default function CreateTestPage() {
     }
   };
 
-  // Shared Styles
   const cardStyle = {
     backgroundColor: colors.card,
     padding: "20px",
@@ -188,20 +187,19 @@ export default function CreateTestPage() {
         </header>
 
         {error && (
-          <div style={{ 
-            padding: "12px", 
-            backgroundColor: colors.dangerBg, 
-            color: colors.dangerText, 
-            borderRadius: "8px", 
+          <div style={{
+            padding: "12px",
+            backgroundColor: colors.dangerBg,
+            color: colors.dangerText,
+            borderRadius: "8px",
             marginBottom: "20px",
-            border: `1px solid ${colors.dangerBorder}` 
+            border: `1px solid ${colors.dangerBorder}`
           }}>
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="ctp-form-grid">      
-          {/* LEFT: Meta, Scheduling & Global Grace */}
+        <form onSubmit={handleSubmit} className="ctp-form-grid">
           <section>
             <div style={cardStyle}>
               <h3 style={{ marginTop: 0, marginBottom: "16px" }}>General Settings</h3>
@@ -247,7 +245,7 @@ export default function CreateTestPage() {
                     setFormData((prev) => ({
                       ...prev,
                       available_from: newOpens,
-                      // Clear Closes if it's no longer after the new Opens time
+
                       available_until:
                         prev.available_until && newOpens && new Date(prev.available_until) <= new Date(newOpens)
                           ? ""
@@ -329,8 +327,6 @@ export default function CreateTestPage() {
               </div>
             </div>
           </section>
-
-          {/* RIGHT: THE SLOT MANAGER */}
           <section>
             <div style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>

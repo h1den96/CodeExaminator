@@ -1,4 +1,4 @@
-// src/types/test.ts
+
 export type TFQ = {
   id: number;
   type: "true_false";

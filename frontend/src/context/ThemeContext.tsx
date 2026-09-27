@@ -1,4 +1,4 @@
-// src/context/ThemeContext.tsx
+
 import React, {
   createContext,
   useContext,
@@ -21,13 +21,11 @@ type ThemeContextType = {
     border: string;
     inputBg: string;
 
-    // brand accent (teal)
     accent: string;
     accentHover: string;
     accentSubtle: string;
     accentText: string;
 
-    // semantic status colors
     successBg: string;
     successText: string;
     successBorder: string;
@@ -47,17 +45,14 @@ type ThemeContextType = {
     codeText: string;
     codeBorder: string;
 
-    // background texture tokens
     gridDot: string;
     gridDotSubtle: string;
     washTint: string;
   };
   fontMono: string;
-  /** Ready-to-spread background style: dot grid + soft top wash + use with <BackgroundAccents />.
-   *  Use on login/signup/dashboard-style pages. */
+
   richBackground: React.CSSProperties;
-  /** Ready-to-spread background style: faint dot grid only, no wash, no accents.
-   *  Use on exam/results/report pages so it's not a stark flat block but stays calm. */
+
   subtleBackground: React.CSSProperties;
 };
 

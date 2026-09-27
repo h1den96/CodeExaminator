@@ -21,7 +21,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isExpired) {
-      // Keep the banner visible; no auto-clear.
+
     }
   }, [isExpired]);
 
@@ -97,7 +97,6 @@ export default function LoginPage() {
       }}
     >
       <BackgroundAccents />
-      {/* Theme toggle */}
       <button
         type="button"
         onClick={toggleTheme}
@@ -142,7 +141,6 @@ export default function LoginPage() {
               : "0 4px 16px rgba(0,0,0,0.4)",
         }}
       >
-        {/* Brand lockup */}
         <div
           style={{
             display: "flex",

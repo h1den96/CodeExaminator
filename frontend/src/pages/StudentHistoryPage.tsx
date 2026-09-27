@@ -41,7 +41,6 @@ export default function StudentHistoryPage() {
           margin: "0 auto",
         }}
       >
-      {/* Back Button */}
       <button
         onClick={() => navigate("/tests")}
         style={{
@@ -64,7 +63,6 @@ export default function StudentHistoryPage() {
         <span>&larr;</span> Back to Exams
       </button>
 
-      {/* Header Section */}
       <div style={{ marginBottom: "40px" }}>
         <h1 style={{ margin: 0, fontSize: "2rem" }}>Exam History</h1>
         <p style={{ color: colors.textSec, marginTop: "10px" }}>
@@ -113,7 +111,6 @@ export default function StudentHistoryPage() {
         </div>
       )}
 
-      {/* History List */}
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {history.map((item) => (
           <div
@@ -130,7 +127,6 @@ export default function StudentHistoryPage() {
               transition: "transform 0.2s",
             }}
           >
-            {/* Left Side: Info */}
             <div style={{ flex: 1 }}>
               <h3 style={{ margin: "0 0 8px 0", color: colors.text }}>
                 {item.test_title}
@@ -149,7 +145,7 @@ export default function StudentHistoryPage() {
                 <span>
                   🕒 {new Date(item.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <span style={{ 
+                <span style={{
                   color: item.status === "completed" || item.status === "submitted" ? colors.successText : colors.dangerText,
                   fontWeight: "bold",
                   textTransform: "uppercase"
@@ -158,8 +154,6 @@ export default function StudentHistoryPage() {
                 </span>
               </div>
             </div>
-
-            {/* Right Side: Score & Action */}
             <div style={{ display: "flex", alignItems: "center", gap: "30px" }}>
               <div style={{ textAlign: "right" }}>
                 <div

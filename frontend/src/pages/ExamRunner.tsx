@@ -4,10 +4,8 @@ import api from "../api/axios";
 import { useTheme } from "../context/ThemeContext";
 import { saveAnswerToDB } from "../api/examApi";
 
-// 👇 Import your custom layout
 import ProgrammingLayout from "../components/test-runner/ProgrammingLayout";
 
-// --- TYPES ---
 interface Question {
   question_id: number;
   title: string;
@@ -30,7 +28,6 @@ interface TestData {
   questions: Question[];
 }
 
-// --- FLOATING TIMER ---
 function FloatingTimer({
   durationMins,
   startedAt,
@@ -111,7 +108,6 @@ function FloatingTimer({
   );
 }
 
-// --- MAIN EXAM RUNNER ---
 export default function ExamRunner() {
   const { state } = useLocation();
   const navigate = useNavigate();
@@ -214,10 +210,10 @@ export default function ExamRunner() {
      } catch (err: any) {
         if (err.response?.status === 409) {
           const sid = err.response.data.submission_id;
-        
+
           if (sid) {
             console.log("Redirecting to valid submission:", sid);
-            navigate(`/results/${sid}`, { replace: true }); // 👈 add replace: true
+            navigate(`/results/${sid}`, { replace: true });
           } else {
             console.warn("409 Conflict: No submission_id provided by backend.");
             navigate("/tests", { replace: true });
@@ -279,7 +275,7 @@ export default function ExamRunner() {
 
       if (res.data) {
         const rawDetails = res.data.test_results || res.data.details || [];
-        
+
         const normalizedDetails = rawDetails.map((test: any) => ({
           ...test,
           status: typeof test.status === 'object' ? test.status.description : test.status,

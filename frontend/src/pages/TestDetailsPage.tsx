@@ -1,4 +1,4 @@
-// src/pages/TestDetailsPage.tsx
+
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
@@ -22,8 +22,7 @@ interface Question {
   correct_answer?: string | boolean;
   options?: { text: string; is_correct: boolean }[];
   test_cases?: any[];
-  // Present only when is_pool_preview is true: groups candidate questions
-  // by the slot they could be drawn for.
+
   slot_id?: number;
   slot_order?: number;
   difficulty?: string;
@@ -47,8 +46,7 @@ interface TestDetail {
   questions?: Question[];
   slots?: Question[];
   submissions?: Submission[];
-  // True when this test uses random slot-based question selection, meaning
-  // `questions` is the full eligible pool per slot rather than a fixed set.
+
   is_pool_preview?: boolean;
 }
 
@@ -110,9 +108,6 @@ export default function TestDetailsPage() {
   const submissionsList = test.submissions || [];
   const isPoolPreview = !!test.is_pool_preview;
 
-  // In pool-preview mode, multiple questions can share the same slot_id
-  // (they're all candidates for that slot, not a fixed set). Group them so
-  // the UI can show "Slot 1 - 4 possible questions" instead of one flat list.
   const slotGroups: SlotGroup[] = [];
   if (isPoolPreview) {
     const groupMap = new Map<number | string, SlotGroup>();
@@ -200,7 +195,6 @@ export default function TestDetailsPage() {
         {q.text}
       </div>
 
-      {/* ANSWER KEY SECTION */}
       {showAnswers && (
         <div
           style={{
@@ -288,7 +282,6 @@ export default function TestDetailsPage() {
           margin: "0 auto",
         }}
       >
-      {/* HEADER: Back Button, Title, Controls */}
       <div
         style={{
           marginBottom: "30px",
@@ -379,7 +372,6 @@ export default function TestDetailsPage() {
         </div>
       </div>
 
-      {/* --- STATS & SUBMISSIONS DASHBOARD --- */}
       <div style={{ marginBottom: "40px" }}>
         <div
           style={{
@@ -510,7 +502,6 @@ export default function TestDetailsPage() {
         </div>
       </div>
 
-      {/* --- QUESTIONS LIST --- */}
       <h2 style={{ color: colors.text, marginBottom: "20px" }}>Test questions</h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {questionsList.map((q, index) => (
@@ -567,7 +558,6 @@ export default function TestDetailsPage() {
               {q.text}
             </div>
 
-            {/* ANSWER KEY SECTION */}
             {showAnswers && (
               <div
                 style={{

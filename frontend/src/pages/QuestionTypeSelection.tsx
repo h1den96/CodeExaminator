@@ -1,4 +1,4 @@
-// src/pages/teacher/QuestionTypeSelection.tsx
+
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 
@@ -11,21 +11,21 @@ export default function QuestionTypeSelection() {
       title: "💻 Programming Challenge",
       desc: "Create a coding problem with automated Unit Tests (Input/Output).",
       path: "/teacher/create-programming",
-      color: "#2563eb", // Blue
+      color: "#2563eb",
       bg: theme === "dark" ? "rgba(37, 99, 235, 0.1)" : "#eff6ff",
     },
     {
       title: "☑️ Multiple Choice",
       desc: "Standard question with one correct answer out of 4 options.",
-      path: "/teacher/create-mcq", // Placeholder for now
-      color: "#16a34a", // Green
+      path: "/teacher/create-mcq",
+      color: "#16a34a",
       bg: theme === "dark" ? "rgba(22, 163, 74, 0.1)" : "#f0fdf4",
     },
     {
       title: "❓ True / False",
       desc: "Simple binary choice question.",
-      path: "/teacher/create-tf", // Placeholder for now
-      color: "#d97706", // Amber
+      path: "/teacher/create-tf",
+      color: "#d97706",
       bg: theme === "dark" ? "rgba(217, 119, 6, 0.1)" : "#fffbeb",
     },
   ];
@@ -40,7 +40,6 @@ export default function QuestionTypeSelection() {
       }}
     >
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-        {/* Back Button */}
         <button
           onClick={() => navigate("/teacher/dashboard")}
           style={{
@@ -73,7 +72,6 @@ export default function QuestionTypeSelection() {
           What kind of question would you like to add to the question bank?
         </p>
 
-        {/* Grid of Options */}
         <div
           style={{
             display: "grid",
@@ -106,7 +104,6 @@ export default function QuestionTypeSelection() {
                 e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.05)";
               }}
             >
-              {/* Icon Box */}
               <div
                 style={{
                   width: "60px",

@@ -28,7 +28,6 @@ export default function CreateProgrammingQuestion() {
   const { colors, fontMono, richBackground } = useTheme();
   const navigate = useNavigate();
 
-  // Basic Form State
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
@@ -40,7 +39,6 @@ export default function CreateProgrammingQuestion() {
 );
   const [helperCode, setHelperCode] = useState("");
 
-  // Harness / Boilerplate Generation State
   const [functionSignature, setFunctionSignature] = useState("");
   const [referenceSolution, setReferenceSolution] = useState("");
   const [boilerplateMode, setBoilerplateMode] = useState<"auto" | "custom">("auto");
@@ -50,26 +48,21 @@ export default function CreateProgrammingQuestion() {
   const [validationResults, setValidationResults] = useState<any[] | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Hybrid Blueprint & Grading Configuration State
   const [weightWb, setWeightWb] = useState(0.20);
   const [weightBb, setWeightBb] = useState(0.80);
   const [graceMode, setGraceMode] = useState<"STRICT" | "STANDARD" | "THRESHOLD">("STANDARD");
   const [graceThreshold, setGraceThreshold] = useState(0.90);
   const [graceCap, setGraceCap] = useState(0.15);
 
-  // Dynamic Structural Rules State
   const [structuralRules, setStructuralRules] = useState<StructuralRule[]>([]);
 
-  // Dynamic Test Cases State
   const [testCases, setTestCases] = useState<TestCase[]>([
     { input: "", expected_output: "", category: "FUNCTIONAL", weight: 1.0 },
   ]);
   const [loading, setLoading] = useState(false);
 
-  // Dynamic Data State
   const [topics, setTopics] = useState<Topic[]>([]);
 
-  // Load Topics and Categories on mount
   useEffect(() => {
     api
       .get("/topics")
@@ -82,28 +75,24 @@ export default function CreateProgrammingQuestion() {
       .catch((err) => console.error("Failed to load categories", err));
   }, []);
 
-  // CUSTOM harness category cannot be auto-generated — force custom boilerplate mode
   useEffect(() => {
     if (category === "CUSTOM" && boilerplateMode === "auto") {
       setBoilerplateMode("custom");
     }
   }, [category, boilerplateMode]);
 
-  // Any edit to fields the harness/tests depend on invalidates the last validation run
   useEffect(() => {
     setIsValidated(false);
     setValidationResults(null);
     setValidationError(null);
   }, [functionSignature, referenceSolution, category, boilerplateMode, boilerplateCode, helperCode, testCases]);
 
-  // Handlers for Weight Split
   const handleWeightWbChange = (val: number) => {
     const wb = Math.max(0, Math.min(1, val));
     setWeightWb(wb);
     setWeightBb(Number((1 - wb).toFixed(2)));
   };
 
-  // Handlers for Dynamic Test Cases
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", expected_output: "", category: "FUNCTIONAL", weight: 1.0 }]);
   };
@@ -124,7 +113,6 @@ export default function CreateProgrammingQuestion() {
     setTestCases(newCases);
   };
 
-  // Handlers for Structural Rules
   const addStructuralRule = () => {
     setStructuralRules([
       ...structuralRules,
@@ -152,7 +140,6 @@ export default function CreateProgrammingQuestion() {
     setStructuralRules(newRules);
   };
 
-  // Validate the harness (auto-generated or custom) against the reference solution via Judge0
   const handleValidateBoilerplate = async () => {
     if (!functionSignature || !referenceSolution) {
       alert("Function Signature and Reference Solution are required before validating.");
@@ -239,7 +226,6 @@ export default function CreateProgrammingQuestion() {
     }
   };
 
-  // Styles
   const inputStyle = {
     width: "100%",
     padding: "10px",
@@ -251,8 +237,6 @@ export default function CreateProgrammingQuestion() {
     fontSize: "0.95rem",
   };
 
-  // For monospace/code fields (function signature, reference solution, starter code,
-  // boilerplate, helper code) — uses the dedicated code-surface tokens + mono font.
   const codeInputStyle = {
     ...inputStyle,
     background: colors.codeBg,
@@ -331,7 +315,6 @@ export default function CreateProgrammingQuestion() {
             Create Programming Challenge
           </h1>
 
-          {/* --- SECTION 1: BASIC INFO --- */}
           <label style={labelStyle}>Question Title</label>
           <input
             style={inputStyle}
@@ -421,8 +404,6 @@ export default function CreateProgrammingQuestion() {
             onChange={(e) => setReferenceSolution(e.target.value)}
           />
 
-
-          {/* --- SECTION 2: GRADING & HYBRID WEIGHTS --- */}
           <div style={cardSectionStyle}>
             <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
               ⚖️ Hybrid Grading Weights
@@ -459,7 +440,6 @@ export default function CreateProgrammingQuestion() {
             </div>
           </div>
 
-          {/* --- SECTION 3: SYNTACTIC GRACE CONFIGURATION --- */}
           <div style={cardSectionStyle}>
             <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
               🛡️ Syntactic Grace Rules
@@ -504,7 +484,6 @@ export default function CreateProgrammingQuestion() {
             </div>
           </div>
 
-          {/* --- SECTION 4: AST STRUCTURAL RULES --- */}
           <div style={cardSectionStyle}>
             <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
               🔍 AST Structural Rules
@@ -582,7 +561,6 @@ export default function CreateProgrammingQuestion() {
             </button>
           </div>
 
-          {/* --- SECTION 5: STARTER CODE --- */}
           <div style={{ marginTop: "20px" }}>
             <label style={labelStyle}>Starter Code (C++)</label>
             <textarea
@@ -596,8 +574,6 @@ export default function CreateProgrammingQuestion() {
               onChange={(e) => setStarterCode(e.target.value)}
             />
           </div>
-
-          {/* --- SECTION 5B: BOILERPLATE / HARNESS VALIDATION --- */}
           <div style={cardSectionStyle}>
             <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
               🛠️ Grading Harness
@@ -710,7 +686,6 @@ export default function CreateProgrammingQuestion() {
             )}
           </div>
 
-          {/* --- SECTION 6: UNIT TESTS --- */}
           <div style={cardSectionStyle}>
             <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>
               🧪 Unit Test Cases
@@ -800,7 +775,6 @@ export default function CreateProgrammingQuestion() {
             </button>
           </div>
 
-          {/* --- SECTION: HELPER CODE --- */}
           <div style={{ marginTop: "20px" }}>
             <label style={labelStyle}>Helper Code / Support Functions (Optional)</label>
             <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "8px" }}>
@@ -818,8 +792,6 @@ export default function CreateProgrammingQuestion() {
               onChange={(e) => setHelperCode(e.target.value)}
             />
           </div>
-
-          {/* --- ACTIONS --- */}
           <div style={{ marginTop: "30px", textAlign: "right" }}>
             {!isValidated && (
               <p style={{ fontSize: "0.85rem", color: colors.textSec, marginBottom: "8px" }}>

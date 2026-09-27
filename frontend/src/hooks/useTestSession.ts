@@ -1,13 +1,10 @@
-// src/hooks/useTestSession.ts
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import api from "../api/axios";
-import { startTest } from "../api/testClient"; 
+import { startTest } from "../api/testClient";
 
-// ==========================================
-// 1. EXPORTED TYPES
-// ==========================================
 export type SaveStatus = "saved" | "saving" | "error";
 
 export interface Question {
@@ -33,28 +30,22 @@ export interface TestData {
   submissionId: number;
 }
 
-// ==========================================
-// 2. THE HOOK
-// ==========================================
 export function useTestSession() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const testId = params.get("test_id");
   const { token, logout } = useAuth();
 
-  // Basic UI State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TestData | null>(null);
   const [submissionId, setSubmissionId] = useState<number | null>(null);
 
-  // Interaction State
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, any>>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [submitting, setSubmitting] = useState(false);
 
-  // Execution State (Code Grader)
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<{
     grade: number;
@@ -62,7 +53,6 @@ export function useTestSession() {
   } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  // Load Exam Data
   useEffect(() => {
     if (!testId) return;
     if (!token) {
@@ -74,7 +64,7 @@ export function useTestSession() {
 
     startTest(token, Number(testId))
       .then((root) => {
-        // Safety Check for Data Integrity
+
         if (!root.test || !Array.isArray(root.test.questions)) {
           console.error("Invalid Structure:", root);
           setError("Invalid test data structure received.");
@@ -82,7 +72,6 @@ export function useTestSession() {
           return;
         }
 
-        // --- DATA MAPPING ---
         const mappedQuestions: Question[] = root.test.questions.map((q: any) => ({
           question_id: q.question_id,
           question_text: q.body,
@@ -109,7 +98,6 @@ export function useTestSession() {
           submissionId: root.submission_id,
         };
 
-        // Update State
         setSubmissionId(root.submission_id);
         setData(mappedData);
         setLoading(false);
@@ -121,7 +109,6 @@ export function useTestSession() {
       });
   }, [testId, token, navigate]);
 
-  // Autosave Logic
   const timeoutRef = useRef<any>(null);
 
   const handleAnswer = useCallback(
@@ -152,10 +139,6 @@ export function useTestSession() {
     [submissionId, token],
   );
 
-  /**
-   * CODE EXECUTION (RUN CODE)
-   * Sends the current student code to the backend for grading.
-   */
   const runCode = async (questionId: number, code: string) => {
     if (isRunning) return;
 
@@ -173,14 +156,14 @@ export function useTestSession() {
       console.log("✅ [runCode] API Response:", res.data);
 
       if (res.data) {
-        // Convert to Number to handle strings like "10.00"
+
         const finalGrade = Number(res.data.question_grade);
 
         setRunResult({
           grade: isNaN(finalGrade) ? 0 : finalGrade,
           details: res.data.test_results || [],
         });
-        
+
         console.log("🎯 Frontend State Updated with Grade:", finalGrade);
       } else {
         console.warn("⚠️ [runCode] Received empty response from server.");
@@ -206,7 +189,7 @@ export function useTestSession() {
         }
       );
       alert("Exam Submitted Successfully!");
-      navigate("/tests"); 
+      navigate("/tests");
     } catch (err: any) {
       console.error("Submit Error", err);
       alert("Error submitting exam");

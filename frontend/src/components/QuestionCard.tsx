@@ -1,24 +1,5 @@
-/*import type { ReactNode } from "react";
-import styles from "./QuestionCard.module.css";
 
-type Props = {
-  title: string;
-  children: ReactNode;
-  footer?: ReactNode;
-};
 
-export default function QuestionCard({ title, children, footer }: Props) {
-  return (
-    <section className={styles.card} role="region" aria-labelledby="q-title">
-      <header className={styles.header}>
-        <h1 id="q-title" className={styles.title}>{title}</h1>
-      </header>
-      <div className={styles.body}>{children}</div>
-      {footer ? <footer className={styles.footer}>{footer}</footer> : null}
-    </section>
-  );
-}*/
-// src/components/QuestionCard.tsx
 import type { AnyQ } from "../types/test";
 
 export default function QuestionCard({ q, index }: { q: AnyQ; index: number }) {

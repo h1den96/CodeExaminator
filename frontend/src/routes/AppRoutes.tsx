@@ -14,11 +14,8 @@ import { RequireAuth } from "../auth/RequireAuth";
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* --- STANDARD ROUTES --- */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LoginPage />} />
-
-      {/* STUDENT ROUTES */}
       <Route
         path="/tests"
         element={
@@ -51,8 +48,6 @@ export default function AppRoutes() {
           </RequireAuth>
         }
       />
-
-      {/* TEACHER ROUTES */}
       <Route
         path="/teacher"
         element={

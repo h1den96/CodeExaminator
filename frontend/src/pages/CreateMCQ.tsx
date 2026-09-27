@@ -21,10 +21,9 @@ export default function CreateMCQ() {
     { id: "hard", name: "Hard" }
   ];
 
-  // MCQ State: Options with explicit WEIGHTS
   const [options, setOptions] = useState([
-    { text: "", weight: 100 }, // Default: 100% credit
-    { text: "", weight: 0 }, // Default: 0% credit
+    { text: "", weight: 100 },
+    { text: "", weight: 0 },
     { text: "", weight: 0 },
     { text: "", weight: 0 },
   ]);
@@ -40,7 +39,7 @@ export default function CreateMCQ() {
   ) => {
     const newOpts = [...options];
     if (field === "weight") {
-      // Allow numeric input, clamp between -100 and 100 if you want
+
       newOpts[idx].weight = Number(val);
     } else {
       newOpts[idx].text = val;
@@ -60,7 +59,6 @@ export default function CreateMCQ() {
   const handleSubmit = async () => {
     if (!title || !body || !topic) return alert("Missing fields");
 
-    // Validation: Ensure at least one option gives points
     if (!options.some((o) => o.weight > 0)) {
       return alert("At least one option must have a positive score weight!");
     }
@@ -137,7 +135,6 @@ export default function CreateMCQ() {
         >
           <h1 style={{ marginBottom: "20px" }}>Create Weighted MCQ</h1>
 
-          {/* Basic Info */}
           <input
             style={{
               width: "100%",
@@ -211,7 +208,6 @@ export default function CreateMCQ() {
             ))}
           </select>
 
-          {/* Options Section */}
           <h3>Options & Weights</h3>
           <p
             style={{
@@ -239,7 +235,6 @@ export default function CreateMCQ() {
                 alignItems: "center",
               }}
             >
-              {/* Weight Input */}
               <div
                 style={{
                   width: "80px",
@@ -292,7 +287,6 @@ export default function CreateMCQ() {
                 </span>
               </div>
 
-              {/* Text Input */}
               <input
                 style={{
                   flex: 1,
@@ -306,8 +300,6 @@ export default function CreateMCQ() {
                 value={opt.text}
                 onChange={(e) => handleOptionChange(idx, "text", e.target.value)}
               />
-
-              {/* Remove Button */}
               {options.length > 2 && (
                 <button
                   onClick={() => removeOption(idx)}

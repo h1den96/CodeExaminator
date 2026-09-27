@@ -21,12 +21,12 @@ interface Props {
   onSubmit: () => void;
   onRunCode: (id: number, code: string) => void;
   isRunning: boolean;
-  runResult: { 
-    grade: number; 
-    details?: any[]; 
-    status?: string; 
-    compile_output?: string; 
-    error?: string; 
+  runResult: {
+    grade: number;
+    details?: any[];
+    status?: string;
+    compile_output?: string;
+    error?: string;
   } | null;
   runError: string | null;
   topPart: string;
@@ -58,10 +58,10 @@ export default function ProgrammingLayout({
 
   useEffect(() => {
     const cleanStarter = question.starter_code ? question.starter_code.replace(/\\n/g, "\n") : "";
-    const newCode = (answer !== undefined && answer !== null) 
-      ? answer 
+    const newCode = (answer !== undefined && answer !== null)
+      ? answer
       : cleanStarter;
-    
+
     codeRef.current = newCode;
     console.log("Editor synced to Question: " + question.question_id);
   }, [question.question_id, answer]);
@@ -114,7 +114,6 @@ export default function ProgrammingLayout({
         zIndex: 9999,
       }}
     >
-      {/* LEFT COLUMN: Panel Info & Console */}
       <div
         style={{
           width: `${leftWidth}%`,
@@ -219,43 +218,42 @@ export default function ProgrammingLayout({
                         <strong style={{ color: "#ef4444", display: "block", marginBottom: "6px" }}>
                           Compiler Build Traceback:
                         </strong>
-                        <pre style={{ 
-                          fontSize: "0.8rem", 
-                          color: "#fca5a5", 
-                          background: "#141414", 
-                          padding: "10px", 
+                        <pre style={{
+                          fontSize: "0.8rem",
+                          color: "#fca5a5",
+                          background: "#141414",
+                          padding: "10px",
                           borderRadius: "4px",
                           overflowX: "auto",
                           border: "1px solid #3f1d1d",
                           whiteSpace: "pre-wrap"
                         }}>
-                          {/* 🎯 Straight from the compiler keys only. No fallback strings. */}
-                          {runResult?.details?.[0]?.compile_output || 
-                          runResult?.details?.[0]?.error || 
-                          runResult?.details?.[0]?.stderr || 
-                          (runResult as any).compile_output || 
+                          {runResult?.details?.[0]?.compile_output ||
+                          runResult?.details?.[0]?.error ||
+                          runResult?.details?.[0]?.stderr ||
+                          (runResult as any).compile_output ||
                           (runResult as any).error ||
                           `No diagnostics text found in payload keys. Raw object: ${JSON.stringify(runResult)}`}
                         </pre>
                       </div>
                     ) : Array.isArray(runResult.details) && runResult.details.length > 0 ? (
                       runResult.details.map((test: any, index: number) => {
-                        const isPassed = 
-                          test.passed === true || 
-                          test.status === "Accepted" || 
-                          test.status?.description === "Accepted" || 
+                        const isPassed =
+                          test.passed === true ||
+                          test.status === "Accepted" ||
+                          test.status?.description === "Accepted" ||
                           test.status?.id === 3;
 
-                        const errorLog = test.error || test.compile_output || test.stderr || ""; 
+                        const errorLog = test.error || test.compile_output || test.stderr || "";
                         const output = test.stdout || test.actual || "";
                         const expected = test.expected || "";
 
                         return (
-                          <div 
-                            key={index} 
+                          <div
+                            key={index}
                             style={{
-                              marginBottom: "14px", 
-                              borderLeft: `4px solid ${isPassed ? "#22c55e" : "#ef4444"}`, 
+                              marginBottom: "14px",
+                              borderLeft: `4px solid ${isPassed ? "#22c55e" : "#ef4444"}`,
                               background: "rgba(255,255,255,0.02)",
                               padding: "8px 12px"
                             }}
@@ -272,11 +270,11 @@ export default function ProgrammingLayout({
 
                             {errorLog && (
                               <div style={{ marginTop: "6px" }}>
-                                <pre style={{ 
-                                  fontSize: "0.75rem", 
-                                  color: "#fca5a5", 
-                                  background: "#2d2d2d", 
-                                  padding: "8px", 
+                                <pre style={{
+                                  fontSize: "0.75rem",
+                                  color: "#fca5a5",
+                                  background: "#2d2d2d",
+                                  padding: "8px",
                                   borderRadius: "4px",
                                   overflowX: "auto"
                                 }}>
@@ -347,7 +345,6 @@ export default function ProgrammingLayout({
         </div>
       </div>
 
-      {/* DRAG SEPARATOR */}
       <div
         onMouseDown={() => {
           isDragging.current = true;
@@ -356,7 +353,6 @@ export default function ProgrammingLayout({
         style={{ width: "5px", cursor: "col-resize", background: "#334155" }}
       />
 
-      {/* RIGHT COLUMN: Code View */}
       <div
         style={{
           width: `${100 - leftWidth}%`,
@@ -366,10 +362,9 @@ export default function ProgrammingLayout({
           overflow: "hidden",
         }}
       >
-        {/* Central interactive user code element */}
         <div style={{ flex: 1 }}>
           <Editor
-            key={question.question_id} 
+            key={question.question_id}
             height="100%"
             width="100%"
             defaultLanguage="cpp"

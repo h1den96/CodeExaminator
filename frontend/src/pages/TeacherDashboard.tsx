@@ -13,11 +13,10 @@ export default function TeacherDashboard() {
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load data immediately when dashboard opens
   useEffect(() => {
     fetchAllTests()
       .then((data) => {
-        // Sort by newest first
+
         setTests(
           data.sort(
             (a, b) =>
@@ -54,7 +53,6 @@ export default function TeacherDashboard() {
           margin: "0 auto",
         }}
       >
-        {/* 1. HEADER & LOGOUT */}
         <div
           style={{
             display: "flex",
@@ -87,16 +85,14 @@ export default function TeacherDashboard() {
           </button>
         </div>
 
-        {/* 2. ACTION BAR (Quick Actions) */}
         <div
           style={{
             marginBottom: "30px",
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr", // Changed to 3 columns to fit the new grading panel
+            gridTemplateColumns: "1fr 1fr 1fr",
             gap: "20px",
           }}
         >
-          {/* Button A: Create Exam Blueprint */}
           <button
             onClick={() => navigate("/teacher/create-test")}
             style={{
@@ -135,7 +131,6 @@ export default function TeacherDashboard() {
             </span>
           </button>
 
-          {/* Button B: Add Question (Links to Hub) */}
           <button
             onClick={() => navigate("/teacher/create-question-hub")}
             style={{
@@ -173,8 +168,6 @@ export default function TeacherDashboard() {
               Choose: MCQ, True/False, or Code
             </span>
           </button>
-
-          {/* Button C: Review & Grade Submissions */}
           <button
             onClick={() => navigate("/teacher/grading")}
             style={{
@@ -213,8 +206,6 @@ export default function TeacherDashboard() {
             </span>
           </button>
         </div>
-
-        {/* 3. RECENT TESTS LIST */}
         <div>
           <h2
             style={{
@@ -236,8 +227,6 @@ export default function TeacherDashboard() {
               No exams found. Create one above!
             </p>
           )}
-
-          {/* Grid View of Tests */}
           <div
             style={{
               display: "grid",

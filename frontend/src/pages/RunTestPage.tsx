@@ -1,6 +1,6 @@
-// src/pages/RunTestPage.tsx
+
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom"; // Import navigate
+import { useNavigate } from "react-router-dom";
 import ProgrammingLayout from "../components/test-runner/ProgrammingLayout";
 import StandardLayout from "../components/test-runner/StandardLayout";
 import { useTestSession } from "../hooks/useTestSession";
@@ -27,7 +27,6 @@ export default function RunTestPage() {
     runError,
   } = useTestSession();
 
-  // 1. Loading State
   if (loading)
     return (
       <div style={{ padding: 40, textAlign: "center", color: colors.text }}>
@@ -35,9 +34,8 @@ export default function RunTestPage() {
       </div>
     );
 
-  // 2. Error State (Updated to handle "Already Submitted")
   if (error) {
-    // Check if the error message indicates a conflict (409)
+
     const isAlreadySubmitted =
       error.includes("TEST_ALREADY_SUBMITTED") ||
       error.includes("already completed") ||
@@ -58,7 +56,7 @@ export default function RunTestPage() {
             You have already submitted this test. You cannot take it again.
           </p>
           <button
-            onClick={() => navigate("/teacher/dashboard")} // Or /student/dashboard
+            onClick={() => navigate("/teacher/dashboard")}
             style={{
               padding: "12px 24px",
               backgroundColor: "#2563eb",
@@ -75,7 +73,6 @@ export default function RunTestPage() {
       );
     }
 
-    // Generic Error Fallback
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#ef4444" }}>
         <h2>Error Loading Test</h2>
@@ -90,10 +87,8 @@ export default function RunTestPage() {
     );
   }
 
-  // 3. Data Check
   if (!data) return null;
 
-  // 4. Data Preparation
   const question = data.test.questions[currentIdx];
   const totalQ = data.test.questions.length;
 
@@ -114,12 +109,11 @@ export default function RunTestPage() {
     onSubmit: submitTest,
   };
 
-  // 5. Render Layout
   if (isProgramming) {
 
     const fullBoilerplate = question.boilerplate_code || "";
     const parts = fullBoilerplate.split("// {{STUDENT_CODE}}");
-    
+
     const topPart = parts[0] || "";
     const bottomPart = parts[1] || "";
 

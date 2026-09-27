@@ -20,24 +20,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<any | null>(null);
 
-  // Συγχρονισμός με το localStorage κατά το load της σελίδας
   useEffect(() => {
     const savedToken = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
 
-    // 1. Έλεγχος Token: Αποφυγή τιμών "null" ή "undefined" ως strings
     if (savedToken && savedToken !== "undefined" && savedToken !== "null") {
       setToken(savedToken);
     }
 
-    // 2. Έλεγχος User: Ασφαλές parsing για αποφυγή SyntaxError
     if (savedUser && savedUser !== "undefined" && savedUser !== "null") {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
       } catch (error) {
         console.error("AuthContext: Failed to parse user data from localStorage", error);
-        // Αν τα δεδομένα είναι κατεστραμμένα, τα καθαρίζουμε
+
         localStorage.removeItem("user");
         setUser(null);
       }
@@ -45,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (newToken: string, userData: any) => {
-    // Ενημέρωση State
+
     setToken(newToken);
     setUser(userData);
     localStorage.setItem("token", newToken);
@@ -53,14 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    // Καθαρισμός State
+
     setToken(null);
     setUser(null);
 
-    // Καθαρισμός LocalStorage
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    // Προαιρετικά καθαρίζουμε και παλιά κλειδιά αν υπάρχουν
+
     localStorage.removeItem("access_token");
     localStorage.removeItem("accessToken");
   };

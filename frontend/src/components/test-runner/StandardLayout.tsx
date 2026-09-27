@@ -22,28 +22,26 @@ export default function StandardLayout(props: any) {
 
   const { colors } = useTheme();
 
-  // --- LOGIC: Handle Selection ---
   const handleSelection = (optionId: number) => {
     if (question.allow_multiple) {
-      // 🔲 CHECKBOX MODE (Array)
+
       const currentSelection = Array.isArray(answer) ? answer : [];
 
       let newSelection;
       if (currentSelection.includes(optionId)) {
-        // Remove if already selected
+
         newSelection = currentSelection.filter((id: number) => id !== optionId);
       } else {
-        // Add if not selected
+
         newSelection = [...currentSelection, optionId];
       }
       onAnswer(question.question_id, newSelection, "mcq");
     } else {
-      // 🔘 RADIO MODE (Single Value)
+
       onAnswer(question.question_id, optionId, "mcq");
     }
   };
 
-  // --- LOGIC: Check if Selected ---
   const isSelected = (val: any) => {
     if (question.allow_multiple) {
       return Array.isArray(answer) && answer.includes(val);
@@ -64,7 +62,6 @@ export default function StandardLayout(props: any) {
       }}
     >
       <div style={{ width: "100%", maxWidth: 800 }}>
-        {/* HEADER */}
         <div
           style={{
             display: "flex",
@@ -84,7 +81,6 @@ export default function StandardLayout(props: any) {
           <StatusIndicator status={saveStatus} />
         </div>
 
-        {/* QUESTION CARD */}
         <div
           style={{
             background: colors.card,
@@ -96,7 +92,6 @@ export default function StandardLayout(props: any) {
         >
           <QuestionHeader question={question} idx={currentIdx} />
 
-          {/* 💡 HINT for Multi-Select */}
           {question.allow_multiple && (
             <div
               style={{
@@ -117,10 +112,9 @@ export default function StandardLayout(props: any) {
             </div>
           )}
 
-          {/* --- MCQ OPTIONS RENDERER --- */}
           {question.question_type === "mcq" &&
             question.options?.map((opt: any) => {
-              // FIX: Handle mismatch between 'id' and 'option_id'
+
               const optionId = opt.id || opt.option_id;
               const selected = isSelected(optionId);
 
@@ -147,7 +141,6 @@ export default function StandardLayout(props: any) {
                     gap: "15px",
                   }}
                 >
-                  {/* ICON */}
                   <div
                     style={{
                       width: 24,
@@ -176,8 +169,6 @@ export default function StandardLayout(props: any) {
                       />
                     )}
                   </div>
-
-                  {/* 👇 FIX APPLIED HERE: Checks for 'text' OR 'option_text' */}
                   <span style={{ fontSize: "1.05rem", lineHeight: "1.5" }}>
                     {opt.text || opt.option_text || "Error: Missing Text"}
                   </span>
@@ -185,7 +176,6 @@ export default function StandardLayout(props: any) {
               );
             })}
 
-          {/* --- TRUE/FALSE RENDERER --- */}
           {(question.question_type === "true_false" ||
             question.question_type === "tf") && (
             <div style={{ display: "flex", gap: 20, marginTop: 20 }}>
@@ -226,8 +216,6 @@ export default function StandardLayout(props: any) {
             </div>
           )}
         </div>
-
-        {/* FOOTER */}
         <NavigationButtons
           currentIdx={currentIdx}
           totalQ={totalQ}

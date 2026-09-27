@@ -112,7 +112,7 @@ export default function AvailableTestsPage() {
           margin: "0 auto",
         }}
       >
-      {/* Header Section */}
+
       <div
         style={{
           display: "flex",
@@ -231,8 +231,6 @@ export default function AvailableTestsPage() {
           </p>
         </div>
       )}
-
-      {/* Grid of Tests */}
       <div style={{ display: "grid", gap: "16px" }}>
         {sortedTests.map((test) => {
           const now = new Date().getTime();

@@ -1,8 +1,5 @@
-// src/components/BackgroundAccents.tsx
-// A soft, slowly drifting glow (a couple of large blurred color blobs) used to
-// keep otherwise-empty branded pages (login, signup, dashboard) from feeling
-// stark. Purely decorative: absolutely positioned, non-interactive, sits behind
-// content, works with the existing dot-grid (richBackground).
+
+
 import { useTheme } from "../context/ThemeContext";
 
 export default function BackgroundAccents() {
@@ -30,7 +27,6 @@ export default function BackgroundAccents() {
         }
       `}</style>
 
-      {/* top-right glow */}
       <div
         style={{
           position: "absolute",
@@ -48,7 +44,6 @@ export default function BackgroundAccents() {
         }}
       />
 
-      {/* bottom-left glow */}
       <div
         style={{
           position: "absolute",

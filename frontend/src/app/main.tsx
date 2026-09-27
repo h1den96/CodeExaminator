@@ -1,7 +1,7 @@
-// src/main.tsx
+
 import { createRoot } from "react-dom/client";
-import App from "./App"; // Import the main App component
-import "./index.css"; // Keep your styles if you have them
+import App from "./App";
+import "./index.css";
 
 const container = document.getElementById("root");
 
@@ -11,5 +11,4 @@ if (!container) {
 
 const root = createRoot(container);
 
-// Render ONLY the App component
 root.render(<App />);

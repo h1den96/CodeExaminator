@@ -1,4 +1,4 @@
-// src/api/testClient.ts
+
 const API_BASE = "http://localhost:3000";
 
 export interface AvailableTest {
@@ -13,7 +13,7 @@ export interface StartTestResponse {
   test: {
     test_id: number;
     title: string;
-    description?: string; // <--- ADDED THIS TO FIX THE ERROR
+    description?: string;
     questions: any[];
   };
 }
@@ -24,7 +24,6 @@ export interface AnswersPayload {
   prog: Record<number, string>;
 }
 
-// 1. Fetch Available Tests (GET)
 export async function fetchAvailableTests(
   token: string,
 ): Promise<AvailableTest[]> {
@@ -44,7 +43,6 @@ export async function fetchAvailableTests(
   return res.json();
 }
 
-// 2. Start Test (POST)
 export async function startTest(
   token: string,
   testId: number,
@@ -70,7 +68,6 @@ export async function startTest(
   return res.json();
 }
 
-// 3. Submit Test (POST)
 export async function submitTest(
   token: string,
   submissionId: number,

@@ -91,7 +91,6 @@ export default function TeacherGradingDashboard() {
         <div style={{ width: "100%", minHeight: "100vh", position: "relative", ...richBackground, display: "flex", flexDirection: "column" }}>
             <BackgroundAccents />
             <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-            {/* Top Bar Navigation */}
             <div style={{ padding: "20px 40px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.card }}>
                 <h1 style={{ color: colors.text, margin: 0, fontSize: "1.5rem" }}>Exam Grading & Review Dashboard</h1>
                 <button
@@ -103,7 +102,6 @@ export default function TeacherGradingDashboard() {
             </div>
 
             <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                {/* Sidebar: Tests & Submissions */}
                 <div style={{ width: "320px", borderRight: `1px solid ${colors.border}`, padding: "20px", overflowY: "auto", backgroundColor: colors.card }}>
                     <h3 style={{ color: colors.text, marginBottom: "15px", fontSize: "1.1rem" }}>Published Tests</h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "25px" }}>
@@ -150,11 +148,9 @@ export default function TeacherGradingDashboard() {
                     )}
                 </div>
 
-                {/* Main Content Area */}
                 <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
                     {submissionDetails ? (
                         <>
-                            {/* Question List Column */}
                             <div style={{ width: "280px", borderRight: `1px solid ${colors.border}`, padding: "20px", overflowY: "auto", backgroundColor: colors.card }}>
                                 <h3 style={{ color: colors.text, marginBottom: "15px", fontSize: "1.1rem" }}>Questions</h3>
                                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -176,8 +172,6 @@ export default function TeacherGradingDashboard() {
                                     ))}
                                 </div>
                             </div>
-
-                            {/* Active Question Review & Grading Pane */}
                             <div style={{ flex: 1, padding: "30px", overflowY: "auto", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                                 {activeQuestion && (
                                     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
